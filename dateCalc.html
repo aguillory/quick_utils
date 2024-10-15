@@ -73,39 +73,45 @@ title: Date Calculator
     document.getElementById('result').innerText = date.toLocaleDateString();
   }
 
-  function addToDate(date, unit, amount) {
-    switch (unit) {
-      case 'days':
-        date.setDate(date.getDate() + amount);
-        break;
-      case 'weeks':
-        date.setDate(date.getDate() + (amount * 7));
-        break;
-      case 'months':
-        date.setMonth(date.getMonth() + amount);
-        break;
-      case 'years':
-        date.setFullYear(date.getFullYear() + amount);
-        break;
-    }
+function addToDate(date, unit, amount) {
+  switch (unit) {
+    case 'days':
+      date.setDate(date.getDate() + amount);
+      break;
+    case 'weeks':
+      date.setDate(date.getDate() + (amount * 7));
+      break;
+    case 'months':
+      date.setMonth(date.getMonth() + amount);
+      date.setDate(Math.min(date.getDate(), new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+      break;
+    case 'years':
+      date.setFullYear(date.getFullYear() + amount);
+      date.setMonth(Math.min(date.getMonth(), 11));
+      date.setDate(Math.min(date.getDate(), new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+      break;
   }
+}
 
-  function subtractFromDate(date, unit, amount) {
-    switch (unit) {
-      case 'days':
-        date.setDate(date.getDate() - amount);
-        break;
-      case 'weeks':
-        date.setDate(date.getDate() - (amount * 7));
-        break;
-      case 'months':
-        date.setMonth(date.getMonth() - amount);
-        break;
-      case 'years':
-        date.setFullYear(date.getFullYear() - amount);
-        break;
-    }
+function subtractFromDate(date, unit, amount) {
+  switch (unit) {
+    case 'days':
+      date.setDate(date.getDate() - amount);
+      break;
+    case 'weeks':
+      date.setDate(date.getDate() - (amount * 7));
+      break;
+    case 'months':
+      date.setMonth(date.getMonth() - amount);
+      date.setDate(Math.min(date.getDate(), new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+      break;
+    case 'years':
+      date.setFullYear(date.getFullYear() - amount);
+      date.setMonth(Math.min(date.getMonth(), 11));
+      date.setDate(Math.min(date.getDate(), new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+      break;
   }
+}
 </script>
 
 <style>
