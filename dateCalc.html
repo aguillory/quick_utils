@@ -1,0 +1,124 @@
+---
+layout: default
+title: Date Calculator
+---
+
+<h1>Date Calculator</h1>
+
+<!-- Date Input Form -->
+<form id="dateForm">
+  <label for="dateInput">Choose a date:</label>
+  <input type="date" id="dateInput" value="{{ 'now' | date: '%Y-%m-%d' }}">
+
+  <br><br>
+
+  <!-- Add or Subtract -->
+  <label for="operation">Operation:</label>
+  <select id="operation">
+    <option value="add">Add</option>
+    <option value="subtract">Subtract</option>
+  </select>
+
+  <br><br>
+
+  <!-- Time Unit Selection -->
+  <label for="unit">Select unit:</label>
+  <select id="unit">
+    <option value="days">Days</option>
+    <option value="weeks">Weeks</option>
+    <option value="months">Months</option>
+    <option value="years">Years</option>
+  </select>
+
+  <br><br>
+
+  <!-- Number Input -->
+  <label for="amount">Enter number:</label>
+  <input type="number" id="amount" value="1" min="1">
+
+  <br><br>
+
+  <!-- Submit Button -->
+  <button type="button" onclick="calculateDate()">Go</button>
+</form>
+
+<!-- Result Display -->
+<h2>Result: <span id="result"></span></h2>
+
+<!-- JavaScript for Date Calculation -->
+<script>
+  function calculateDate() {
+    // Get input values
+    const dateInput = document.getElementById('dateInput').value;
+    const operation = document.getElementById('operation').value;
+    const unit = document.getElementById('unit').value;
+    const amount = parseInt(document.getElementById('amount').value);
+
+    if (!dateInput || isNaN(amount)) {
+      alert('Please fill in all fields correctly.');
+      return;
+    }
+
+    // Convert input date to a Date object
+    let date = new Date(dateInput);
+
+    // Calculate the new date based on operation
+    if (operation === 'add') {
+      addToDate(date, unit, amount);
+    } else {
+      subtractFromDate(date, unit, amount);
+    }
+
+    // Display the result
+    document.getElementById('result').innerText = date.toLocaleDateString();
+  }
+
+  function addToDate(date, unit, amount) {
+    switch (unit) {
+      case 'days':
+        date.setDate(date.getDate() + amount);
+        break;
+      case 'weeks':
+        date.setDate(date.getDate() + (amount * 7));
+        break;
+      case 'months':
+        date.setMonth(date.getMonth() + amount);
+        break;
+      case 'years':
+        date.setFullYear(date.getFullYear() + amount);
+        break;
+    }
+  }
+
+  function subtractFromDate(date, unit, amount) {
+    switch (unit) {
+      case 'days':
+        date.setDate(date.getDate() - amount);
+        break;
+      case 'weeks':
+        date.setDate(date.getDate() - (amount * 7));
+        break;
+      case 'months':
+        date.setMonth(date.getMonth() - amount);
+        break;
+      case 'years':
+        date.setFullYear(date.getFullYear() - amount);
+        break;
+    }
+  }
+</script>
+
+<style>
+  form {
+    margin-top: 20px;
+  }
+
+  label {
+    font-weight: bold;
+  }
+
+  input, select, button {
+    margin-top: 10px;
+    margin-bottom: 20px;
+  }
+</style>
