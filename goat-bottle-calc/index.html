@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goat Milk Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .unit-section, .bottle-section {
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+            margin-right: 10px;
+        }
+        input[type="number"] {
+            width: 100px;
+            padding: 5px;
+        }
+        .results {
+            background-color: #f0f0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .radio-group {
+            margin: 10px 0;
+        }
+        .radio-group label {
+            width: auto;
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+	<h1>Bottle Baby Goat Milk Need Calculator</h1>
+    <div class="unit-section">
+        <div class="radio-group">
+            <label>
+                <input type="radio" name="unit" id="lb" checked> LB
+            </label>
+            <label>
+                <input type="radio" name="unit" id="kg"> KG
+            </label>
+        </div>
+
+        <div id="lb-inputs">
+            <div class="input-group">
+                <label>Pounds:</label>
+                <input type="number" id="pounds" min="0" step="0.1">
+            </div>
+            <div class="input-group">
+                <label>Ounces:</label>
+                <input type="number" id="ounces" min="0" step="0.1">
+            </div>
+        </div>
+
+        <div id="kg-inputs" style="display: none;">
+            <div class="input-group">
+                <label>Kilograms:</label>
+                <input type="number" id="kilograms" min="0" step="0.1">
+            </div>
+        </div>
+    </div>
+
+    <div class="results">
+        <h3>Daily Milk Need:</h3>
+        <div id="daily-result"></div>
+    </div>
+
+    <div class="bottle-section">
+        <div class="radio-group">
+            <h3>Bottles per day:</h3>
+            <div id="bottle-buttons"></div>
+        </div>
+        <div class="results">
+            <h3>Amount per bottle:</h3>
+            <div id="bottle-result"></div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize bottle buttons
+        const bottleButtons = document.getElementById('bottle-buttons');
+        for (let i = 1; i <= 6; i++) {
+            bottleButtons.innerHTML += `
+                <label>
+                    <input type="radio" name="bottles" value="${i}"> ${i}
+                </label>
+            `;
+        }
+
+        // Unit toggle
+        document.querySelectorAll('input[name="unit"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                document.getElementById('lb-inputs').style.display = 
+                    radio.id === 'lb' ? 'block' : 'none';
+                document.getElementById('kg-inputs').style.display = 
+                    radio.id === 'kg' ? 'block' : 'none';
+                calculate();
+            });
+        });
+
+        // Input listeners
+        document.querySelectorAll('input[type="number"], input[name="bottles"]').forEach(input => {
+            input.addEventListener('input', calculate);
+        });
+
+        function calculate() {
+            const isLB = document.getElementById('lb').checked;
+            let weight = 0;
+
+            if (isLB) {
+                const pounds = parseFloat(document.getElementById('pounds').value) || 0;
+                const ounces = parseFloat(document.getElementById('ounces').value) || 0;
+                weight = pounds * 16 + ounces; // Convert to total ounces
+            } else {
+                const kg = parseFloat(document.getElementById('kilograms').value) || 0;
+                weight = kg * 35.274; // Convert kg to ounces for calculation
+            }
+
+            // Calculate daily needs
+            const dailyMin = weight * 0.15;
+            const dailyMax = weight * 0.20;
+            
+            // Convert back to kg if needed
+            const unit = isLB ? 'oz' : 'kg';
+            const displayMin = isLB ? dailyMin : dailyMin / 35.274;
+            const displayMax = isLB ? dailyMax : dailyMax / 35.274;
+
+            document.getElementById('daily-result').innerHTML = 
+                `${displayMin.toFixed(2)}${unit} - ${displayMax.toFixed(2)}${unit}`;
+
+            // Calculate bottle amount
+            const bottles = document.querySelector('input[name="bottles"]:checked')?.value;
+            if (bottles) {
+                const perBottleMin = displayMin / bottles;
+                const perBottleMax = displayMax / bottles;
+                document.getElementById('bottle-result').innerHTML = 
+                    `${perBottleMin.toFixed(2)}${unit} - ${perBottleMax.toFixed(2)}${unit}`;
+            } else {
+                document.getElementById('bottle-result').innerHTML = 'Select number of bottles';
+            }
+        }
+    </script>
+</body>
+</html>
