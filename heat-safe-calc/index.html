@@ -54,6 +54,9 @@
             visibility: visible;
             opacity: 1;
         }
+        #stationIdCustom {
+            transition: all 0.3s ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -68,14 +71,28 @@
         <!-- Credentials Input -->
         <div class="card mb-8">
             <h2 class="text-xl font-semibold mb-4 border-b pb-2">Configuration</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div class="grid grid-cols-1 gap-6">
                 <div>
-                    <label for="apiKey" class="block text-sm font-medium text-gray-700">Weather Underground API Key</label>
-                    <input type="password" id="apiKey" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter your API key">
+                    <label for="apiCode" class="block text-sm font-medium text-gray-700">API Key Code</label>
+                    <input type="password" id="apiCode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter code to activate API key">
                 </div>
                 <div>
-                    <label for="stationId" class="block text-sm font-medium text-gray-700">PWS Station ID</label>
-                    <input type="text" id="stationId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="e.g., KCAXXXX123">
+                    <label class="block text-sm font-medium text-gray-700">PWS Station ID</label>
+                    <div id="station-group" class="mt-2 space-y-2">
+                        <div class="flex items-center">
+                            <input id="station-default" name="station-option" type="radio" value="KLAOAKRI12" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300" checked>
+                            <label for="station-default" class="ml-3 block text-sm font-medium text-gray-700">KLAOAKRI12 (Default)</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="station-2" name="station-option" type="radio" value="KLABASTR9" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                            <label for="station-2" class="ml-3 block text-sm font-medium text-gray-700">KLABASTR9</label>
+                        </div>
+                        <div class="flex items-center flex-wrap">
+                            <input id="station-other" name="station-option" type="radio" value="other" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                            <label for="station-other" class="ml-3 block text-sm font-medium text-gray-700">Other:</label>
+                            <input type="text" id="stationIdCustom" class="ml-2 flex-grow min-w-[150px] rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm hidden" placeholder="Enter Station ID">
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="mt-4 flex justify-end">
@@ -150,8 +167,9 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // DOM Element References
-            const apiKeyInput = document.getElementById('apiKey');
-            const stationIdInput = document.getElementById('stationId');
+            const apiCodeInput = document.getElementById('apiCode');
+            const stationOptions = document.querySelectorAll('input[name="station-option"]');
+            const stationIdCustomInput = document.getElementById('stationIdCustom');
             const fetchButton = document.getElementById('fetchButton');
             const statusDiv = document.getElementById('status');
             const dashboardDiv = document.getElementById('dashboard');
@@ -166,32 +184,77 @@
 
             let refreshIntervalId = null;
 
+            // --- Configuration for API Key and Station Selection ---
+            
+            // Show/hide the custom station ID input field based on radio selection
+            stationOptions.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    if (radio.value === 'other') {
+                        stationIdCustomInput.classList.remove('hidden');
+                    } else {
+                        stationIdCustomInput.classList.add('hidden');
+                    }
+                });
+            });
+
             // Load saved credentials from localStorage
             const loadCredentials = () => {
-                const savedApiKey = localStorage.getItem('wuApiKey');
-                const savedStationId = localStorage.getItem('wuStationId');
-                if (savedApiKey && savedStationId) {
-                    apiKeyInput.value = savedApiKey;
-                    stationIdInput.value = savedStationId;
+                const savedApiCode = localStorage.getItem('wuApiCode');
+                const savedStationOption = localStorage.getItem('wuStationOption');
+                const savedStationIdCustom = localStorage.getItem('wuStationIdCustom');
+
+                if (savedApiCode && savedStationOption) {
+                    apiCodeInput.value = savedApiCode;
+                    const radioToSelect = document.querySelector(`input[name="station-option"][value="${savedStationOption}"]`);
+                    if (radioToSelect) {
+                        radioToSelect.checked = true;
+                        // Trigger change event to ensure UI consistency
+                        radioToSelect.dispatchEvent(new Event('change'));
+                        if (savedStationOption === 'other') {
+                            stationIdCustomInput.value = savedStationIdCustom || '';
+                        }
+                    }
                     console.log('Loaded credentials from localStorage.');
-                    // Automatically start monitoring if credentials are saved
-                    handleFetch();
+                    handleFetch(); // Automatically start monitoring
                 }
             };
             
             // Save credentials to localStorage
-            const saveCredentials = (key, id) => {
-                localStorage.setItem('wuApiKey', key);
-                localStorage.setItem('wuStationId', id);
+            const saveCredentials = (code, stationOption, stationIdCustom) => {
+                localStorage.setItem('wuApiCode', code);
+                localStorage.setItem('wuStationOption', stationOption);
+                 if (stationOption === 'other') {
+                    localStorage.setItem('wuStationIdCustom', stationIdCustom);
+                } else {
+                    localStorage.removeItem('wuStationIdCustom');
+                }
             };
 
             // Main function to fetch and process data
             const fetchData = async () => {
-                const apiKey = apiKeyInput.value.trim();
-                const stationId = stationIdInput.value.trim();
+                const apiCode = apiCodeInput.value.trim();
+                
+                // --- API Key Construction ---
+                // The API key is templated. The user must enter "4" to complete it.
+                const apiKeyTemplate = "90fe5810c9a8{{CODE}}7{{CODE}}{{CODE}}be5810c9a8a7{{CODE}}{{CODE}}d5";
+                if (apiCode !== '4') {
+                    statusDiv.textContent = 'Invalid API Key Code. Please enter the correct code.';
+                    statusDiv.classList.add('text-red-500');
+                    return;
+                }
+                const apiKey = apiKeyTemplate.replace(/{{CODE}}/g, apiCode);
+                
+                // --- Station ID Selection ---
+                let stationId = '';
+                const selectedStationOption = document.querySelector('input[name="station-option"]:checked').value;
+                if (selectedStationOption === 'other') {
+                    stationId = stationIdCustomInput.value.trim();
+                } else {
+                    stationId = selectedStationOption;
+                }
 
-                if (!apiKey || !stationId) {
-                    statusDiv.textContent = 'API Key and Station ID are required.';
+                if (!stationId) {
+                    statusDiv.textContent = 'A Station ID is required.';
                     statusDiv.classList.add('text-red-500');
                     return;
                 }
@@ -208,7 +271,7 @@
                     const response = await fetch(apiUrl);
                     if (!response.ok) {
                         if (response.status === 401) {
-                           throw new Error('Unauthorized. Check your API Key.');
+                           throw new Error('Unauthorized. The reconstructed API Key is invalid.');
                         } else if (response.status === 400) {
                            throw new Error('Bad Request. Check your Station ID.');
                         }
@@ -220,14 +283,13 @@
                         throw new Error('No observation data returned. Please check your Station ID.');
                     }
                     
-                    saveCredentials(apiKey, stationId); // Save on successful fetch
+                    saveCredentials(apiCode, selectedStationOption, stationId); // Save on successful fetch
                     processWeatherData(data.observations[0]);
                     
                 } catch (error) {
                     console.error('Fetch error:', error);
                     statusDiv.textContent = `Error: ${error.message}`;
                     statusDiv.classList.add('text-red-500');
-                    // Stop refreshing on error
                     if (refreshIntervalId) {
                         clearInterval(refreshIntervalId);
                         refreshIntervalId = null;
@@ -251,10 +313,8 @@
                     return;
                 }
 
-                // Calculate WBGT
                 const wbgtF = calculateWBGT(tempF, humidity);
 
-                // Update UI elements
                 dashboardDiv.classList.remove('hidden');
                 statusDiv.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
                 statusDiv.classList.add('text-green-600');
@@ -269,31 +329,16 @@
 
             /**
              * Calculates a simplified Wet Bulb Globe Temperature (WBGT) for shaded conditions.
-             * This formula is an approximation and should be used for guidance only.
-             * It uses an approximation of Wet Bulb temperature (Tw) from Ambient Temp (Ta) and Relative Humidity (RH).
-             * Formula for Tw is a polynomial approximation.
-             * WBGT (shade) = 0.7 * Tw + 0.3 * Ta
-             * @param {number} tempF - Ambient temperature in Fahrenheit.
-             * @param {number} rh - Relative humidity in percent (e.g., 65).
-             * @returns {number} The estimated WBGT in Fahrenheit.
              */
             const calculateWBGT = (tempF, rh) => {
-                // Convert temperature to Celsius for the calculation
                 const tempC = (tempF - 32) * 5 / 9;
-                
-                // Calculate Wet Bulb Temperature (Tw) in Celsius using Stull's formula (approximation)
                 const twC = tempC * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) +
                             Math.atan(tempC + rh) -
                             Math.atan(rh - 1.676331) +
                             0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) -
                             4.686035;
-
-                // Calculate WBGT in Celsius for shaded conditions
                 const wbgtC = 0.7 * twC + 0.3 * tempC;
-                
-                // Convert WBGT back to Fahrenheit
                 const wbgtF = wbgtC * 9 / 5 + 32;
-
                 return wbgtF;
             };
 
@@ -302,49 +347,26 @@
                 let flag = {};
                 let guidelines = {};
 
-                // These thresholds are common but can be adjusted
                 if (wbgtF < 80) {
                     flag = { text: 'Low Risk', color: 'bg-green-500' };
-                    guidelines = {
-                        light: { work: 60, rest: 0 },
-                        moderate: { work: 60, rest: 0 },
-                        heavy: { work: 60, rest: 0 }
-                    };
+                    guidelines = { light: { work: 60, rest: 0 }, moderate: { work: 60, rest: 0 }, heavy: { work: 60, rest: 0 } };
                 } else if (wbgtF < 85) {
                     flag = { text: 'Moderate Risk', color: 'bg-yellow-400' };
-                     guidelines = {
-                        light: { work: 50, rest: 10 },
-                        moderate: { work: 40, rest: 20 },
-                        heavy: { work: 30, rest: 30 }
-                    };
+                    guidelines = { light: { work: 50, rest: 10 }, moderate: { work: 40, rest: 20 }, heavy: { work: 30, rest: 30 } };
                 } else if (wbgtF < 88) {
                     flag = { text: 'High Risk', color: 'bg-red-500' };
-                     guidelines = {
-                        light: { work: 40, rest: 20 },
-                        moderate: { work: 30, rest: 30 },
-                        heavy: { work: 20, rest: 40 }
-                    };
+                    guidelines = { light: { work: 40, rest: 20 }, moderate: { work: 30, rest: 30 }, heavy: { work: 20, rest: 40 } };
                 } else if (wbgtF < 90) {
                     flag = { text: 'Very High Risk', color: 'bg-red-700' };
-                     guidelines = {
-                        light: { work: 30, rest: 30 },
-                        moderate: { work: 20, rest: 40 },
-                        heavy: { work: 10, rest: 50 }
-                    };
+                    guidelines = { light: { work: 30, rest: 30 }, moderate: { work: 20, rest: 40 }, heavy: { work: 10, rest: 50 } };
                 } else { // wbgtF >= 90
                     flag = { text: 'Extreme Risk / Black Flag', color: 'bg-black' };
-                     guidelines = {
-                        light: { work: 20, rest: 40 },
-                        moderate: { work: 10, rest: 50 },
-                        heavy: { work: 0, rest: 60 }
-                    };
+                    guidelines = { light: { work: 20, rest: 40 }, moderate: { work: 10, rest: 50 }, heavy: { work: 0, rest: 60 } };
                 }
 
-                // Update flag UI
                 flagText.textContent = flag.text;
                 flagConditionDiv.className = `p-2 rounded-md font-bold text-white transition-colors ${flag.color}`;
                 
-                // Update guidelines table
                 guidelinesTable.innerHTML = `
                     ${createGuidelineRow('Light', 'e.g., general maintenance, desk work', guidelines.light)}
                     ${createGuidelineRow('Moderate', 'e.g., brisk walking, carrying moderate loads', guidelines.moderate)}
@@ -368,14 +390,11 @@
 
             // Event handler for the fetch button
             const handleFetch = () => {
-                // Clear any existing interval to prevent multiple loops
                 if (refreshIntervalId) {
                     clearInterval(refreshIntervalId);
                 }
-                // Fetch immediately
-                fetchData();
-                // Then set a new interval to fetch every minute
-                refreshIntervalId = setInterval(fetchData, 60000); // 60000 ms = 1 minute
+                fetchData(); // Fetch immediately
+                refreshIntervalId = setInterval(fetchData, 60000); // Refresh every minute
             };
 
             // Attach event listener
