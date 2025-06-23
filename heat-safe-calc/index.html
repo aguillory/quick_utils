@@ -61,14 +61,13 @@
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
 
         <header class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Personal Weather Station WBGT Monitor</h1>
             <p class="text-gray-600 mt-2">Live outdoor safety analysis from your Weather Underground station.</p>
         </header>
 
-        <!-- Credentials Input -->
         <div class="card mb-8">
             <h2 class="text-xl font-semibold mb-4 border-b pb-2">Configuration</h2>
             <div class="grid grid-cols-1 gap-6">
@@ -103,10 +102,8 @@
             <div id="status" class="mt-4 text-center text-sm text-gray-500 h-5"></div>
         </div>
 
-        <!-- Main Dashboard -->
-        <div id="dashboard" class="grid grid-cols-1 lg:grid-cols-3 gap-6 hidden">
-            <!-- WBGT Display -->
-            <div class="lg:col-span-3 card text-center">
+        <div id="dashboard" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 hidden">
+            <div class="lg:col-span-2 xl:col-span-4 card text-center">
                  <h2 class="text-lg font-medium text-gray-600 flex items-center justify-center">
                     Estimated WBGT
                     <div class="tooltip ml-2">
@@ -114,16 +111,16 @@
                             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
                             <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.055.482.172.58.322.194.295.293.65.293.995 0 .63-.324 1.205-.734 1.634-.44.444-1.036.72-1.733.72-1.148 0-1.802-.633-1.802-1.614 0-.886.516-1.428 1.187-1.428.59 0 .95.244 1.187.452l.211-.755-.211-.083zM8 4.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5z"/>
                         </svg>
-                        <span class="tooltiptext">Wet Bulb Globe Temperature is an estimate of heat stress in direct sunlight. This value is approximated from temperature and humidity for shaded conditions.</span>
+                        <span class="tooltiptext">Wet Bulb Globe Temperature is an estimate of heat stress in direct sunlight, calculated from temperature, humidity, wind, and solar radiation.</span>
                     </div>
                 </h2>
                 <p id="wbgtValue" class="text-7xl font-black text-gray-900 my-2">--.- °F</p>
                 <div id="flagCondition" class="p-2 rounded-md font-bold text-white transition-colors">
                     <p id="flagText">Awaiting Data</p>
                 </div>
+                <p id="solarStationNote" class="text-xs text-gray-500 mt-2 h-3"></p>
             </div>
 
-            <!-- Current Conditions -->
             <div class="card text-center">
                 <h3 class="text-lg font-medium text-gray-600">Temperature</h3>
                 <p id="tempValue" class="text-4xl font-bold text-gray-900 mt-2">--.- °F</p>
@@ -133,12 +130,15 @@
                 <p id="humidityValue" class="text-4xl font-bold text-gray-900 mt-2">-- %</p>
             </div>
             <div class="card text-center">
-                <h3 class="text-lg font-medium text-gray-600">Wind</h3>
+                <h3 class="text-lg font-medium text-gray-600">Solar Radiation</h3>
+                <p id="solarValue" class="text-4xl font-bold text-gray-900 mt-2">--</p>
+            </div>
+            <div class="card text-center">
+                <h3 class="text-lg font-medium text-gray-600">Wind Speed</h3>
                 <p id="windValue" class="text-4xl font-bold text-gray-900 mt-2">-- mph</p>
             </div>
-
-            <!-- Work Guidelines -->
-            <div class="lg:col-span-3 card">
+            
+            <div class="lg:col-span-2 xl:col-span-4 card">
                 <h2 class="text-xl font-semibold mb-4">Work & Rest Guidelines (per hour)</h2>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -150,7 +150,6 @@
                             </tr>
                         </thead>
                         <tbody id="guidelinesTable" class="bg-white divide-y divide-gray-200">
-                           <!-- Rows will be populated by JavaScript -->
                            <tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">Awaiting data...</td></tr>
                         </tbody>
                     </table>
@@ -176,28 +175,24 @@
 
             const tempValue = document.getElementById('tempValue');
             const humidityValue = document.getElementById('humidityValue');
+            const solarValue = document.getElementById('solarValue');
             const windValue = document.getElementById('windValue');
             const wbgtValue = document.getElementById('wbgtValue');
             const flagConditionDiv = document.getElementById('flagCondition');
             const flagText = document.getElementById('flagText');
+            const solarStationNote = document.getElementById('solarStationNote');
             const guidelinesTable = document.getElementById('guidelinesTable');
 
             let refreshIntervalId = null;
+            let apiKey = '';
 
             // --- Configuration for API Key and Station Selection ---
-            
-            // Show/hide the custom station ID input field based on radio selection
             stationOptions.forEach(radio => {
                 radio.addEventListener('change', () => {
-                    if (radio.value === 'other') {
-                        stationIdCustomInput.classList.remove('hidden');
-                    } else {
-                        stationIdCustomInput.classList.add('hidden');
-                    }
+                    stationIdCustomInput.classList.toggle('hidden', radio.value !== 'other');
                 });
             });
 
-            // Load saved credentials from localStorage
             const loadCredentials = () => {
                 const savedApiCode = localStorage.getItem('wuApiCode');
                 const savedStationOption = localStorage.getItem('wuStationOption');
@@ -208,49 +203,97 @@
                     const radioToSelect = document.querySelector(`input[name="station-option"][value="${savedStationOption}"]`);
                     if (radioToSelect) {
                         radioToSelect.checked = true;
-                        // Trigger change event to ensure UI consistency
                         radioToSelect.dispatchEvent(new Event('change'));
                         if (savedStationOption === 'other') {
                             stationIdCustomInput.value = savedStationIdCustom || '';
                         }
                     }
-                    console.log('Loaded credentials from localStorage.');
-                    handleFetch(); // Automatically start monitoring
+                    handleFetch();
                 }
             };
             
-            // Save credentials to localStorage
             const saveCredentials = (code, stationOption, stationIdCustom) => {
                 localStorage.setItem('wuApiCode', code);
                 localStorage.setItem('wuStationOption', stationOption);
-                 if (stationOption === 'other') {
+                if (stationOption === 'other') {
                     localStorage.setItem('wuStationIdCustom', stationIdCustom);
                 } else {
                     localStorage.removeItem('wuStationIdCustom');
                 }
             };
 
-            // Main function to fetch and process data
-            const fetchData = async () => {
+            const getApiKey = () => {
                 const apiCode = apiCodeInput.value.trim();
-                
-                // --- API Key Construction ---
-                // The API key is templated. The user must enter "4" to complete it.
                 const apiKeyTemplate = "90fe5810c9a8{{CODE}}7{{CODE}}{{CODE}}be5810c9a8a7{{CODE}}{{CODE}}d5";
                 if (apiCode !== '4') {
                     statusDiv.textContent = 'Invalid API Key Code. Please enter the correct code.';
                     statusDiv.classList.add('text-red-500');
-                    return;
+                    return null;
                 }
-                const apiKey = apiKeyTemplate.replace(/{{CODE}}/g, apiCode);
+                return apiKeyTemplate.replace(/{{CODE}}/g, apiCode);
+            };
+
+            const fetchWeatherData = async (stationId) => {
+                const url = `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=e&apiKey=${apiKey}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    if (response.status === 401) throw new Error('Unauthorized API Key');
+                    if (response.status === 400) throw new Error(`Bad Request for Station ID: ${stationId}`);
+                    throw new Error(`HTTP error ${response.status} for ${stationId}`);
+                }
+                const data = await response.json();
+                if (!data.observations || data.observations.length === 0) {
+                    throw new Error(`No observation data for ${stationId}`);
+                }
+                return data.observations[0];
+            };
+
+            const findAlternateSolarData = async (lat, lon) => {
+                statusDiv.textContent = 'Primary station lacks solar data. Searching for nearby source...';
+                // FIX: Added the required 'language' parameter to the URL
+                const url = `https://api.weather.com/v3/location/search?query=${lat},${lon}&locationType=pws&language=en-US&format=json&apiKey=${apiKey}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Could not search for nearby stations.');
                 
-                // --- Station ID Selection ---
-                let stationId = '';
-                const selectedStationOption = document.querySelector('input[name="station-option"]:checked').value;
-                if (selectedStationOption === 'other') {
+                const locationData = await response.json();
+                const nearbyPwsIds = locationData?.location?.pwsId;
+
+                if (!nearbyPwsIds || nearbyPwsIds.length <= 1) {
+                    statusDiv.textContent = 'No alternate PWS with solar data found nearby.';
+                    return null;
+                }
+
+                for (const pwsId of nearbyPwsIds) {
+                    // Get the currently selected station ID to avoid re-checking it
+                    let selectedStationId = document.querySelector('input[name="station-option"]:checked').value;
+                    if (selectedStationId === 'other') {
+                        selectedStationId = stationIdCustomInput.value.trim();
+                    }
+                    if (pwsId === selectedStationId) continue; // Skip self
+
+                    try {
+                        statusDiv.textContent = `Checking nearby station ${pwsId} for solar data...`;
+                        const obs = await fetchWeatherData(pwsId);
+                        if (obs.solarRadiation !== null && obs.solarRadiation > 10) { // Check for valid, non-zero reading
+                            return {
+                                solarRadiation: obs.solarRadiation,
+                                sourceStationId: obs.stationID
+                            };
+                        }
+                    } catch (error) {
+                        console.warn(`Could not fetch data from nearby station ${pwsId}:`, error);
+                    }
+                }
+                return null;
+            };
+
+            const fetchData = async () => {
+                apiKey = getApiKey();
+                if (!apiKey) return;
+
+                let stationId = document.querySelector('input[name="station-option"]:checked').value;
+                if (stationId === 'other') {
                     stationId = stationIdCustomInput.value.trim();
-                } else {
-                    stationId = selectedStationOption;
                 }
 
                 if (!stationId) {
@@ -260,92 +303,128 @@
                 }
                 
                 statusDiv.textContent = `Fetching data for ${stationId}...`;
-                statusDiv.classList.remove('text-red-500', 'text-green-500');
+                statusDiv.classList.remove('text-red-500', 'text-green-600');
                 fetchButton.disabled = true;
                 fetchButton.classList.add('opacity-50', 'cursor-not-allowed');
-
-                // WU API URL using imperial units
-                const apiUrl = `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=e&apiKey=${apiKey}`;
+                solarStationNote.textContent = '';
 
                 try {
-                    const response = await fetch(apiUrl);
-                    if (!response.ok) {
-                        if (response.status === 401) {
-                           throw new Error('Unauthorized. The reconstructed API Key is invalid.');
-                        } else if (response.status === 400) {
-                           throw new Error('Bad Request. Check your Station ID.');
-                        }
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    const data = await response.json();
+                    // 1. Always fetch the primary station's data first
+                    const primaryObs = await fetchWeatherData(stationId);
+                    
+                    let solarData = {
+                        solarRadiation: primaryObs.solarRadiation,
+                        sourceStationId: primaryObs.stationID
+                    };
+                    let useBestGuess = false;
 
-                    if (!data.observations || data.observations.length === 0) {
-                        throw new Error('No observation data returned. Please check your Station ID.');
+                    // 2. Check if the primary station lacks solar data
+                    if (primaryObs.solarRadiation === null || primaryObs.solarRadiation < 10) {
+                        
+                        // LOGIC: If the station is the default, use the specific fallback station
+                        if (primaryObs.stationID === 'KLAOAKRI12') {
+                            statusDiv.textContent = 'Using KLARAYVI32 for solar data...';
+                            try {
+                                const alternateObs = await fetchWeatherData('KLARAYVI32');
+                                solarData = {
+                                    solarRadiation: alternateObs.solarRadiation,
+                                    sourceStationId: alternateObs.stationID
+                                };
+                            } catch (fallbackError) {
+                                console.error("Could not fetch from fallback KLARAYVI32:", fallbackError);
+                                statusDiv.textContent = 'Fallback station failed. Using shade estimate.';
+                            }
+                        }
+                        // LOGIC: If it's a custom station, use the "best guess" method
+                        else if (document.querySelector('input[name="station-option"]:checked').value === 'other') {
+                            solarData.sourceStationId = 'best_guess';
+                            useBestGuess = true; // Set flag for calculation
+                        }
                     }
                     
-                    saveCredentials(apiCode, selectedStationOption, stationId); // Save on successful fetch
-                    processWeatherData(data.observations[0]);
+                    saveCredentials(apiCodeInput.value.trim(), document.querySelector('input[name="station-option"]:checked').value, stationId);
+                    processWeatherData(primaryObs, solarData, useBestGuess);
                     
                 } catch (error) {
-                    console.error('Fetch error:', error);
+                    console.error('Fetch process error:', error);
                     statusDiv.textContent = `Error: ${error.message}`;
                     statusDiv.classList.add('text-red-500');
-                    if (refreshIntervalId) {
-                        clearInterval(refreshIntervalId);
-                        refreshIntervalId = null;
-                    }
+                    if (refreshIntervalId) clearInterval(refreshIntervalId);
                 } finally {
                     fetchButton.disabled = false;
                     fetchButton.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
             };
+            
+            const processWeatherData = (primaryObs, solarData, useBestGuess = false) => {
+                const imperial = primaryObs.imperial;
+                const { temp, windSpeed } = imperial;
+                const humidity = primaryObs.humidity;
+                const { solarRadiation } = solarData;
 
-            // Process the fetched data and update the UI
-            const processWeatherData = (obs) => {
-                const imperial = obs.imperial;
-                const tempF = imperial.temp;
-                const humidity = obs.humidity;
-                const windSpeed = imperial.windSpeed;
-                
-                if (tempF === null || humidity === null || windSpeed === null) {
+                if (temp === null || humidity === null || windSpeed === null) {
                     statusDiv.textContent = 'Incomplete data received from station.';
                     statusDiv.classList.add('text-red-500');
                     return;
                 }
 
-                const wbgtF = calculateWBGT(tempF, humidity);
+                const wbgtF = calculateWBGT(temp, humidity, windSpeed, solarRadiation, useBestGuess);
 
                 dashboardDiv.classList.remove('hidden');
                 statusDiv.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
                 statusDiv.classList.add('text-green-600');
 
-                tempValue.textContent = `${tempF.toFixed(1)} °F`;
+                tempValue.textContent = `${temp.toFixed(1)} °F`;
                 humidityValue.textContent = `${humidity} %`;
-                windValue.textContent = `${windSpeed} mph`;
+                solarValue.textContent = solarRadiation !== null ? `${solarRadiation.toFixed(0)} W/m²` : 'N/A';
+                windValue.textContent = `${windSpeed.toFixed(0)} mph`;
                 wbgtValue.textContent = `${wbgtF.toFixed(1)} °F`;
+                
+                // Update note based on where solar data came from
+                if (solarData.sourceStationId === 'best_guess') {
+                    solarStationNote.textContent = "PWS lacks solar data. Using a 'full sun' estimate for WBGT.";
+                } else if (solarData.sourceStationId !== primaryObs.stationID) {
+                    solarStationNote.textContent = `Solar data from nearby station: ${solarData.sourceStationId}`;
+                }
 
                 updateSafetyInfo(wbgtF);
             };
 
-            /**
-             * Calculates a simplified Wet Bulb Globe Temperature (WBGT) for shaded conditions.
-             */
-            const calculateWBGT = (tempF, rh) => {
-                const tempC = (tempF - 32) * 5 / 9;
+            const calculateWBGT = (tempF, rh, windMph, solarRadiation, isBestGuess = false) => {
+                // Unit Conversions
+                const tempC = (tempF - 32) * 5 / 9; // Air Temp (Ta) in Celsius
+                const windMs = windMph * 0.44704;   // Wind Speed in m/s
+
+                // 1. Calculate Wet Bulb Temperature (Tw) in Celsius using Stull's formula (approximation)
                 const twC = tempC * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) +
                             Math.atan(tempC + rh) -
                             Math.atan(rh - 1.676331) +
                             0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) -
                             4.686035;
-                const wbgtC = 0.7 * twC + 0.3 * tempC;
-                const wbgtF = wbgtC * 9 / 5 + 32;
+
+                let effectiveSolarRadiation = solarRadiation;
+                if (isBestGuess) {
+                    effectiveSolarRadiation = 1000; // Use 1000 W/m² for a "full sun" estimate
+                }
+
+                // If there's no solar radiation, calculate for SHADE
+                if (effectiveSolarRadiation === null || effectiveSolarRadiation < 10) {
+                    const wbgtC_shade = 0.7 * twC + 0.3 * tempC;
+                    return wbgtC_shade * 9 / 5 + 32;
+                }
+                
+                // 2. Estimate Globe Temperature (Tg) in Celsius
+                const tgC = tempC + (0.0055 * effectiveSolarRadiation) - (1.1 * Math.sqrt(windMs));
+
+                // 3. Calculate Final WBGT for SUNNY conditions
+                const wbgtC_sun = 0.7 * twC + 0.2 * tgC + 0.1 * tempC;
+                const wbgtF = wbgtC_sun * 9 / 5 + 32;
+                
                 return wbgtF;
             };
 
-            // Update the flag condition and work guidelines table
             const updateSafetyInfo = (wbgtF) => {
-                let flag = {};
-                let guidelines = {};
+                let flag, guidelines;
 
                 if (wbgtF < 80) {
                     flag = { text: 'Low Risk', color: 'bg-green-500' };
@@ -359,7 +438,7 @@
                 } else if (wbgtF < 90) {
                     flag = { text: 'Very High Risk', color: 'bg-red-700' };
                     guidelines = { light: { work: 30, rest: 30 }, moderate: { work: 20, rest: 40 }, heavy: { work: 10, rest: 50 } };
-                } else { // wbgtF >= 90
+                } else {
                     flag = { text: 'Extreme Risk / Black Flag', color: 'bg-black' };
                     guidelines = { light: { work: 20, rest: 40 }, moderate: { work: 10, rest: 50 }, heavy: { work: 0, rest: 60 } };
                 }
@@ -374,7 +453,6 @@
                 `;
             };
 
-            // Helper to create a table row
             const createGuidelineRow = (level, example, data) => {
                  return `
                     <tr>
@@ -388,19 +466,14 @@
                 `;
             };
 
-            // Event handler for the fetch button
             const handleFetch = () => {
-                if (refreshIntervalId) {
-                    clearInterval(refreshIntervalId);
-                }
-                fetchData(); // Fetch immediately
-                refreshIntervalId = setInterval(fetchData, 60000); // Refresh every minute
+                if (refreshIntervalId) clearInterval(refreshIntervalId);
+                fetchData();
+                refreshIntervalId = setInterval(fetchData, 60000);
             };
 
-            // Attach event listener
             fetchButton.addEventListener('click', handleFetch);
 
-            // Initial load
             loadCredentials();
         });
     </script>
