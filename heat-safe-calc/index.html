@@ -121,21 +121,25 @@
                 <p id="solarStationNote" class="text-xs text-gray-500 mt-2 h-3"></p>
             </div>
 
-            <div class="card text-center">
-                <h3 class="text-lg font-medium text-gray-600">Temperature</h3>
-                <p id="tempValue" class="text-4xl font-bold text-gray-900 mt-2">--.- °F</p>
+            <div id="tempCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Temperature</h3>
+                <p id="tempValue" class="text-4xl font-bold mt-2">--.- °F</p>
+                <p id="tempNote" class="font-bold mt-2 h-5"></p>
             </div>
-            <div class="card text-center">
-                <h3 class="text-lg font-medium text-gray-600">Humidity</h3>
-                <p id="humidityValue" class="text-4xl font-bold text-gray-900 mt-2">-- %</p>
+            <div id="humidityCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Humidity</h3>
+                <p id="humidityValue" class="text-4xl font-bold mt-2">-- %</p>
+                <p id="humidityNote" class="font-bold mt-2 h-5"></p>
             </div>
-            <div class="card text-center">
-                <h3 class="text-lg font-medium text-gray-600">Solar Radiation</h3>
-                <p id="solarValue" class="text-4xl font-bold text-gray-900 mt-2">--</p>
+            <div id="solarCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Solar Radiation</h3>
+                <p id="solarValue" class="text-4xl font-bold mt-2">--</p>
+                <p id="solarNote" class="font-bold mt-2 h-5"></p>
             </div>
-            <div class="card text-center">
-                <h3 class="text-lg font-medium text-gray-600">Wind Speed</h3>
-                <p id="windValue" class="text-4xl font-bold text-gray-900 mt-2">-- mph</p>
+            <div id="windCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Wind Speed</h3>
+                <p id="windValue" class="text-4xl font-bold mt-2">-- mph</p>
+                <p id="windNote" class="font-bold mt-2 h-5"></p>
             </div>
             
             <div class="lg:col-span-2 xl:col-span-4 card">
@@ -173,15 +177,25 @@
             const statusDiv = document.getElementById('status');
             const dashboardDiv = document.getElementById('dashboard');
 
-            const tempValue = document.getElementById('tempValue');
-            const humidityValue = document.getElementById('humidityValue');
-            const solarValue = document.getElementById('solarValue');
-            const windValue = document.getElementById('windValue');
             const wbgtValue = document.getElementById('wbgtValue');
             const flagConditionDiv = document.getElementById('flagCondition');
             const flagText = document.getElementById('flagText');
             const solarStationNote = document.getElementById('solarStationNote');
             const guidelinesTable = document.getElementById('guidelinesTable');
+
+            // --- Individual Metric Card Elements ---
+            const tempCard = document.getElementById('tempCard');
+            const humidityCard = document.getElementById('humidityCard');
+            const solarCard = document.getElementById('solarCard');
+            const windCard = document.getElementById('windCard');
+            const tempValue = document.getElementById('tempValue');
+            const humidityValue = document.getElementById('humidityValue');
+            const solarValue = document.getElementById('solarValue');
+            const windValue = document.getElementById('windValue');
+            const tempNote = document.getElementById('tempNote');
+            const humidityNote = document.getElementById('humidityNote');
+            const solarNote = document.getElementById('solarNote');
+            const windNote = document.getElementById('windNote');
 
             let refreshIntervalId = null;
             let apiKey = '';
@@ -233,6 +247,7 @@
                 return apiKeyTemplate.replace(/{{CODE}}/g, apiCode);
             };
 
+            // --- Data Fetching ---
             const fetchWeatherData = async (stationId) => {
                 const url = `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=e&apiKey=${apiKey}`;
                 const response = await fetch(url);
@@ -246,45 +261,6 @@
                     throw new Error(`No observation data for ${stationId}`);
                 }
                 return data.observations[0];
-            };
-
-            const findAlternateSolarData = async (lat, lon) => {
-                statusDiv.textContent = 'Primary station lacks solar data. Searching for nearby source...';
-                // FIX: Added the required 'language' parameter to the URL
-                const url = `https://api.weather.com/v3/location/search?query=${lat},${lon}&locationType=pws&language=en-US&format=json&apiKey=${apiKey}`;
-                const response = await fetch(url);
-                if (!response.ok) throw new Error('Could not search for nearby stations.');
-                
-                const locationData = await response.json();
-                const nearbyPwsIds = locationData?.location?.pwsId;
-
-                if (!nearbyPwsIds || nearbyPwsIds.length <= 1) {
-                    statusDiv.textContent = 'No alternate PWS with solar data found nearby.';
-                    return null;
-                }
-
-                for (const pwsId of nearbyPwsIds) {
-                    // Get the currently selected station ID to avoid re-checking it
-                    let selectedStationId = document.querySelector('input[name="station-option"]:checked').value;
-                    if (selectedStationId === 'other') {
-                        selectedStationId = stationIdCustomInput.value.trim();
-                    }
-                    if (pwsId === selectedStationId) continue; // Skip self
-
-                    try {
-                        statusDiv.textContent = `Checking nearby station ${pwsId} for solar data...`;
-                        const obs = await fetchWeatherData(pwsId);
-                        if (obs.solarRadiation !== null && obs.solarRadiation > 10) { // Check for valid, non-zero reading
-                            return {
-                                solarRadiation: obs.solarRadiation,
-                                sourceStationId: obs.stationID
-                            };
-                        }
-                    } catch (error) {
-                        console.warn(`Could not fetch data from nearby station ${pwsId}:`, error);
-                    }
-                }
-                return null;
             };
 
             const fetchData = async () => {
@@ -309,7 +285,6 @@
                 solarStationNote.textContent = '';
 
                 try {
-                    // 1. Always fetch the primary station's data first
                     const primaryObs = await fetchWeatherData(stationId);
                     
                     let solarData = {
@@ -318,10 +293,7 @@
                     };
                     let useBestGuess = false;
 
-                    // 2. Check if the primary station lacks solar data
                     if (primaryObs.solarRadiation === null || primaryObs.solarRadiation < 10) {
-                        
-                        // LOGIC: If the station is the default, use the specific fallback station
                         if (primaryObs.stationID === 'KLAOAKRI12') {
                             statusDiv.textContent = 'Using KLARAYVI32 for solar data...';
                             try {
@@ -335,10 +307,9 @@
                                 statusDiv.textContent = 'Fallback station failed. Using shade estimate.';
                             }
                         }
-                        // LOGIC: If it's a custom station, use the "best guess" method
                         else if (document.querySelector('input[name="station-option"]:checked').value === 'other') {
                             solarData.sourceStationId = 'best_guess';
-                            useBestGuess = true; // Set flag for calculation
+                            useBestGuess = true;
                         }
                     }
                     
@@ -356,6 +327,7 @@
                 }
             };
             
+            // --- Data Processing and UI Updates ---
             const processWeatherData = (primaryObs, solarData, useBestGuess = false) => {
                 const imperial = primaryObs.imperial;
                 const { temp, windSpeed } = imperial;
@@ -368,34 +340,90 @@
                     return;
                 }
 
-                const wbgtF = calculateWBGT(temp, humidity, windSpeed, solarRadiation, useBestGuess);
-
                 dashboardDiv.classList.remove('hidden');
                 statusDiv.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
                 statusDiv.classList.add('text-green-600');
 
-                tempValue.textContent = `${temp.toFixed(1)} °F`;
-                humidityValue.textContent = `${humidity} %`;
-                solarValue.textContent = solarRadiation !== null ? `${solarRadiation.toFixed(0)} W/m²` : 'N/A';
-                windValue.textContent = `${windSpeed.toFixed(0)} mph`;
+                // Update Main WBGT Card
+                const wbgtF = calculateWBGT(temp, humidity, windSpeed, solarRadiation, useBestGuess);
                 wbgtValue.textContent = `${wbgtF.toFixed(1)} °F`;
+                updateSafetyInfo(wbgtF);
                 
+                // Update Individual Metric Cards
+                updateMetricCards(temp, humidity, solarRadiation, windSpeed);
+
                 // Update note based on where solar data came from
                 if (solarData.sourceStationId === 'best_guess') {
                     solarStationNote.textContent = "PWS lacks solar data. Using a 'full sun' estimate for WBGT.";
                 } else if (solarData.sourceStationId !== primaryObs.stationID) {
                     solarStationNote.textContent = `Solar data from nearby station: ${solarData.sourceStationId}`;
                 }
-
-                updateSafetyInfo(wbgtF);
+            };
+            
+            // --- Card Styling Logic ---
+            const getTempStyles = (tempF) => {
+                if (tempF > 100) return { text: 'Extreme', color: 'bg-red-800 text-white' };
+                if (tempF >= 92) return { text: 'Very Hot', color: 'bg-red-600 text-white' };
+                if (tempF >= 85) return { text: 'Hot', color: 'bg-orange-500 text-white' };
+                if (tempF >= 75) return { text: 'Warm', color: 'bg-yellow-400 text-gray-800' };
+                if (tempF >= 60) return { text: 'Comfortable', color: 'bg-green-400 text-gray-800' };
+                return { text: 'Cool', color: 'bg-blue-300 text-gray-800' };
             };
 
-            const calculateWBGT = (tempF, rh, windMph, solarRadiation, isBestGuess = false) => {
-                // Unit Conversions
-                const tempC = (tempF - 32) * 5 / 9; // Air Temp (Ta) in Celsius
-                const windMs = windMph * 0.44704;   // Wind Speed in m/s
+            const getHumidityStyles = (rh) => {
+                if (rh > 80) return { text: 'Very Humid', color: 'bg-blue-800 text-white' };
+                if (rh > 60) return { text: 'Humid', color: 'bg-blue-600 text-white' };
+                if (rh > 30) return { text: 'Comfortable', color: 'bg-cyan-400 text-gray-800' };
+                return { text: 'Dry', color: 'bg-cyan-200 text-gray-800' };
+            };
 
-                // 1. Calculate Wet Bulb Temperature (Tw) in Celsius using Stull's formula (approximation)
+            const getSolarStyles = (solar) => {
+                if (solar === null) return { text: 'N/A', color: 'bg-gray-300 text-gray-800' };
+                if (solar > 1000) return { text: 'Extreme', color: 'bg-purple-800 text-white' };
+                if (solar > 800) return { text: 'Very High', color: 'bg-red-600 text-white' };
+                if (solar > 500) return { text: 'High', color: 'bg-orange-500 text-white' };
+                if (solar > 200) return { text: 'Moderate', color: 'bg-yellow-400 text-gray-800' };
+                return { text: 'Low', color: 'bg-green-400 text-gray-800' };
+            };
+
+            const getWindStyles = (windMph) => {
+                if (windMph > 25) return { text: 'High Wind', color: 'bg-indigo-700 text-white' };
+                if (windMph > 15) return { text: 'Windy', color: 'bg-indigo-500 text-white' };
+                if (windMph > 5) return { text: 'Breezy', color: 'bg-sky-400 text-gray-800' };
+                return { text: 'Calm', color: 'bg-gray-300 text-gray-800' };
+            };
+
+            const updateMetricCards = (temp, humidity, solarRadiation, windSpeed) => {
+                // Temperature
+                tempValue.textContent = `${temp.toFixed(1)} °F`;
+                const tempStyle = getTempStyles(temp);
+                tempCard.className = `card text-center transition-colors ${tempStyle.color}`;
+                tempNote.textContent = tempStyle.text;
+                
+                // Humidity
+                humidityValue.textContent = `${humidity} %`;
+                const humidityStyle = getHumidityStyles(humidity);
+                humidityCard.className = `card text-center transition-colors ${humidityStyle.color}`;
+                humidityNote.textContent = humidityStyle.text;
+
+                // Solar Radiation
+                solarValue.textContent = solarRadiation !== null ? `${solarRadiation.toFixed(0)} W/m²` : 'N/A';
+                const solarStyle = getSolarStyles(solarRadiation);
+                solarCard.className = `card text-center transition-colors ${solarStyle.color}`;
+                solarNote.textContent = solarStyle.text;
+
+                // Wind Speed
+                windValue.textContent = `${windSpeed.toFixed(0)} mph`;
+                const windStyle = getWindStyles(windSpeed);
+                windCard.className = `card text-center transition-colors ${windStyle.color}`;
+                windNote.textContent = windStyle.text;
+            };
+            
+            // --- WBGT Calculations & Safety Guideline Updates ---
+            const calculateWBGT = (tempF, rh, windMph, solarRadiation, isBestGuess = false) => {
+                const tempC = (tempF - 32) * 5 / 9;
+                const windMs = windMph * 0.44704;
+
                 const twC = tempC * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) +
                             Math.atan(tempC + rh) -
                             Math.atan(rh - 1.676331) +
@@ -404,23 +432,18 @@
 
                 let effectiveSolarRadiation = solarRadiation;
                 if (isBestGuess) {
-                    effectiveSolarRadiation = 1000; // Use 1000 W/m² for a "full sun" estimate
+                    effectiveSolarRadiation = 1000;
                 }
 
-                // If there's no solar radiation, calculate for SHADE
                 if (effectiveSolarRadiation === null || effectiveSolarRadiation < 10) {
                     const wbgtC_shade = 0.7 * twC + 0.3 * tempC;
                     return wbgtC_shade * 9 / 5 + 32;
                 }
                 
-                // 2. Estimate Globe Temperature (Tg) in Celsius
                 const tgC = tempC + (0.0055 * effectiveSolarRadiation) - (1.1 * Math.sqrt(windMs));
-
-                // 3. Calculate Final WBGT for SUNNY conditions
                 const wbgtC_sun = 0.7 * twC + 0.2 * tgC + 0.1 * tempC;
-                const wbgtF = wbgtC_sun * 9 / 5 + 32;
                 
-                return wbgtF;
+                return wbgtC_sun * 9 / 5 + 32;
             };
 
             const updateSafetyInfo = (wbgtF) => {
@@ -430,21 +453,21 @@
                     flag = { text: 'Low Risk', color: 'bg-green-500' };
                     guidelines = { light: { work: 60, rest: 0 }, moderate: { work: 60, rest: 0 }, heavy: { work: 60, rest: 0 } };
                 } else if (wbgtF < 85) {
-                    flag = { text: 'Moderate Risk', color: 'bg-yellow-400' };
+                    flag = { text: 'Moderate Risk', color: 'bg-yellow-400 text-gray-800' };
                     guidelines = { light: { work: 50, rest: 10 }, moderate: { work: 40, rest: 20 }, heavy: { work: 30, rest: 30 } };
                 } else if (wbgtF < 88) {
-                    flag = { text: 'High Risk', color: 'bg-red-500' };
+                    flag = { text: 'High Risk', color: 'bg-red-500 text-white' };
                     guidelines = { light: { work: 40, rest: 20 }, moderate: { work: 30, rest: 30 }, heavy: { work: 20, rest: 40 } };
                 } else if (wbgtF < 90) {
-                    flag = { text: 'Very High Risk', color: 'bg-red-700' };
+                    flag = { text: 'Very High Risk', color: 'bg-red-700 text-white' };
                     guidelines = { light: { work: 30, rest: 30 }, moderate: { work: 20, rest: 40 }, heavy: { work: 10, rest: 50 } };
                 } else {
-                    flag = { text: 'Extreme Risk / Black Flag', color: 'bg-black' };
+                    flag = { text: 'Extreme Risk / Black Flag', color: 'bg-black text-white' };
                     guidelines = { light: { work: 20, rest: 40 }, moderate: { work: 10, rest: 50 }, heavy: { work: 0, rest: 60 } };
                 }
 
                 flagText.textContent = flag.text;
-                flagConditionDiv.className = `p-2 rounded-md font-bold text-white transition-colors ${flag.color}`;
+                flagConditionDiv.className = `p-2 rounded-md font-bold transition-colors ${flag.color}`;
                 
                 guidelinesTable.innerHTML = `
                     ${createGuidelineRow('Light', 'e.g., general maintenance, desk work', guidelines.light)}
@@ -466,6 +489,7 @@
                 `;
             };
 
+            // --- Event Handling ---
             const handleFetch = () => {
                 if (refreshIntervalId) clearInterval(refreshIntervalId);
                 fetchData();
