@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LM Pectin Calculator</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Use the Inter font family */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">LM Pectin Calculator</h1>
+            <p class="text-gray-500 mt-2">Calculate pectin and sugar for your recipe.</p>
+        </div>
+
+        <!-- Input Section -->
+        <div>
+            <label for="liquidWeight" class="block text-sm font-medium text-gray-700 mb-2">Liquid/Fruit Weight (grams)</label>
+            <div class="relative">
+                <input type="number" id="liquidWeight" placeholder="e.g., 1000" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+            </div>
+            <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p> <!-- Error message placeholder -->
+        </div>
+
+        <!-- Calculate Button -->
+        <button id="calculateBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-300 ease-in-out transform hover:-translate-y-1">
+            Calculate
+        </button>
+
+        <!-- Results Section -->
+        <div id="results" class="space-y-4 pt-4 border-t border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800 text-center">Required Ingredients</h2>
+            <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                <span class="font-medium text-gray-700">Pectin Powder (5%):</span>
+                <span id="pectinResult" class="text-lg font-bold text-indigo-600">0.00 g</span>
+            </div>
+            <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+                <span class="font-medium text-gray-700">Sugar (30%):</span>
+                <span id="sugarResult" class="text-lg font-bold text-indigo-600">0.00 g</span>
+            </div>
+             <div class="flex justify-between items-center bg-green-50 p-4 rounded-lg mt-4">
+                <span class="font-medium text-gray-700">Total Weight:</span>
+                <span id="totalWeightResult" class="text-lg font-bold text-green-600">0.00 g</span>
+            </div>
+        </div>
+        
+        <!-- Formula Explanation -->
+        <div class="text-center text-xs text-gray-400 pt-4">
+            <p>Calculations are based on the liquid/fruit portion representing 65% of the total weight.</p>
+        </div>
+
+    </div>
+
+    <script>
+        // Get references to the DOM elements
+        const liquidWeightInput = document.getElementById('liquidWeight');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const pectinResultEl = document.getElementById('pectinResult');
+        const sugarResultEl = document.getElementById('sugarResult');
+        const totalWeightResultEl = document.getElementById('totalWeightResult');
+        const errorMessageEl = document.getElementById('error-message');
+
+        /**
+         * Calculates the required pectin and sugar based on the liquid weight.
+         */
+        function calculateIngredients() {
+            // Clear previous error messages
+            errorMessageEl.textContent = '';
+
+            // 1. Get the weight of the liquid/fruit from the input field.
+            const liquidWeight = parseFloat(liquidWeightInput.value);
+
+            // 2. Validate the input.
+            if (isNaN(liquidWeight) || liquidWeight <= 0) {
+                errorMessageEl.textContent = 'Please enter a valid positive number.';
+                // Reset results if input is invalid
+                pectinResultEl.textContent = '0.00 g';
+                sugarResultEl.textContent = '0.00 g';
+                totalWeightResultEl.textContent = '0.00 g';
+                return;
+            }
+
+            // 3. Perform the calculations.
+            // The provided liquid weight is 65% of the total weight.
+            // Total Weight = Liquid Weight / 0.65
+            const totalWeight = liquidWeight / 0.65;
+            
+            // Pectin is 5% of the total weight.
+            const pectinWeight = totalWeight * 0.05;
+
+            // Sugar is 30% of the total weight.
+            const sugarWeight = totalWeight * 0.30;
+
+            // 4. Display the results.
+            // We format the numbers to two decimal places for clarity.
+            pectinResultEl.textContent = `${pectinWeight.toFixed(2)} g`;
+            sugarResultEl.textContent = `${sugarWeight.toFixed(2)} g`;
+            totalWeightResultEl.textContent = `${totalWeight.toFixed(2)} g`;
+        }
+
+        // Add event listener to the button to run the calculation on click.
+        calculateBtn.addEventListener('click', calculateIngredients);
+        
+        // Also calculate when the user presses "Enter" in the input field.
+        liquidWeightInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                calculateIngredients();
+            }
+        });
+
+    </script>
+
+</body>
+</html>
