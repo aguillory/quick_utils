@@ -1,31 +1,27 @@
 <div class="bg-white p-6 rounded-lg shadow-sm">
     <p id="accounts-loading-message" class="text-center text-gray-500">Loading accounts data...</p>
     <div id="accounts-container" class="hidden">
-        <!-- Accounts Table -->
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200" id="accounts-table">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="th-cell">Account</th>
-                        <th class="th-cell">Type</th>
-                        <th class="th-cell text-right">Balance</th>
-                        <th class="th-cell text-right">Limit</th>
-                        <th class="th-cell text-right">APR (%)</th>
-                        <th class="th-cell">Promo</th>
-                        <th class="th-cell text-right">Min. Payment</th>
-                        <th class="w-12"></th>
-                    </tr>
-                </thead>
-                <tbody id="accounts-body" class="divide-y divide-gray-200">
-                    <!-- Account rows will be inserted here by JS -->
-                </tbody>
-            </table>
+<table class="min-w-full divide-y divide-gray-200 table-fixed" id="accounts-table">
+    <thead class="bg-gray-50">
+        <tr>
+            <th class="th-cell w-1/6">Account</th>
+            <th class="th-cell w-1/6">Type</th>
+            <th class="th-cell w-1/6">Balance</th>
+            <th class="th-cell w-1/6">Limit</th>
+            <th class="th-cell w-1/6">APR (%)</th>
+            <th class="th-cell w-1/6">Promos</th>
+            <th class="th-cell w-1/6">Min. Payment</th>
+            <th class="w-12"></th> </tr>
+    </thead>
+    <tbody id="accounts-body" class="divide-y divide-gray-200">
+        </tbody>
+</table>
         </div>
         <div class="mt-4">
             <button id="add-account-btn" class="text-sm bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-md">+ Add Account</button>
         </div>
 
-        <!-- Accounts Summary -->
         <div id="accounts-summary" class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div class="summary-card">
                 <h3 class="summary-title">Overall Debt</h3>
