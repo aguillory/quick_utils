@@ -1,0 +1,69 @@
+<div class="bg-white p-6 rounded-lg shadow-sm">
+    <p id="accounts-loading-message" class="text-center text-gray-500">Loading accounts data...</p>
+    <div id="accounts-container" class="hidden">
+        <!-- Accounts Table -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200" id="accounts-table">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="th-cell">Account</th>
+                        <th class="th-cell">Type</th>
+                        <th class="th-cell text-right">Balance</th>
+                        <th class="th-cell text-right">Limit</th>
+                        <th class="th-cell text-right">APR (%)</th>
+                        <th class="th-cell">Promo</th>
+                        <th class="th-cell text-right">Min. Payment</th>
+                        <th class="w-12"></th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-body" class="divide-y divide-gray-200">
+                    <!-- Account rows will be inserted here by JS -->
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4">
+            <button id="add-account-btn" class="text-sm bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-md">+ Add Account</button>
+        </div>
+
+        <!-- Accounts Summary -->
+        <div id="accounts-summary" class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="summary-card">
+                <h3 class="summary-title">Overall Debt</h3>
+                <p id="summary-total-debt" class="summary-value"></p>
+            </div>
+            <div class="summary-card">
+                <h3 class="summary-title">Overall Monthly Payments</h3>
+                <p id="summary-total-monthly" class="summary-value"></p>
+            </div>
+            <div class="summary-card">
+                <h3 class="summary-title">Total Credit Card Debt</h3>
+                <p id="summary-cc-debt" class="summary-value"></p>
+            </div>
+            <div class="summary-card">
+                <h3 class="summary-title">Total CC Monthly Payments</h3>
+                <p id="summary-cc-monthly" class="summary-value"></p>
+            </div>
+             <div class="summary-card">
+                <h3 class="summary-title">Debt (Excluding Discover)</h3>
+                <p id="summary-debt-no-discover" class="summary-value"></p>
+            </div>
+             <div class="summary-card">
+                <h3 class="summary-title">Monthly (Excluding Discover)</h3>
+                <p id="summary-monthly-no-discover" class="summary-value"></p>
+            </div>
+             <div class="summary-card">
+                <h3 class="summary-title">Debt (Excluding House)</h3>
+                <p id="summary-debt-no-house" class="summary-value"></p>
+            </div>
+             <div class="summary-card">
+                <h3 class="summary-title">Monthly (Excluding House)</h3>
+                <p id="summary-monthly-no-house" class="summary-value"></p>
+            </div>
+        </div>
+
+        <div class="mt-8 flex justify-end items-center space-x-4">
+            <span id="accounts-save-status" class="text-sm text-gray-500"></span>
+            <button id="accounts-save-btn" class="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400">Save Changes</button>
+        </div>
+    </div>
+</div>
