@@ -4,125 +4,475 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LM Pectin Calculator</title>
-    <!-- Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Use the Inter font family */
+        :root {
+            --primary-bg: #f8f9fa;
+            --secondary-bg: #ffffff;
+            --text-color: #212529;
+            --header-color: #495057;
+            --accent-color: #007bff;
+            --border-color: #dee2e6;
+            --output-bg: #e9ecef;
+        }
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            background-color: var(--primary-bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: var(--secondary-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: var(--header-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 1.5em;
+        }
+        h1 { 
+            text-align: center;
+            margin-top: 0;
+        }
+        .input-group, .slider-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="number"], select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .input-inline {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .input-inline input[type="number"] {
+            flex: 2;
+        }
+        .input-inline select {
+            flex: 1;
+        }
+        .radio-group label {
+            display: inline-block;
+            margin-right: 15px;
+            font-weight: normal;
+        }
+        #lemon-juice-amount-group {
+            display: none; /* Hidden by default */
+            margin-top: 10px;
+        }
+        .slider-container {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 15px;
+        }
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: var(--accent-color);
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: var(--accent-color);
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .slider-value {
+            font-weight: bold;
+            color: var(--accent-color);
+            min-width: 50px;
+            text-align: right;
+        }
+        .texture-slider-container {
+            position: relative;
+            padding-bottom: 20px;
+        }
+        #texture-indicator::-webkit-slider-thumb {
+            background: var(--header-color);
+        }
+        #texture-indicator::-moz-range-thumb {
+            background: var(--header-color);
+        }
+        .texture-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+            color: #6c757d;
+            padding: 0 5px;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            background-color: var(--output-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .result-item {
+            background: var(--secondary-bg);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .result-item strong {
+            display: block;
+            color: var(--header-color);
+            margin-bottom: 5px;
+        }
+        .result-item span {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+        .instructions ul, .notes ul {
+            padding-left: 20px;
+        }
+        .instructions li, .notes li {
+            margin-bottom: 0.5rem;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: var(--border-color);
+            margin: 2rem 0;
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body>
 
-    <div class="w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 space-y-6">
+<div class="container">
+    <h1>🧪 LM Pectin Calculator</h1>
+
+    <section id="inputs">
+        <h2>Inputs</h2>
+        <div class="input-group">
+            <label for="liquid-weight">Liquid Weight (fruit puree, juice, etc.)</label>
+            <div class="input-inline">
+                <input type="number" id="liquid-weight" value="1000" step="any">
+                <select id="units">
+                    <option value="g" selected>Grams (g)</option>
+                    <option value="oz">Ounces (oz)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Add Lemon Juice?</label>
+            <div class="radio-group">
+                <label><input type="radio" name="add-lemon" value="no" checked> No</label>
+                <label><input type="radio" name="add-lemon" value="yes"> Yes</label>
+            </div>
+            <div id="lemon-juice-amount-group">
+                <label for="lemon-juice-weight">Lemon Juice Weight</label>
+                <input type="number" id="lemon-juice-weight" value="50" step="any">
+                 </div>
+        </div>
+
+        <div class="input-group">
+            <label for="liquid-ph">Liquid pH</label>
+            <input type="number" id="liquid-ph" value="3.5" step="0.1">
+        </div>
+
+        <hr>
+
+        <div class="slider-group">
+            <label for="brix-slider">Target Sweetness (Brix %)</label>
+            <div class="slider-container">
+                <input type="range" id="brix-slider" min="0" max="100" value="40" step="1">
+                <span id="brix-value" class="slider-value">40%</span>
+            </div>
+        </div>
+
+        <div class="slider-group">
+            <label for="pectin-slider">Pectin Amount (%)</label>
+            <div class="slider-container">
+                <input type="range" id="pectin-slider" min="0" max="6" value="1.0" step="0.1">
+                <span id="pectin-value" class="slider-value">1.0%</span>
+            </div>
+        </div>
         
-        <!-- Header -->
-        <div class="text-center">
-            <h1 class="text-3xl font-bold text-gray-800">LM Pectin Calculator</h1>
-            <p class="text-gray-500 mt-2">Calculate pectin and sugar for your recipe.</p>
+        <hr>
+
+        <div class="slider-group">
+            <label for="calcium-dilution-slider">Calcium Chloride Solution (Dilution in Liquid)</label>
+            <div class="slider-container">
+                <input type="range" id="calcium-dilution-slider" min="1" max="50" value="5" step="1">
+                <span id="calcium-dilution-value" class="slider-value">5%</span>
+            </div>
         </div>
 
-        <!-- Input Section -->
-        <div>
-            <label for="liquidWeight" class="block text-sm font-medium text-gray-700 mb-2">Liquid/Fruit Weight (grams)</label>
-            <div class="relative">
-                <input type="number" id="liquidWeight" placeholder="e.g., 1000" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
-            </div>
-            <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p> <!-- Error message placeholder -->
-        </div>
-
-        <!-- Calculate Button -->
-        <button id="calculateBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-300 ease-in-out transform hover:-translate-y-1">
-            Calculate
-        </button>
-
-        <!-- Results Section -->
-        <div id="results" class="space-y-4 pt-4 border-t border-gray-200">
-            <h2 class="text-xl font-semibold text-gray-800 text-center">Required Ingredients</h2>
-            <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                <span class="font-medium text-gray-700">Pectin Powder (5%):</span>
-                <span id="pectinResult" class="text-lg font-bold text-indigo-600">0.00 g</span>
-            </div>
-            <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                <span class="font-medium text-gray-700">Sugar (30%):</span>
-                <span id="sugarResult" class="text-lg font-bold text-indigo-600">0.00 g</span>
-            </div>
-             <div class="flex justify-between items-center bg-green-50 p-4 rounded-lg mt-4">
-                <span class="font-medium text-gray-700">Total Weight:</span>
-                <span id="totalWeightResult" class="text-lg font-bold text-green-600">0.00 g</span>
+        <div class="slider-group">
+            <label for="calcium-amount-slider">Calcium Preference (mg Ca per gram of Pectin)</label>
+            <div class="slider-container">
+                <input type="range" id="calcium-amount-slider" min="20" max="50" value="30" step="1">
+                <span id="calcium-amount-value" class="slider-value">30 mg</span>
             </div>
         </div>
+    </section>
+
+    <hr>
+    
+    <section id="texture-output">
+        <h2>Projected Texture</h2>
+        <div class="texture-slider-container">
+            <input type="range" id="texture-indicator" min="0" max="100" value="50" disabled>
+            <div class="texture-labels">
+                <span>Soft</span>
+                <span>Firm</span>
+                <span>Hard</span>
+            </div>
+        </div>
+    </section>
+
+    <hr>
+
+    <section id="results">
+        <h2>🔢 Calculations</h2>
+        <div class="results-grid">
+            <div class="result-item">
+                <strong>Total Pectin</strong>
+                <span id="pectin-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Total Sugar (for Brix)</strong>
+                <span id="sugar-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Sugar to Mix w/ Pectin</strong>
+                <span id="sugar-for-pectin-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Remaining Sugar</strong>
+                <span id="sugar-remaining-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Calcium Chloride Powder</strong>
+                <span id="calcium-chloride-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Liquid for Ca Solution</strong>
+                <span id="calcium-liquid-result">--</span>
+            </div>
+            <div class="result-item">
+                <strong>Total Recipe Weight</strong>
+                <span id="total-weight-result">--</span>
+            </div>
+        </div>
+    </section>
+    
+    <hr>
+
+    <section class="instructions">
+        <h2>📋 Quick Instructions</h2>
+        <ul>
+            <li>Measure your initial liquid (and lemon juice, if using).</li>
+            <li>Use the calculated amount of sugar from **"Sugar to Mix w/ Pectin"** and whisk thoroughly with the **Total Pectin**.</li>
+            <li>Gently warm the main liquid. Disperse the pectin/sugar mix into the warm (not boiling) liquid while whisking vigorously to prevent clumps.</li>
+            <li>Bring the mixture to a full rolling boil. Boil for 1 minute to fully hydrate the pectin.</li>
+            <li>Add the **"Remaining Sugar"** and any other solids. Return to a boil.</li>
+            <li>Remove from heat. Add any final acids (like the lemon juice if you didn't add it initially).</li>
+            <li>Prepare your calcium solution: Mix the **"Calcium Chloride Powder"** into the **"Liquid for Ca Solution"**.</li>
+            <li>Briskly stir the calcium solution into the final hot mixture. It will begin to set quickly. Pour into containers immediately.</li>
+        </ul>
+    </section>
+
+    <hr>
+
+    <section class="notes">
+        <h2>💡 Notes & Tips</h2>
+        <ul>
+            <li><strong>Tap water contains calcium!</strong> If your tap water is hard, you may need less added calcium than calculated. For precise results, consider using distilled water for your calcium solution.</li>
+            <li>The formula for total weight is $TotalWeight = \frac{LiquidWeight}{1 - (PectinFraction + BrixFraction)}$. Your recipe will fail if Pectin % + Brix % is 100% or more.</li>
+            <li>The sugar-to-pectin mix is crucial for preventing clumps. A common ratio is 3-5 parts sugar to 1 part pectin. This calculator uses a 4:1 ratio.</li>
+        </ul>
+    </section>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Input Elements
+    const liquidWeightInput = document.getElementById('liquid-weight');
+    const unitsSelect = document.getElementById('units');
+    const lemonRadio = document.querySelectorAll('input[name="add-lemon"]');
+    const lemonJuiceGroup = document.getElementById('lemon-juice-amount-group');
+    const lemonJuiceWeightInput = document.getElementById('lemon-juice-weight');
+    const phInput = document.getElementById('liquid-ph');
+    const brixSlider = document.getElementById('brix-slider');
+    const pectinSlider = document.getElementById('pectin-slider');
+    const calciumDilutionSlider = document.getElementById('calcium-dilution-slider');
+    const calciumAmountSlider = document.getElementById('calcium-amount-slider');
+
+    // Value Displays
+    const brixValue = document.getElementById('brix-value');
+    const pectinValue = document.getElementById('pectin-value');
+    const calciumDilutionValue = document.getElementById('calcium-dilution-value');
+    const calciumAmountValue = document.getElementById('calcium-amount-value');
+
+    // Output Elements
+    const textureIndicator = document.getElementById('texture-indicator');
+    const pectinResult = document.getElementById('pectin-result');
+    const sugarResult = document.getElementById('sugar-result');
+    const sugarForPectinResult = document.getElementById('sugar-for-pectin-result');
+    const sugarRemainingResult = document.getElementById('sugar-remaining-result');
+    const calciumChlorideResult = document.getElementById('calcium-chloride-result');
+    const calciumLiquidResult = document.getElementById('calcium-liquid-result');
+    const totalWeightResult = document.getElementById('total-weight-result');
+
+    const OZ_TO_G = 28.3495;
+    const CALCIUM_IN_CACl2 = 0.361; // Calcium chloride is 36.1% calcium by mass
+
+    function calculate() {
+        // --- 1. GET AND NORMALIZE INPUTS ---
+        const units = unitsSelect.value;
+        const liquidWeightRaw = parseFloat(liquidWeightInput.value) || 0;
+        const isLemonJuice = document.querySelector('input[name="add-lemon"]:checked').value === 'yes';
+        const lemonJuiceWeightRaw = isLemonJuice ? (parseFloat(lemonJuiceWeightInput.value) || 0) : 0;
         
-        <!-- Formula Explanation -->
-        <div class="text-center text-xs text-gray-400 pt-4">
-            <p>Calculations are based on the liquid/fruit portion representing 65% of the total weight.</p>
-        </div>
+        // Convert all weights to grams for calculation
+        const liquidWeightG = units === 'g' ? liquidWeightRaw : liquidWeightRaw * OZ_TO_G;
+        const lemonJuiceWeightG = units === 'g' ? lemonJuiceWeightRaw : lemonJuiceWeightRaw * OZ_TO_G;
+        const totalInitialLiquidG = liquidWeightG + lemonJuiceWeightG;
 
-    </div>
+        const ph = parseFloat(phInput.value) || 0;
+        const brixPercent = parseFloat(brixSlider.value);
+        const pectinPercent = parseFloat(pectinSlider.value);
+        const calciumDilutionPercent = parseFloat(calciumDilutionSlider.value);
+        const mgCaPerGPectin = parseFloat(calciumAmountSlider.value);
 
-    <script>
-        // Get references to the DOM elements
-        const liquidWeightInput = document.getElementById('liquidWeight');
-        const calculateBtn = document.getElementById('calculateBtn');
-        const pectinResultEl = document.getElementById('pectinResult');
-        const sugarResultEl = document.getElementById('sugarResult');
-        const totalWeightResultEl = document.getElementById('totalWeightResult');
-        const errorMessageEl = document.getElementById('error-message');
+        // Update slider value displays
+        brixValue.textContent = `${brixPercent.toFixed(0)}%`;
+        pectinValue.textContent = `${pectinPercent.toFixed(1)}%`;
+        calciumDilutionValue.textContent = `${calciumDilutionPercent.toFixed(0)}%`;
+        calciumAmountValue.textContent = `${mgCaPerGPectin.toFixed(0)} mg`;
 
-        /**
-         * Calculates the required pectin and sugar based on the liquid weight.
-         */
-        function calculateIngredients() {
-            // Clear previous error messages
-            errorMessageEl.textContent = '';
+        // --- 2. PERFORM CALCULATIONS ---
+        const brixFraction = brixPercent / 100;
+        const pectinFraction = pectinPercent / 100;
+        
+        let totalWeightG = 0;
+        let pectinG = 0;
+        let sugarG = 0;
+        let sugarForPectinG = 0;
+        let sugarRemainingG = 0;
+        let totalCalciumNeededMg = 0;
+        let calciumChlorideMg = 0;
+        let liquidForCalciumG = 0;
 
-            // 1. Get the weight of the liquid/fruit from the input field.
-            const liquidWeight = parseFloat(liquidWeightInput.value);
+        // Prevent division by zero or negative weights
+        if ((brixFraction + pectinFraction) < 1) {
+            totalWeightG = totalInitialLiquidG / (1 - (brixFraction + pectinFraction));
+            pectinG = totalWeightG * pectinFraction;
+            sugarG = totalWeightG * brixFraction;
 
-            // 2. Validate the input.
-            if (isNaN(liquidWeight) || liquidWeight <= 0) {
-                errorMessageEl.textContent = 'Please enter a valid positive number.';
-                // Reset results if input is invalid
-                pectinResultEl.textContent = '0.00 g';
-                sugarResultEl.textContent = '0.00 g';
-                totalWeightResultEl.textContent = '0.00 g';
-                return;
-            }
+            // Sugar for pectin mix (4 parts sugar to 1 part pectin)
+            sugarForPectinG = Math.min(sugarG, pectinG * 4);
+            sugarRemainingG = sugarG - sugarForPectinG;
 
-            // 3. Perform the calculations.
-            // The provided liquid weight is 65% of the total weight.
-            // Total Weight = Liquid Weight / 0.65
-            const totalWeight = liquidWeight / 0.65;
+            // Calcium calculation
+            totalCalciumNeededMg = pectinG * mgCaPerGPectin;
+            calciumChlorideMg = totalCalciumNeededMg / CALCIUM_IN_CACl2;
             
-            // Pectin is 5% of the total weight.
-            const pectinWeight = totalWeight * 0.05;
-
-            // Sugar is 30% of the total weight.
-            const sugarWeight = totalWeight * 0.30;
-
-            // 4. Display the results.
-            // We format the numbers to two decimal places for clarity.
-            pectinResultEl.textContent = `${pectinWeight.toFixed(2)} g`;
-            sugarResultEl.textContent = `${sugarWeight.toFixed(2)} g`;
-            totalWeightResultEl.textContent = `${totalWeight.toFixed(2)} g`;
+            // Liquid for dilution is based on the *initial main liquid*, not including lemon juice
+            liquidForCalciumG = liquidWeightG * (calciumDilutionPercent / 100);
         }
 
-        // Add event listener to the button to run the calculation on click.
-        calculateBtn.addEventListener('click', calculateIngredients);
-        
-        // Also calculate when the user presses "Enter" in the input field.
-        liquidWeightInput.addEventListener('keydown', function(event) {
-            if (event.key === 'Enter') {
-                calculateIngredients();
-            }
-        });
+        // --- 3. UPDATE TEXTURE INDICATOR ---
+        let textureScore = 0;
+        // Score based on conditions for soft, firm, hard
+        // Soft: pH 3.5-4, Ca 20-25, Pectin 0.5-1%, Brix 20-40%
+        if (ph >= 3.5 && ph <= 4.0) textureScore += 10;
+        if (mgCaPerGPectin >= 20 && mgCaPerGPectin <= 25) textureScore += 15;
+        if (pectinPercent >= 0.5 && pectinPercent <= 1.0) textureScore += 15;
+        if (brixPercent >= 20 && brixPercent <= 40) textureScore += 10;
 
-    </script>
+        // Firm: pH 3.2-3.6, Ca 30-35, Pectin 1-2%, Brix 45-55%
+        if (ph >= 3.2 && ph <= 3.6) textureScore += 10;
+        if (mgCaPerGPectin >= 30 && mgCaPerGPectin <= 35) textureScore += 15;
+        if (pectinPercent > 1.0 && pectinPercent <= 2.0) textureScore += 15;
+        if (brixPercent >= 45 && brixPercent <= 55) textureScore += 10;
+
+        // Hard: pH 4-5, Ca 40-50, Pectin 2-5%, Brix 0-20%
+        if (ph >= 4.0 && ph <= 5.0) textureScore += 15;
+        if (mgCaPerGPectin >= 40 && mgCaPerGPectin <= 50) textureScore += 15;
+        if (pectinPercent > 2.0 && pectinPercent <= 5.0) textureScore += 15;
+        if (brixPercent >= 0 && brixPercent <= 20) textureScore += 5;
+
+        // Normalize score to slider range 0-100
+        // Max possible score is around 50-60, let's normalize based on pectin % as the main driver
+        let finalTextureValue = 50; // Default to middle
+        if (pectinPercent <= 1.2) { // Soft range
+            finalTextureValue = (pectinPercent / 1.2) * 33;
+        } else if (pectinPercent > 1.2 && pectinPercent <= 2.5) { // Firm range
+            finalTextureValue = 33 + ((pectinPercent - 1.2) / 1.3) * 33;
+        } else { // Hard range
+            finalTextureValue = 66 + ((pectinPercent - 2.5) / 3.5) * 34;
+        }
+        textureIndicator.value = Math.min(100, finalTextureValue);
+
+
+        // --- 4. DISPLAY RESULTS ---
+        const displayUnits = units === 'g' ? 'g' : 'oz';
+        const conversionFactor = units === 'g' ? 1 : 1 / OZ_TO_G;
+        
+        pectinResult.textContent = `${(pectinG * conversionFactor).toFixed(2)} ${displayUnits}`;
+        sugarResult.textContent = `${(sugarG * conversionFactor).toFixed(2)} ${displayUnits}`;
+        sugarForPectinResult.textContent = `${(sugarForPectinG * conversionFactor).toFixed(2)} ${displayUnits}`;
+        sugarRemainingResult.textContent = `${(sugarRemainingG * conversionFactor).toFixed(2)} ${displayUnits}`;
+        calciumChlorideResult.textContent = `${calciumChlorideMg.toFixed(0)} mg`; // Calcium is usually measured in mg
+        calciumLiquidResult.textContent = `${(liquidForCalciumG * conversionFactor).toFixed(2)} ${displayUnits}`;
+        totalWeightResult.textContent = `${(totalWeightG * conversionFactor).toFixed(2)} ${displayUnits}`;
+
+    }
+
+    // --- EVENT LISTENERS ---
+    // Toggle lemon juice input visibility
+    lemonRadio.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            lemonJuiceGroup.style.display = e.target.value === 'yes' ? 'block' : 'none';
+            calculate();
+        });
+    });
+
+    // Add listeners to all inputs to trigger recalculation
+    const inputs = [liquidWeightInput, unitsSelect, lemonJuiceWeightInput, phInput, brixSlider, pectinSlider, calciumDilutionSlider, calciumAmountSlider];
+    inputs.forEach(input => {
+        input.addEventListener('input', calculate);
+    });
+
+    // Initial calculation on page load
+    calculate();
+});
+</script>
 
 </body>
 </html>
