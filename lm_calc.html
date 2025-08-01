@@ -165,6 +165,9 @@
             background: var(--border-color);
             margin: 2rem 0;
         }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -194,7 +197,7 @@
             <div id="lemon-juice-amount-group">
                 <label for="lemon-juice-weight">Lemon Juice Weight</label>
                 <input type="number" id="lemon-juice-weight" value="50" step="any">
-                 </div>
+            </div>
         </div>
 
         <div class="input-group">
@@ -222,7 +225,15 @@
         
         <hr>
 
-        <div class="slider-group">
+        <div class="input-group">
+            <label>Calcium Source</label>
+            <div class="radio-group">
+                <label><input type="radio" name="calcium-source" value="cacl2" checked> Calcium Chloride</label>
+                <label><input type="radio" name="calcium-source" value="caso4"> Calcium Sulfate (Gypsum)</label>
+            </div>
+        </div>
+
+        <div id="calcium-dilution-section" class="slider-group">
             <label for="calcium-dilution-slider">Calcium Chloride Solution (Dilution in Liquid)</label>
             <div class="slider-container">
                 <input type="range" id="calcium-dilution-slider" min="1" max="50" value="5" step="1">
@@ -275,10 +286,10 @@
                 <span id="sugar-remaining-result">--</span>
             </div>
             <div class="result-item">
-                <strong>Calcium Chloride Powder</strong>
-                <span id="calcium-chloride-result">--</span>
+                <strong id="calcium-powder-label">Calcium Powder</strong>
+                <span id="calcium-powder-result">--</span>
             </div>
-            <div class="result-item">
+            <div id="calcium-liquid-result-item" class="result-item">
                 <strong>Liquid for Ca Solution</strong>
                 <span id="calcium-liquid-result">--</span>
             </div>
@@ -291,28 +302,40 @@
     
     <hr>
 
-    <section class="instructions">
-        <h2>📋 Quick Instructions</h2>
+    <div id="instructions-cacl2" class="instructions">
+        <h2>📋 Quick Instructions (Calcium Chloride)</h2>
         <ul>
             <li>Measure your initial liquid (and lemon juice, if using).</li>
-            <li>Use the calculated amount of sugar from **"Sugar to Mix w/ Pectin"** and whisk thoroughly with the **Total Pectin**.</li>
+            <li>Use the calculated amount of sugar from <strong>"Sugar to Mix w/ Pectin"</strong> and whisk thoroughly with the <strong>Total Pectin</strong>.</li>
             <li>Gently warm the main liquid. Disperse the pectin/sugar mix into the warm (not boiling) liquid while whisking vigorously to prevent clumps.</li>
             <li>Bring the mixture to a full rolling boil. Boil for 1 minute to fully hydrate the pectin.</li>
-            <li>Add the **"Remaining Sugar"** and any other solids. Return to a boil.</li>
+            <li>Add the <strong>"Remaining Sugar"</strong> and any other solids. Return to a boil.</li>
             <li>Remove from heat. Add any final acids (like the lemon juice if you didn't add it initially).</li>
-            <li>Prepare your calcium solution: Mix the **"Calcium Chloride Powder"** into the **"Liquid for Ca Solution"**.</li>
+            <li>Prepare your calcium solution: Mix the <strong>Calcium Chloride Powder</strong> into the <strong>"Liquid for Ca Solution"</strong>.</li>
             <li>Briskly stir the calcium solution into the final hot mixture. It will begin to set quickly. Pour into containers immediately.</li>
         </ul>
-    </section>
+    </div>
+
+    <div id="instructions-caso4" class="instructions hidden">
+        <h2>📋 Quick Instructions (Calcium Sulfate)</h2>
+        <ul>
+            <li>Measure your initial liquid (and lemon juice, if using).</li>
+            <li>In a dry bowl, thoroughly whisk together the <strong>Total Pectin</strong>, the <strong>Calcium Sulfate Powder</strong>, and the sugar from <strong>"Sugar to Mix w/ Pectin"</strong>. This dry mix is critical.</li>
+            <li>Gently warm the main liquid. Disperse the dry mix into the warm (not boiling) liquid while whisking vigorously to prevent clumps.</li>
+            <li>Bring the mixture to a full rolling boil. Boil for 1 minute to fully hydrate the pectin.</li>
+            <li>Add the <strong>"Remaining Sugar"</strong> and any other solids. Return to a boil.</li>
+            <li>Remove from heat. Add any final acids. The gel will begin to set as it cools. Pour into containers.</li>
+        </ul>
+    </div>
 
     <hr>
 
     <section class="notes">
         <h2>💡 Notes & Tips</h2>
         <ul>
-            <li><strong>Tap water contains calcium!</strong> If your tap water is hard, you may need less added calcium than calculated. For precise results, consider using distilled water for your calcium solution.</li>
+            <li><strong>Tap water contains calcium!</strong> If your tap water is hard, you may need less added calcium than calculated. For precise results, consider using distilled water if making a calcium chloride solution.</li>
             <li>The formula for total weight is $TotalWeight = \frac{LiquidWeight}{1 - (PectinFraction + BrixFraction)}$. Your recipe will fail if Pectin % + Brix % is 100% or more.</li>
-            <li>The sugar-to-pectin mix is crucial for preventing clumps. A common ratio is 3-5 parts sugar to 1 part pectin. This calculator uses a 4:1 ratio.</li>
+            <li>The sugar-to-pectin mix is crucial for preventing clumps. This calculator uses a 4:1 ratio.</li>
         </ul>
     </section>
 
@@ -320,7 +343,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Input Elements
+    // --- ELEMENT SELECTORS ---
     const liquidWeightInput = document.getElementById('liquid-weight');
     const unitsSelect = document.getElementById('units');
     const lemonRadio = document.querySelectorAll('input[name="add-lemon"]');
@@ -329,36 +352,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const phInput = document.getElementById('liquid-ph');
     const brixSlider = document.getElementById('brix-slider');
     const pectinSlider = document.getElementById('pectin-slider');
+    const calciumSourceRadios = document.querySelectorAll('input[name="calcium-source"]');
+    const calciumDilutionSection = document.getElementById('calcium-dilution-section');
     const calciumDilutionSlider = document.getElementById('calcium-dilution-slider');
     const calciumAmountSlider = document.getElementById('calcium-amount-slider');
 
-    // Value Displays
     const brixValue = document.getElementById('brix-value');
     const pectinValue = document.getElementById('pectin-value');
     const calciumDilutionValue = document.getElementById('calcium-dilution-value');
     const calciumAmountValue = document.getElementById('calcium-amount-value');
 
-    // Output Elements
     const textureIndicator = document.getElementById('texture-indicator');
     const pectinResult = document.getElementById('pectin-result');
     const sugarResult = document.getElementById('sugar-result');
     const sugarForPectinResult = document.getElementById('sugar-for-pectin-result');
     const sugarRemainingResult = document.getElementById('sugar-remaining-result');
-    const calciumChlorideResult = document.getElementById('calcium-chloride-result');
+    const calciumPowderLabel = document.getElementById('calcium-powder-label');
+    const calciumPowderResult = document.getElementById('calcium-powder-result');
+    const calciumLiquidResultItem = document.getElementById('calcium-liquid-result-item');
     const calciumLiquidResult = document.getElementById('calcium-liquid-result');
     const totalWeightResult = document.getElementById('total-weight-result');
+    
+    const instructionsCaCl2 = document.getElementById('instructions-cacl2');
+    const instructionsCaSO4 = document.getElementById('instructions-caso4');
 
+    // --- CONSTANTS ---
     const OZ_TO_G = 28.3495;
-    const CALCIUM_IN_CACl2 = 0.361; // Calcium chloride is 36.1% calcium by mass
+    const CALCIUM_IN_CACL2 = 0.361; // Calcium chloride is 36.1% calcium
+    const CALCIUM_IN_CASO4 = 0.233; // Calcium sulfate is 23.3% calcium
 
+    // --- MAIN CALCULATION FUNCTION ---
     function calculate() {
-        // --- 1. GET AND NORMALIZE INPUTS ---
         const units = unitsSelect.value;
         const liquidWeightRaw = parseFloat(liquidWeightInput.value) || 0;
         const isLemonJuice = document.querySelector('input[name="add-lemon"]:checked').value === 'yes';
         const lemonJuiceWeightRaw = isLemonJuice ? (parseFloat(lemonJuiceWeightInput.value) || 0) : 0;
         
-        // Convert all weights to grams for calculation
         const liquidWeightG = units === 'g' ? liquidWeightRaw : liquidWeightRaw * OZ_TO_G;
         const lemonJuiceWeightG = units === 'g' ? lemonJuiceWeightRaw : lemonJuiceWeightRaw * OZ_TO_G;
         const totalInitialLiquidG = liquidWeightG + lemonJuiceWeightG;
@@ -366,81 +395,60 @@ document.addEventListener('DOMContentLoaded', () => {
         const ph = parseFloat(phInput.value) || 0;
         const brixPercent = parseFloat(brixSlider.value);
         const pectinPercent = parseFloat(pectinSlider.value);
+        const calciumSource = document.querySelector('input[name="calcium-source"]:checked').value;
         const calciumDilutionPercent = parseFloat(calciumDilutionSlider.value);
         const mgCaPerGPectin = parseFloat(calciumAmountSlider.value);
 
-        // Update slider value displays
         brixValue.textContent = `${brixPercent.toFixed(0)}%`;
         pectinValue.textContent = `${pectinPercent.toFixed(1)}%`;
         calciumDilutionValue.textContent = `${calciumDilutionPercent.toFixed(0)}%`;
         calciumAmountValue.textContent = `${mgCaPerGPectin.toFixed(0)} mg`;
 
-        // --- 2. PERFORM CALCULATIONS ---
         const brixFraction = brixPercent / 100;
         const pectinFraction = pectinPercent / 100;
         
-        let totalWeightG = 0;
-        let pectinG = 0;
-        let sugarG = 0;
-        let sugarForPectinG = 0;
-        let sugarRemainingG = 0;
-        let totalCalciumNeededMg = 0;
-        let calciumChlorideMg = 0;
-        let liquidForCalciumG = 0;
+        let totalWeightG = 0, pectinG = 0, sugarG = 0, sugarForPectinG = 0;
+        let sugarRemainingG = 0, calciumPowderMg = 0, liquidForCalciumG = 0;
 
-        // Prevent division by zero or negative weights
         if ((brixFraction + pectinFraction) < 1) {
             totalWeightG = totalInitialLiquidG / (1 - (brixFraction + pectinFraction));
             pectinG = totalWeightG * pectinFraction;
             sugarG = totalWeightG * brixFraction;
 
-            // Sugar for pectin mix (4 parts sugar to 1 part pectin)
             sugarForPectinG = Math.min(sugarG, pectinG * 4);
             sugarRemainingG = sugarG - sugarForPectinG;
 
-            // Calcium calculation
-            totalCalciumNeededMg = pectinG * mgCaPerGPectin;
-            calciumChlorideMg = totalCalciumNeededMg / CALCIUM_IN_CACl2;
-            
-            // Liquid for dilution is based on the *initial main liquid*, not including lemon juice
-            liquidForCalciumG = liquidWeightG * (calciumDilutionPercent / 100);
+            const totalCalciumNeededMg = pectinG * mgCaPerGPectin;
+
+            if (calciumSource === 'cacl2') {
+                calciumPowderMg = totalCalciumNeededMg / CALCIUM_IN_CACL2;
+                liquidForCalciumG = liquidWeightG * (calciumDilutionPercent / 100);
+                calciumPowderLabel.textContent = 'Calcium Chloride Powder';
+            } else { // caso4
+                calciumPowderMg = totalCalciumNeededMg / CALCIUM_IN_CASO4;
+                liquidForCalciumG = 0; // Not used for gypsum
+                calciumPowderLabel.textContent = 'Calcium Sulfate Powder';
+            }
         }
+        
+        updateTextureIndicator(ph, mgCaPerGPectin, pectinPercent, brixPercent);
 
-        // --- 3. UPDATE TEXTURE INDICATOR ---
-        let textureScore = 0;
-        // Score based on conditions for soft, firm, hard
-        // Soft: pH 3.5-4, Ca 20-25, Pectin 0.5-1%, Brix 20-40%
-        if (ph >= 3.5 && ph <= 4.0) textureScore += 10;
-        if (mgCaPerGPectin >= 20 && mgCaPerGPectin <= 25) textureScore += 15;
-        if (pectinPercent >= 0.5 && pectinPercent <= 1.0) textureScore += 15;
-        if (brixPercent >= 20 && brixPercent <= 40) textureScore += 10;
+        displayResults(units, pectinG, sugarG, sugarForPectinG, sugarRemainingG, calciumPowderMg, liquidForCalciumG, totalWeightG);
+    }
 
-        // Firm: pH 3.2-3.6, Ca 30-35, Pectin 1-2%, Brix 45-55%
-        if (ph >= 3.2 && ph <= 3.6) textureScore += 10;
-        if (mgCaPerGPectin >= 30 && mgCaPerGPectin <= 35) textureScore += 15;
-        if (pectinPercent > 1.0 && pectinPercent <= 2.0) textureScore += 15;
-        if (brixPercent >= 45 && brixPercent <= 55) textureScore += 10;
-
-        // Hard: pH 4-5, Ca 40-50, Pectin 2-5%, Brix 0-20%
-        if (ph >= 4.0 && ph <= 5.0) textureScore += 15;
-        if (mgCaPerGPectin >= 40 && mgCaPerGPectin <= 50) textureScore += 15;
-        if (pectinPercent > 2.0 && pectinPercent <= 5.0) textureScore += 15;
-        if (brixPercent >= 0 && brixPercent <= 20) textureScore += 5;
-
-        // Normalize score to slider range 0-100
-        // Max possible score is around 50-60, let's normalize based on pectin % as the main driver
+    function updateTextureIndicator(ph, mgCa, pectin, brix) {
         let finalTextureValue = 50; // Default to middle
-        if (pectinPercent <= 1.2) { // Soft range
-            finalTextureValue = (pectinPercent / 1.2) * 33;
-        } else if (pectinPercent > 1.2 && pectinPercent <= 2.5) { // Firm range
-            finalTextureValue = 33 + ((pectinPercent - 1.2) / 1.3) * 33;
+        if (pectin <= 1.2) { // Soft range
+            finalTextureValue = (pectin / 1.2) * 33;
+        } else if (pectin > 1.2 && pectin <= 2.5) { // Firm range
+            finalTextureValue = 33 + ((pectin - 1.2) / 1.3) * 33;
         } else { // Hard range
-            finalTextureValue = 66 + ((pectinPercent - 2.5) / 3.5) * 34;
+            finalTextureValue = 66 + ((pectin - 2.5) / 3.5) * 34;
         }
         textureIndicator.value = Math.min(100, finalTextureValue);
+    }
 
-
-        // --- 4. DISPLAY RESULTS ---
+    function displayResults(units, pectinG, sugarG, sugarForPectinG, sugarRemainingG, calciumPowderMg, liquidForCalciumG, totalWeightG) {
         const displayUnits = units === 'g' ? 'g' : 'oz';
         const conversionFactor = units === 'g' ? 1 : 1 / OZ_TO_G;
         
@@ -448,14 +456,27 @@ document.addEventListener('DOMContentLoaded', () => {
         sugarResult.textContent = `${(sugarG * conversionFactor).toFixed(2)} ${displayUnits}`;
         sugarForPectinResult.textContent = `${(sugarForPectinG * conversionFactor).toFixed(2)} ${displayUnits}`;
         sugarRemainingResult.textContent = `${(sugarRemainingG * conversionFactor).toFixed(2)} ${displayUnits}`;
-        calciumChlorideResult.textContent = `${calciumChlorideMg.toFixed(0)} mg`; // Calcium is usually measured in mg
+        calciumPowderResult.textContent = `${calciumPowderMg.toFixed(0)} mg`;
         calciumLiquidResult.textContent = `${(liquidForCalciumG * conversionFactor).toFixed(2)} ${displayUnits}`;
         totalWeightResult.textContent = `${(totalWeightG * conversionFactor).toFixed(2)} ${displayUnits}`;
+    }
 
+    function updateUIVisibility() {
+        const calciumSource = document.querySelector('input[name="calcium-source"]:checked').value;
+        if (calciumSource === 'cacl2') {
+            calciumDilutionSection.classList.remove('hidden');
+            calciumLiquidResultItem.classList.remove('hidden');
+            instructionsCaCl2.classList.remove('hidden');
+            instructionsCaSO4.classList.add('hidden');
+        } else {
+            calciumDilutionSection.classList.add('hidden');
+            calciumLiquidResultItem.classList.add('hidden');
+            instructionsCaCl2.classList.add('hidden');
+            instructionsCaSO4.classList.remove('hidden');
+        }
     }
 
     // --- EVENT LISTENERS ---
-    // Toggle lemon juice input visibility
     lemonRadio.forEach(radio => {
         radio.addEventListener('change', (e) => {
             lemonJuiceGroup.style.display = e.target.value === 'yes' ? 'block' : 'none';
@@ -463,13 +484,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Add listeners to all inputs to trigger recalculation
-    const inputs = [liquidWeightInput, unitsSelect, lemonJuiceWeightInput, phInput, brixSlider, pectinSlider, calciumDilutionSlider, calciumAmountSlider];
-    inputs.forEach(input => {
+    calciumSourceRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            updateUIVisibility();
+            calculate();
+        });
+    });
+
+    const inputsToRecalculate = [liquidWeightInput, unitsSelect, lemonJuiceWeightInput, phInput, brixSlider, pectinSlider, calciumDilutionSlider, calciumAmountSlider];
+    inputsToRecalculate.forEach(input => {
         input.addEventListener('input', calculate);
     });
 
-    // Initial calculation on page load
+    // --- INITIALIZATION ---
+    updateUIVisibility();
     calculate();
 });
 </script>
