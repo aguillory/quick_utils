@@ -421,24 +421,31 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- FRUIT DATA ---
     // Average data compiled from various sources
-    const FRUIT_DATA = {
-        "Apple": { brix: 13, ph: 3.5 },
-        "Apricot": { brix: 9, ph: 4.0 },
-        "Blackberry": { brix: 8, ph: 4.2 },
-        "Blueberry": { brix: 11, ph: 3.2 },
-        "Cherry (Sweet)": { brix: 14, ph: 4.0 },
-        "Cranberry": { brix: 4, ph: 2.5 },
-        "Grape": { brix: 16, ph: 4.0 },
-        "Lemon/Lime": { brix: 2, ph: 2.0 },
-        "Orange": { brix: 11, ph: 2.8 },
-        "Peach/Nectarine": { brix: 9, ph: 3.8 },
-        "Pear": { brix: 10, ph: 3.8 },
-        "Pineapple": { brix: 13, ph: 3.5 },
-        "Plum": { brix: 11, ph: 3.4 },
-        "Raspberry": { brix: 7, ph: 3.4 },
-        "Strawberry": { brix: 7, ph: 3.4 },
-        "Watermelon": { brix: 9, ph: 5.5 }
-    };
+const FRUIT_DATA = {
+    "Apple": { brix: 13, ph: 3.6 },
+    "Apricot": { brix: 11, ph: 3.8 },
+    "Blackberry": { brix: 8, ph: 3.5 },
+    "Blueberry": { brix: 12, ph: 3.3 },
+    "Cherry (Sweet)": { brix: 16, ph: 4.0 },
+    "Cranberry": { brix: 8, ph: 2.5 },
+    "Fig": { brix: 18, ph: 5.0 },
+    "Gooseberry": { brix: 9, ph: 3.0 },
+    "Grape": { brix: 18, ph: 3.6 },
+    "Guava": { brix: 8, ph: 3.6 },
+    "Lemon/Lime": { brix: 8, ph: 2.2 },
+    "Mango": { brix: 14, ph: 4.0 },
+    "Orange": { brix: 12, ph: 3.7 },
+    "Peach/Nectarine": { brix: 12, ph: 3.9 },
+    "Pear": { brix: 12, ph: 4.0 },
+    "Pineapple": { brix: 14, ph: 3.6 },
+    "Plum": { brix: 12, ph: 3.5 },
+    "Pomegranate": { brix: 17, ph: 3.0 },
+    "Quince": { brix: 15, ph: 3.7 },
+    "Raspberry": { brix: 10, ph: 3.4 },
+    "Redcurrant": { brix: 8, ph: 2.8 },
+    "Strawberry": { brix: 8, ph: 3.5 },
+    "Watermelon": { brix: 9, ph: 5.5 }
+};
 
     // --- ELEMENT SELECTORS ---
     const fruitSelector = document.getElementById('fruit-selector');
