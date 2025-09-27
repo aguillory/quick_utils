@@ -520,16 +520,16 @@ const FRUIT_DATA = {
         // Based on the provided research document (Section 3.1):
         if (targetBrix > 55) {
             suggestion = "Standard/High Sugar (0.4% - 1.5%)";
-            rangeMin = 0.4;
-            rangeMax = 1.5;
+            rangeMin = 0.3;
+            rangeMax = 0.8;
         } else if (targetBrix >= 45 && targetBrix <= 55) {
             suggestion = "Reduced Sugar (~3.0%)";
-            rangeMin = 2.7; // Give a small range around 3.0
-            rangeMax = 3.3;
+            rangeMin = 0.8;
+            rangeMax = 1.5
         } else if (targetBrix < 45) {
             suggestion = "Low/No Sugar (~5.0%)";
-            rangeMin = 4.5;
-            rangeMax = 5.5;
+            rangeMin = 1.0;
+            rangeMax = 2.5;
         }
 
         pectinSuggestionText.textContent = `Suggestion for ${targetBrix}% Brix: ${suggestion}`;
