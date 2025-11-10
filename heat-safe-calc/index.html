@@ -267,7 +267,7 @@
             const getApiKey = () => {
                 const apiCode = apiCodeInput.value.trim();
                 const apiKeyTemplate = "90fe5810c9a8{{CODE}}7{{CODE}}{{CODE}}be5810c9a8a7{{CODE}}{{CODE}}d5";
-                if (apiCode !== '4') {
+                if (!apiCode) {
                     statusDiv.textContent = 'Invalid API Key Code. Please enter the correct code.';
                     statusDiv.classList.add('text-red-500');
                     return null;
@@ -505,3 +505,4 @@
     </script>
 </body>
 </html>
+
