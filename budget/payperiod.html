@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Planner</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind Config for Custom Colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-100 h-screen overflow-hidden">
+    
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel" data-type="module">
+        // --- GLOBALS ---
+        const { useState, useEffect, useMemo } = React;
+        const { createRoot } = ReactDOM;
+        
+        // --- FIREBASE IMPORTS ---
+        import { db, auth } from './scripts/connection.js'; 
+        import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const USER_EMAIL = "default@user.com";
+
+        // --- ICONS ---
+        const Icons = {
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+            Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
+            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        };
+
+        // --- HELPER FUNCTIONS ---
+        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        const formatDate = (dateStr) => {
+            if (!dateStr) return 'TBD';
+            const date = new Date(dateStr + 'T00:00:00'); 
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+        const getDaySuffix = (day) => {
+            if (day > 3 && day < 21) return 'th';
+            switch (day % 10) {
+                case 1:  return "st";
+                case 2:  return "nd";
+                case 3:  return "rd";
+                default: return "th";
+            }
+        };
+
+        // --- COMPONENT: LOGIN ---
+        const LoginScreen = ({ onLogin, loginError }) => {
+            const [password, setPassword] = useState('');
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                        <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Budget Planner</h2>
+                        <form onSubmit={(e) => { e.preventDefault(); onLogin(password); }} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Password</label>
+                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                            </div>
+                            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+                            <button type="submit" className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium">Access Planner</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- COMPONENT: SCHEDULE EDITOR ---
+        const ScheduleEditor = ({ currentPeriods, onSave, onClose }) => {
+            const initialText = currentPeriods.map(p => p.date).join('\n');
+            const [text, setText] = useState(initialText);
+
+            const handleSave = () => {
+                const dates = text
+                    .split('\n')
+                    .map(d => d.trim())
+                    .filter(d => d.match(/^\d{4}-\d{2}-\d{2}$/)); 
+
+                const uniqueDates = [...new Set(dates)].sort();
+                
+                if (uniqueDates.length === 0) {
+                    alert("Please enter at least one valid date (YYYY-MM-DD)");
+                    return;
+                }
+                
+                onSave(uniqueDates);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 flex flex-col max-h-[90vh]">
+                        <div className="mb-4">
+                            <h2 className="text-xl font-bold text-slate-800">Manage Pay Dates</h2>
+                            <p className="text-slate-500 text-xs mt-1">
+                                Enter your paycheck dates below (YYYY-MM-DD), one per line. 
+                                We will automatically flag 3rd paychecks in a month as deduction holidays.
+                            </p>
+                        </div>
+                        
+                        <textarea 
+                            value={text} 
+                            onChange={(e) => setText(e.target.value)}
+                            className="flex-1 border border-slate-300 rounded-md p-3 font-mono text-sm mb-4 min-h-[300px] focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="2025-01-15&#10;2025-01-29&#10;2025-02-12..."
+                        ></textarea>
+                        
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={onClose}
+                                className="flex-1 bg-slate-100 text-slate-700 font-bold py-2 rounded-lg hover:bg-slate-200 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleSave}
+                                className="flex-1 bg-indigo-600 text-white font-bold py-2 rounded-lg hover:bg-indigo-700 transition"
+                            >
+                                Save Schedule
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP ---
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+            const [isEditorOpen, setIsEditorOpen] = useState(false);
+            
+            // Domain Data
+            const [schedule, setSchedule] = useState([]);
+            const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+            const [masterPaycheck, setMasterPaycheck] = useState(null);
+            const [masterAccounts, setMasterAccounts] = useState(null);
+
+            // Auth Flow
+            useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    setIsLoading(false);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const handleLogin = async (pw) => {
+                try { await signInWithEmailAndPassword(auth, USER_EMAIL, pw); } catch(e) { alert("Invalid"); }
+            };
+
+            // Fetch Data
+            useEffect(() => {
+                if (!user) return;
+                
+                // 1. Paycheck Config
+                onSnapshot(doc(db, 'users', user.uid, 'paycheck_data', 'current_config'), (snap) => setMasterPaycheck(snap.data() || {}));
+
+                // 2. Accounts Config
+                onSnapshot(doc(db, 'users', user.uid, 'accounts_data', 'current_config'), (snap) => setMasterAccounts(snap.data() || { bills: [], debts: [] }));
+
+                // 3. Schedule
+                onSnapshot(doc(db, 'users', user.uid, 'planner_data', 'schedule'), (snap) => {
+                    if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
+                        setSchedule(snap.data().periods);
+                        // Default to upcoming
+                        if (!selectedPeriodId) {
+                            const today = new Date().toISOString().split('T')[0];
+                            const upcoming = snap.data().periods.find(p => p.date >= today);
+                            if (upcoming) setSelectedPeriodId(upcoming.id);
+                            else setSelectedPeriodId(snap.data().periods[snap.data().periods.length -1].id);
+                        }
+                    } else {
+                        setSchedule([]); 
+                        setIsEditorOpen(true); // Open editor if empty
+                    }
+                });
+            }, [user]);
+
+            // Save Schedule
+            const saveSchedule = async (newSchedule) => {
+                if(!user) return;
+                await setDoc(doc(db, 'users', user.uid, 'planner_data', 'schedule'), {
+                    periods: newSchedule
+                });
+            };
+
+            // Handle Manual Schedule Update
+            const handleUpdateSchedule = (dateList) => {
+                // We reconstruct the schedule array based on the new list of dates.
+                
+                const newSchedule = dateList.map((dateStr, index) => {
+                    const existingPeriod = schedule.find(p => p.id === dateStr);
+                    
+                    // Determine next date (either next in list, or 14 days later if last)
+                    let nextDateStr;
+                    if (index < dateList.length - 1) {
+                        nextDateStr = dateList[index + 1];
+                    } else {
+                        const d = new Date(dateStr + 'T00:00:00');
+                        d.setDate(d.getDate() + 14);
+                        nextDateStr = d.toISOString().split('T')[0];
+                    }
+
+                    // --- NEW LOGIC: AUTO-DETECT DEDUCTION HOLIDAYS ---
+                    // Rule: If a month has 3 pay dates, the 3rd one is a holiday.
+                    const monthKey = dateStr.substring(0, 7); // YYYY-MM
+                    const checksInThisMonth = dateList.filter(d => d.startsWith(monthKey)).sort();
+                    // If we have 3 or more checks, and the current one is the 3rd (index 2)
+                    const isAutoHoliday = checksInThisMonth.length >= 3 && checksInThisMonth[2] === dateStr;
+                    // ------------------------------------------------
+
+                    if (existingPeriod) {
+                        // Update the nextDate and isHoliday. 
+                        // We strictly apply the auto-holiday rule here to ensure consistency.
+                        return { 
+                            ...existingPeriod, 
+                            nextDate: nextDateStr,
+                            isHoliday: isAutoHoliday 
+                        };
+                    } else {
+                        // Create new empty period
+                        return {
+                            id: dateStr, 
+                            date: dateStr,
+                            nextDate: nextDateStr,
+                            isHoliday: isAutoHoliday,
+                            isSetup: false,
+                            bills: [],
+                            manualIncome: null
+                        };
+                    }
+                });
+
+                setSchedule(newSchedule);
+                if(newSchedule.length > 0) setSelectedPeriodId(newSchedule[0].id);
+                saveSchedule(newSchedule);
+                setIsEditorOpen(false);
+            };
+
+            // --- LOGIC ---
+            
+            const calculateIncome = (period) => {
+                if (!masterPaycheck) return 0;
+                const { grossPay = 0, preTaxDeductions = [], taxes = [], postTaxDeductions = [] } = masterPaycheck;
+                const totalTaxes = taxes.reduce((s, i) => s + i.amount, 0);
+                
+                if (period.isHoliday) {
+                    return grossPay - totalTaxes;
+                } else {
+                    const totalPre = preTaxDeductions.reduce((s, i) => s + i.amount, 0);
+                    const totalPost = postTaxDeductions.reduce((s, i) => s + i.amount, 0);
+                    return grossPay - totalPre - totalTaxes - totalPost;
+                }
+            };
+
+            const instantiatePeriod = (period) => {
+                if (!masterAccounts) return;
+                
+                const pStart = new Date(period.date + 'T00:00:00');
+                const pEnd = new Date(period.nextDate + 'T00:00:00');
+                
+                // Existing bills to preserve (specifically custom ones)
+                const existingCustomBills = period.bills.filter(b => b.type === 'custom');
+
+                let newBills = [...existingCustomBills];
+                
+                // Helper to check date overlap
+                const checkDateMatch = (dueDay) => {
+                    for (let d = new Date(pStart); d < pEnd; d.setDate(d.getDate() + 1)) {
+                        if (d.getDate() === dueDay) return true;
+                    }
+                    return false;
+                };
+
+                // Add Bills
+                (masterAccounts.bills || []).forEach(b => {
+                    if (checkDateMatch(b.dueDay)) {
+                        newBills.push({ ...b, type: 'bill', isPaid: false, note: '' });
+                    }
+                });
+
+                // Add Debts
+                (masterAccounts.debts || []).forEach(d => {
+                     if (checkDateMatch(d.dueDay)) {
+                        newBills.push({ 
+                            ...d, 
+                            amount: d.minPayment, 
+                            type: 'debt', 
+                            isPaid: false, 
+                            note: '' 
+                        });
+                    }
+                });
+
+                const updatedSchedule = schedule.map(p => p.id === period.id ? { ...p, isSetup: true, bills: newBills } : p);
+                saveSchedule(updatedSchedule);
+            };
+
+            // --- ACTIONS ---
+
+            const toggleHoliday = (pId) => {
+                saveSchedule(schedule.map(p => p.id === pId ? { ...p, isHoliday: !p.isHoliday } : p));
+            };
+
+            const updatePeriodBill = (periodId, billId, field, value) => {
+                const updated = schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    const newBills = p.bills.map(b => b.id === billId ? { ...b, [field]: value } : b);
+                    return { ...p, bills: newBills };
+                });
+                saveSchedule(updated);
+            };
+
+            const addCustomExpense = (periodId) => {
+                const updated = schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    const newExp = { 
+                        id: 'custom-' + Date.now(), 
+                        name: 'New Expense', 
+                        amount: 0, 
+                        dueDay: new Date(p.date).getDate(),
+                        isPaid: false,
+                        type: 'custom'
+                    };
+                    return { ...p, bills: [...p.bills, newExp] };
+                });
+                saveSchedule(updated);
+            };
+            
+            const deletePeriodBill = (periodId, billId) => {
+                 const updated = schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    return { ...p, bills: p.bills.filter(b => b.id !== billId) };
+                });
+                saveSchedule(updated);
+            }
+
+            // --- RENDER ---
+            if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>;
+            if (!user) return <LoginScreen onLogin={handleLogin} />;
+
+            const currentPeriod = schedule.find(p => p.id === selectedPeriodId);
+            // If no period selected (empty schedule), show placeholder or editor
+            if (!currentPeriod && !isEditorOpen) return (
+                <div className="h-screen flex flex-col items-center justify-center gap-4">
+                    <p className="text-slate-500">No schedule found.</p>
+                    <button onClick={() => setIsEditorOpen(true)} className="bg-indigo-600 text-white px-4 py-2 rounded">Create Schedule</button>
+                    {isEditorOpen && <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />}
+                </div>
+            );
+
+            // Safe fallback if rendering with editor open over empty state
+            if (!currentPeriod && isEditorOpen) return <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />;
+
+            const netIncome = calculateIncome(currentPeriod);
+            const totalBills = currentPeriod.bills.reduce((sum, b) => sum + b.amount, 0);
+            const totalPaid = currentPeriod.bills.filter(b => b.isPaid).reduce((sum, b) => sum + b.amount, 0);
+            const remainingDue = totalBills - totalPaid;
+            const finalBudget = netIncome - totalBills;
+
+            return (
+                <div className="flex h-screen font-sans text-slate-900">
+                    
+                    {/* SIDEBAR */}
+                    <div className="w-64 bg-slate-850 text-slate-300 flex flex-col border-r border-slate-700">
+                        <div className="p-4 border-b border-slate-700 bg-slate-900 flex justify-between items-center">
+                            <h1 className="text-white font-bold text-lg flex items-center gap-2">
+                                <Icons.Calendar /> Pay Dates
+                            </h1>
+                            <button onClick={() => setIsEditorOpen(true)} className="text-slate-400 hover:text-white transition">
+                                <Icons.Settings />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto">
+                            {schedule.map(period => {
+                                const isSelected = period.id === selectedPeriodId;
+                                const isPast = new Date(period.nextDate) < new Date();
+                                return (
+                                    <div 
+                                        key={period.id}
+                                        onClick={() => setSelectedPeriodId(period.id)}
+                                        className={`p-4 border-b border-slate-800 cursor-pointer transition-colors hover:bg-slate-800 ${isSelected ? 'bg-indigo-900 border-l-4 border-l-indigo-500' : ''}`}
+                                    >
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className={`font-bold ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                                {formatDate(period.date)}
+                                            </span>
+                                            {period.isHoliday && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 rounded">HOL</span>}
+                                        </div>
+                                        <div className="text-xs text-slate-500 flex justify-between">
+                                            <span>
+                                                {period.isSetup 
+                                                    ? `${period.bills.filter(b=>b.isPaid).length}/${period.bills.length} Paid` 
+                                                    : 'Not Planned'}
+                                            </span>
+                                            {isPast && <span className="text-slate-600">Closed</span>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* MAIN CONTENT */}
+                    <div className="flex-1 flex flex-col bg-slate-50 h-full overflow-hidden">
+                        
+                        {/* HEADER */}
+                        <div className="bg-white border-b border-slate-200 p-6 shadow-sm">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-slate-800">
+                                        Pay Period: {formatDate(currentPeriod.date)} - {formatDate(currentPeriod.nextDate)}
+                                    </h2>
+                                    <div className="mt-2 flex items-center gap-4">
+                                        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={currentPeriod.isHoliday}
+                                                onChange={() => toggleHoliday(currentPeriod.id)}
+                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            Deduction Holiday
+                                        </label>
+                                        
+                                        {!currentPeriod.isSetup && (
+                                            <button 
+                                                onClick={() => instantiatePeriod(currentPeriod)}
+                                                className="flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded hover:bg-emerald-200 font-bold"
+                                            >
+                                                <Icons.Refresh /> Load Bills
+                                            </button>
+                                        )}
+                                        {currentPeriod.isSetup && (
+                                            <button 
+                                                onClick={() => instantiatePeriod(currentPeriod)}
+                                                className="flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded hover:bg-slate-200 font-bold"
+                                                title="Reloads standard bills (keeps custom expenses)"
+                                            >
+                                                <Icons.Refresh /> Refresh
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm text-slate-500 uppercase font-bold tracking-wider">Projected Surplus</div>
+                                    <div className={`text-3xl font-bold ${finalBudget >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {formatCurrency(finalBudget)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                    <div className="text-xs text-indigo-500 font-bold uppercase">Net Income</div>
+                                    <div className="text-lg font-semibold text-indigo-900">{formatCurrency(netIncome)}</div>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                    <div className="text-xs text-slate-500 font-bold uppercase">Total Bills</div>
+                                    <div className="text-lg font-semibold text-slate-700">{formatCurrency(totalBills)}</div>
+                                </div>
+                                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                                    <div className="text-xs text-emerald-600 font-bold uppercase">Already Paid</div>
+                                    <div className="text-lg font-semibold text-emerald-800">{formatCurrency(totalPaid)}</div>
+                                </div>
+                                <div className="bg-orange-50 p-3 rounded-lg border border-orange-100">
+                                    <div className="text-xs text-orange-600 font-bold uppercase">Remaining Due</div>
+                                    <div className="text-lg font-semibold text-orange-800">{formatCurrency(remainingDue)}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* BILL LIST */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {!currentPeriod.isSetup ? (
+                                <div className="text-center py-20 text-slate-400">
+                                    <Icons.Calendar />
+                                    <p className="mt-2">Click "Load Bills" to generate the checklist for this period.</p>
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-xl shadow border border-slate-200">
+                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                                        <h3 className="font-bold text-slate-700">Bills & Expenses</h3>
+                                        <button 
+                                            onClick={() => addCustomExpense(currentPeriod.id)}
+                                            className="text-xs flex items-center gap-1 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 text-slate-600"
+                                        >
+                                            <Icons.Plus /> Add One-time Expense
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="divide-y divide-slate-100">
+                                        {currentPeriod.bills.map(bill => (
+                                            <div 
+                                                key={bill.id} 
+                                                className={`flex items-center gap-4 px-6 py-4 group transition-colors ${bill.isPaid ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}
+                                            >
+                                                <button
+                                                    onClick={() => updatePeriodBill(currentPeriod.id, bill.id, 'isPaid', !bill.isPaid)}
+                                                    className={`w-6 h-6 rounded border flex items-center justify-center transition-colors ${
+                                                        bill.isPaid 
+                                                        ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                                        : 'bg-white border-slate-300 text-transparent hover:border-emerald-400'
+                                                    }`}
+                                                >
+                                                    <Icons.Check />
+                                                </button>
+
+                                                <div className="w-16 text-center">
+                                                    <div className="text-xs font-bold text-slate-400 uppercase">Due</div>
+                                                    <div className={`font-bold ${bill.isPaid ? 'text-slate-400' : 'text-slate-700'}`}>
+                                                        {bill.dueDay}<span className="text-[10px] align-top">{getDaySuffix(bill.dueDay)}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex-1">
+                                                    <div className={`font-medium ${bill.isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                                                        {bill.name}
+                                                    </div>
+                                                    {bill.type === 'custom' && <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">ONE-TIME</span>}
+                                                </div>
+
+                                                <div className="w-32">
+                                                    <div className="relative">
+                                                        <span className="absolute left-2 top-1.5 text-slate-400 text-sm">$</span>
+                                                        <input 
+                                                            type="number" 
+                                                            value={bill.amount}
+                                                            disabled={bill.isPaid}
+                                                            onChange={(e) => updatePeriodBill(currentPeriod.id, bill.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                            className={`w-full pl-6 py-1 rounded border text-right font-semibold focus:ring-2 focus:ring-indigo-500 outline-none ${
+                                                                bill.isPaid 
+                                                                ? 'bg-transparent border-transparent text-slate-400' 
+                                                                : 'bg-white border-slate-200 text-slate-800'
+                                                            }`}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <button 
+                                                    onClick={() => deletePeriodBill(currentPeriod.id, bill.id)}
+                                                    className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="Remove this bill from this period only"
+                                                >
+                                                    <Icons.Trash />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    {currentPeriod.bills.length === 0 && (
+                                        <div className="p-8 text-center text-slate-400 italic">
+                                            No bills found for this date range.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {isEditorOpen && (
+                        <ScheduleEditor 
+                            currentPeriods={schedule} 
+                            onSave={handleUpdateSchedule} 
+                            onClose={() => setIsEditorOpen(false)} 
+                        />
+                    )}
+
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
