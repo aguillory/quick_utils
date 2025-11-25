@@ -149,7 +149,7 @@
             );
         };
 
-        // --- MAIN APP ---
+// --- MAIN APP ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
@@ -161,7 +161,28 @@
             const [masterPaycheck, setMasterPaycheck] = useState(null);
             const [masterAccounts, setMasterAccounts] = useState(null);
 
-            // Auth Flow
+            // --- DERIVED STATE (MOVED UP HERE) ---
+            // 1. Calculate currentPeriod immediately so it's available for the hook
+            const currentPeriod = schedule.find(p => p.id === selectedPeriodId);
+
+            // 2. Define the Hook BEFORE any returns
+            const sortedBills = useMemo(() => {
+                if (!currentPeriod || !currentPeriod.bills) return [];
+                
+                // Get the day number the period starts on (e.g., 24)
+                const startDay = new Date(currentPeriod.date + 'T00:00:00').getDate();
+
+                return [...currentPeriod.bills].sort((a, b) => {
+                    // Logic: If a due date is less than the start date, it must be next month.
+                    // We add 32 to these numbers so they sort to the end of the list.
+                    const valA = a.dueDay < startDay ? a.dueDay + 32 : a.dueDay;
+                    const valB = b.dueDay < startDay ? b.dueDay + 32 : b.dueDay;
+                    
+                    return valA - valB;
+                });
+            }, [currentPeriod]);
+
+            // --- AUTH & DATA FETCHING ---
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
@@ -178,6 +199,7 @@
             useEffect(() => {
                 if (!user) return;
                 
+                // ... (Keep your existing snapshot listeners here) ...
                 // 1. Paycheck Config
                 onSnapshot(doc(db, 'users', user.uid, 'paycheck_data', 'current_config'), (snap) => setMasterPaycheck(snap.data() || {}));
 
@@ -200,7 +222,7 @@
                         setIsEditorOpen(true); // Open editor if empty
                     }
                 });
-            }, [user]);
+            }, [user]); // Removed selectedPeriodId from dependency array to prevent loops, though usually fine if logic is stable
 
             // Save Schedule
             const saveSchedule = async (newSchedule) => {
@@ -301,15 +323,18 @@
                 // Add Bills
                 (masterAccounts.bills || []).forEach(b => {
                     if (checkDateMatch(b.dueDay)) {
-                        newBills.push({ ...b, type: 'bill', isPaid: false, note: '' });
+                        // FIX: Change '...b' to ensure ID is unique
+                        newBills.push({ ...b, id: `bill-${b.id}`, type: 'bill', isPaid: false, note: '' });
                     }
                 });
 
                 // Add Debts
                 (masterAccounts.debts || []).forEach(d => {
                      if (checkDateMatch(d.dueDay)) {
+                        // FIX: Change '...d' to ensure ID is unique
                         newBills.push({ 
                             ...d, 
+                            id: `debt-${d.id}`, // <--- Unique ID here
                             amount: d.minPayment, 
                             type: 'debt', 
                             isPaid: false, 
@@ -361,11 +386,10 @@
                 saveSchedule(updated);
             }
 
-            // --- RENDER ---
+// --- RENDER CHECKS (NOW SAFE TO USE) ---
             if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>;
             if (!user) return <LoginScreen onLogin={handleLogin} />;
 
-            const currentPeriod = schedule.find(p => p.id === selectedPeriodId);
             // If no period selected (empty schedule), show placeholder or editor
             if (!currentPeriod && !isEditorOpen) return (
                 <div className="h-screen flex flex-col items-center justify-center gap-4">
@@ -375,9 +399,9 @@
                 </div>
             );
 
-            // Safe fallback if rendering with editor open over empty state
             if (!currentPeriod && isEditorOpen) return <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />;
-
+            
+            
             const netIncome = calculateIncome(currentPeriod);
             const totalBills = currentPeriod.bills.reduce((sum, b) => sum + b.amount, 0);
             const totalPaid = currentPeriod.bills.filter(b => b.isPaid).reduce((sum, b) => sum + b.amount, 0);
@@ -515,7 +539,7 @@
                                     </div>
                                     
                                     <div className="divide-y divide-slate-100">
-                                        {currentPeriod.bills.map(bill => (
+                                        {sortedBills.map(bill => (
                                             <div 
                                                 key={bill.id} 
                                                 className={`flex items-center gap-4 px-6 py-4 group transition-colors ${bill.isPaid ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}
