@@ -5,14 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accounts & Bills</title>
     
-    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. React and ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- 3. Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-50">
@@ -21,7 +18,7 @@
 
     <script type="text/babel" data-type="module">
         // --- GLOBALS ---
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
         const { createRoot } = ReactDOM;
         
         // --- FIREBASE IMPORTS ---
@@ -282,6 +279,10 @@
             const [isLoading, setIsLoading] = useState(true);
             const [loginError, setLoginError] = useState('');
             const [isSaving, setIsSaving] = useState(false);
+            
+            // Fix: Track user interaction per list to stop sorting after manual add
+            const hasAddedDebt = useRef(false);
+            const hasAddedBill = useRef(false);
 
             // Data
             const [debts, setDebts] = useState(DEFAULT_DATA.debts);
@@ -312,13 +313,26 @@
                 const unsub = onSnapshot(docRef, (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
-                        // Handle potential migration if old data didn't have 'type'
-                        const loadedDebts = (d.debts || []).map(debt => ({
+                        
+                        let loadedDebts = (d.debts || []).map(debt => ({
                             ...debt,
-                            type: debt.type || 'Card' // Default to Card if new field missing
+                            type: debt.type || 'Card'
                         }));
+                        
+                        let loadedBills = d.bills || [];
+
+                        // LOGIC: Sort lists UNLESS user has just added a new item
+                        // This prevents double-snapshots from overwriting the "sticky" new item
+                        if (!hasAddedDebt.current) {
+                            loadedDebts.sort((a, b) => a.dueDay - b.dueDay);
+                        }
+
+                        if (!hasAddedBill.current) {
+                            loadedBills.sort((a, b) => a.dueDay - b.dueDay);
+                        }
+
                         setDebts(loadedDebts);
-                        setBills(d.bills || []);
+                        setBills(loadedBills);
                     } else {
                         saveData(true);
                     }
@@ -347,11 +361,17 @@
             }, [debts, bills, user]);
 
             // CRUD Handlers
-            const addDebt = () => setDebts([...debts, { id: Date.now().toString(), name: 'New Card', balance: 0, limit: 1000, apr: 0, minPayment: 0, dueDay: 1, type: 'Card' }]);
+            const addDebt = () => {
+                hasAddedDebt.current = true; // Stop auto-sort for this session
+                setDebts([{ id: Date.now().toString(), name: 'New Card', balance: 0, limit: 1000, apr: 0, minPayment: 0, dueDay: 1, type: 'Card' }, ...debts]);
+            };
             const updateDebt = (updated) => setDebts(debts.map(d => d.id === updated.id ? updated : d));
             const deleteDebt = (id) => setDebts(debts.filter(d => d.id !== id));
 
-            const addBill = () => setBills([...bills, { id: Date.now().toString(), name: 'New Bill', amount: 0, dueDay: 1, type: 'Fixed' }]);
+            const addBill = () => {
+                hasAddedBill.current = true; // Stop auto-sort for this session
+                setBills([{ id: Date.now().toString(), name: 'New Bill', amount: 0, dueDay: 1, type: 'Fixed' }, ...bills]);
+            };
             const updateBill = (updated) => setBills(bills.map(b => b.id === updated.id ? updated : b));
             const deleteBill = (id) => setBills(bills.filter(b => b.id !== id));
 
@@ -367,9 +387,6 @@
             
             const totalMonthlyBills = bills.reduce((acc, b) => acc + b.amount, 0);
             const totalMinPayments = debts.reduce((acc, d) => acc + d.minPayment, 0);
-
-            // Sorting Bills by Day
-            const sortedBills = [...bills].sort((a, b) => a.dueDay - b.dueDay);
 
             if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-400">Loading...</div>;
             if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
@@ -457,7 +474,8 @@
                                     <div className="w-8"></div>
                                 </div>
                                 <div className="divide-y divide-slate-100">
-                                    {sortedBills.map(bill => (
+                                    {/* CHANGE: Map 'bills' directly instead of 'sortedBills' */}
+                                    {bills.map(bill => (
                                         <BillRow 
                                             key={bill.id} 
                                             item={bill} 
