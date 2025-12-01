@@ -18,7 +18,7 @@
 
     <script type="text/babel" data-type="module">
         // --- GLOBALS ---
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
         const { createRoot } = ReactDOM;
         
         // --- FIREBASE IMPORTS ---
@@ -39,34 +39,21 @@
             Alert: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
         };
 
-        // --- SEED DATA ---
-        const DEFAULT_DATA = {
-            debts: [
-                { id: '1', name: 'CareCredit', balance: 285, limit: 1500, apr: 32.99, minPayment: 30, dueDay: 8, type: 'Card' },
-                { id: '2', name: 'Planet Home Mortgage', balance: 100000, limit: 120000, apr: 0, minPayment: 884, dueDay: 1, type: 'Loan' },
-                { id: '3', name: 'Capital One Platinum', balance: 0, limit: 1800, apr: 31.24, minPayment: 0, dueDay: 6, type: 'Card' },
-                { id: '4', name: 'TSC', balance: 962, limit: 2000, apr: 30.24, minPayment: 40, dueDay: 21, type: 'Card' },
-                { id: '5', name: 'Home Depot', balance: 712, limit: 750, apr: 0, minPayment: 35, dueDay: 1, type: 'Card' },
-                { id: '6', name: 'Paypal Credit', balance: 0, limit: 3750, apr: 30.39, minPayment: 0, dueDay: 26, type: 'Card' },
-                { id: '7', name: 'Capital One Quicksilver', balance: 0, limit: 2500, apr: 27.15, minPayment: 0, dueDay: 17, type: 'Card' },
-                { id: '8', name: 'Chase (Amazon)', balance: 494.08, limit: 1000, apr: 26.49, minPayment: 25, dueDay: 15, type: 'Card' },
-                { id: '9', name: 'Discover', balance: -88, limit: 7200, apr: 19.49, minPayment: 0, dueDay: 1, type: 'Card' },
-                { id: '10', name: 'Avant', balance: 3059, limit: 6000, apr: 14.39, minPayment: 100, dueDay: 3, type: 'Loan' },
-            ],
-            bills: [
-                { id: '1', name: 'WK BillPay', amount: 5, dueDay: 1, type: 'Fixed' },
-                { id: '3', name: 'Internet', amount: 75, dueDay: 7, type: 'Fixed' },
-                { id: '4', name: 'Trash', amount: 30, dueDay: 7, type: 'Fixed' },
-                { id: '5', name: 'Water', amount: 50, dueDay: 7, type: 'Variable' },
-                { id: '6', name: 'ATT', amount: 188, dueDay: 9, type: 'Fixed' },
-                { id: '7', name: 'Progressive', amount: 105, dueDay: 12, type: 'Fixed' },
-                { id: '8', name: 'Entergy', amount: 395, dueDay: 15, type: 'Variable' },
-                { id: '10', name: 'LendingClub', amount: 356, dueDay: 19, type: 'Fixed' } 
-            ]
-        };
-
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
         const formatPercent = (val) => `${val.toFixed(2)}%`;
+
+        // --- DEEP COMPARISON UTILITY ---
+        const deepEqual = (a, b) => {
+            if (a === b) return true;
+            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+            const keysA = Object.keys(a);
+            const keysB = Object.keys(b);
+            if (keysA.length !== keysB.length) return false;
+            for (let key of keysA) {
+                if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
+            }
+            return true;
+        };
 
         // --- COMPONENTS ---
 
@@ -74,12 +61,8 @@
             const isLoan = item.type === 'Loan';
             const limitLabel = isLoan ? "Orig Amt" : "Limit";
             
-            // Utilization Logic
             const utilization = item.limit > 0 ? (item.balance / item.limit) * 100 : 0;
             
-            // Color Logic: 
-            // If Loan -> Always Blue (Neutral)
-            // If Card -> Green/Yellow/Red based on usage
             let barColor = "bg-emerald-500";
             let textColor = "text-slate-400";
             let warningText = "";
@@ -95,7 +78,6 @@
 
             return (
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col gap-3 relative overflow-hidden">
-                    {/* Header Inputs */}
                     <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
                         <div className="flex-grow w-full md:w-auto">
                             <label className="text-xs text-slate-400 font-bold uppercase">Account Name</label>
@@ -107,7 +89,6 @@
                             />
                         </div>
                         
-                        {/* Type Toggle */}
                         <div className="flex bg-slate-100 p-0.5 rounded-lg">
                             <button 
                                 onClick={() => onChange({...item, type: 'Card'})}
@@ -126,7 +107,6 @@
                         <button onClick={onDelete} className="text-slate-300 hover:text-red-500 md:self-start pt-1"><Icons.Trash /></button>
                     </div>
 
-                    {/* Numeric Inputs Grid */}
                     <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
                          <div>
                             <label className="text-xs text-slate-400 font-bold uppercase">Due Day</label>
@@ -186,7 +166,6 @@
                         </div>
                     </div>
 
-                    {/* Utilization Bar */}
                     {item.limit > 0 && (
                         <div className="w-full bg-slate-100 rounded-full h-2 mt-1 relative overflow-hidden group">
                             <div 
@@ -279,14 +258,16 @@
             const [isLoading, setIsLoading] = useState(true);
             const [loginError, setLoginError] = useState('');
             const [isSaving, setIsSaving] = useState(false);
+            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
             
-            // Fix: Track user interaction per list to stop sorting after manual add
             const hasAddedDebt = useRef(false);
             const hasAddedBill = useRef(false);
+            const lastSavedData = useRef(null);
+            const isInitialLoad = useRef(true);
 
-            // Data
-            const [debts, setDebts] = useState(DEFAULT_DATA.debts);
-            const [bills, setBills] = useState(DEFAULT_DATA.bills);
+            // Data - Initialize with empty arrays, no DEFAULT_DATA needed
+            const [debts, setDebts] = useState([]);
+            const [bills, setBills] = useState([]);
 
             // Auth
             useEffect(() => {
@@ -321,8 +302,6 @@
                         
                         let loadedBills = d.bills || [];
 
-                        // LOGIC: Sort lists UNLESS user has just added a new item
-                        // This prevents double-snapshots from overwriting the "sticky" new item
                         if (!hasAddedDebt.current) {
                             loadedDebts.sort((a, b) => a.dueDay - b.dueDay);
                         }
@@ -333,43 +312,62 @@
 
                         setDebts(loadedDebts);
                         setBills(loadedBills);
+                        
+                        lastSavedData.current = { debts: loadedDebts, bills: loadedBills };
+                        isInitialLoad.current = false;
+                        setHasUnsavedChanges(false);
                     } else {
-                        saveData(true);
+                        // No document exists yet - that's fine, start with empty arrays
+                        lastSavedData.current = { debts: [], bills: [] };
+                        isInitialLoad.current = false;
                     }
                 });
                 return () => unsub();
             }, [user]);
 
             // Save Data
-            const saveData = async () => {
+            const saveData = useCallback(async () => {
                 if (!user) return;
+                
+                const currentData = { debts, bills };
+                
+                if (lastSavedData.current && deepEqual(currentData, lastSavedData.current)) {
+                    return;
+                }
+                
                 setIsSaving(true);
                 try {
                     await setDoc(doc(db, 'users', user.uid, 'accounts_data', 'current_config'), {
                         debts, bills, updatedAt: new Date()
                     }, { merge: true });
+                    lastSavedData.current = currentData;
+                    setHasUnsavedChanges(false);
                 } catch(e) { console.error(e); }
                 finally { setIsSaving(false); }
-            };
+            }, [user, debts, bills]);
 
-            // Debounce Save
+            // Check for changes and trigger save
             useEffect(() => {
-                if (!isLoading && user) {
-                    const t = setTimeout(saveData, 2000);
+                if (isInitialLoad.current || !user) return;
+                
+                const currentData = { debts, bills };
+                if (lastSavedData.current && !deepEqual(currentData, lastSavedData.current)) {
+                    setHasUnsavedChanges(true);
+                    const t = setTimeout(() => saveData(), 2000);
                     return () => clearTimeout(t);
                 }
-            }, [debts, bills, user]);
+            }, [debts, bills, user, saveData]);
 
             // CRUD Handlers
             const addDebt = () => {
-                hasAddedDebt.current = true; // Stop auto-sort for this session
+                hasAddedDebt.current = true;
                 setDebts([{ id: Date.now().toString(), name: 'New Card', balance: 0, limit: 1000, apr: 0, minPayment: 0, dueDay: 1, type: 'Card' }, ...debts]);
             };
             const updateDebt = (updated) => setDebts(debts.map(d => d.id === updated.id ? updated : d));
             const deleteDebt = (id) => setDebts(debts.filter(d => d.id !== id));
 
             const addBill = () => {
-                hasAddedBill.current = true; // Stop auto-sort for this session
+                hasAddedBill.current = true;
                 setBills([{ id: Date.now().toString(), name: 'New Bill', amount: 0, dueDay: 1, type: 'Fixed' }, ...bills]);
             };
             const updateBill = (updated) => setBills(bills.map(b => b.id === updated.id ? updated : b));
@@ -378,7 +376,6 @@
             // Computations
             const totalDebt = debts.reduce((acc, d) => acc + d.balance, 0);
             
-            // Utilization Math: ONLY Count 'Card' types
             const revolvingDebts = debts.filter(d => d.type !== 'Loan');
             const totalRevolvingDebt = revolvingDebts.reduce((acc, d) => acc + d.balance, 0);
             const totalRevolvingLimit = revolvingDebts.reduce((acc, d) => acc + d.limit, 0);
@@ -395,38 +392,44 @@
                 <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
                     
                     {/* Header Dashboard */}
-                    <div className="bg-indigo-900 text-white pb-20 pt-8 px-4 shadow-xl">
+                    <div className="bg-emerald-900 text-white pb-20 pt-8 px-4 shadow-xl">
                         <div className="max-w-5xl mx-auto">
                             <div className="flex justify-between items-center mb-8">
                                 <h1 className="text-2xl font-bold flex items-center gap-2">
                                     <Icons.CreditCard /> Accounts & Liabilities
                                 </h1>
-                                <div className="flex items-center gap-2 text-xs bg-indigo-800 py-1 px-3 rounded-full text-indigo-200">
-                                    {isSaving ? 'Saving...' : 'All changes saved'}
+                                <div className={`flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
+                                    isSaving 
+                                        ? 'bg-emerald-700 text-emerald-200' 
+                                        : hasUnsavedChanges 
+                                            ? 'bg-yellow-600 text-yellow-100' 
+                                            : 'bg-emerald-800 text-emerald-200'
+                                }`}>
+                                    {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
                                 </div>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="bg-indigo-800/50 p-4 rounded-xl border border-indigo-700/50">
-                                    <div className="text-indigo-300 text-xs font-bold uppercase tracking-wider mb-1">Total Debt Balance</div>
+                                <div className="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50">
+                                    <div className="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Total Debt Balance</div>
                                     <div className="text-2xl font-bold text-white">{formatCurrency(totalDebt)}</div>
-                                    <div className="text-xs text-indigo-400 mt-1">
+                                    <div className="text-xs text-emerald-400 mt-1">
                                         Min Payments: {formatCurrency(totalMinPayments)}/mo
                                     </div>
                                 </div>
-                                <div className="bg-indigo-800/50 p-4 rounded-xl border border-indigo-700/50">
-                                    <div className="text-indigo-300 text-xs font-bold uppercase tracking-wider mb-1">Total Credit Utilization</div>
-                                    <div className={`text-2xl font-bold ${totalUtilization > 30 ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                                <div className="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50">
+                                    <div className="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Total Credit Utilization</div>
+                                    <div className={`text-2xl font-bold ${totalUtilization > 30 ? 'text-yellow-400' : 'text-white'}`}>
                                         {totalUtilization.toFixed(1)}%
                                     </div>
-                                    <div className="text-xs text-indigo-400 mt-1">
+                                    <div className="text-xs text-emerald-400 mt-1">
                                         of {formatCurrency(totalRevolvingLimit)} limit (Cards Only)
                                     </div>
                                 </div>
-                                <div className="bg-indigo-800/50 p-4 rounded-xl border border-indigo-700/50">
-                                    <div className="text-indigo-300 text-xs font-bold uppercase tracking-wider mb-1">Monthly Bills</div>
+                                <div className="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50">
+                                    <div className="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Monthly Bills</div>
                                     <div className="text-2xl font-bold text-white">{formatCurrency(totalMonthlyBills)}</div>
-                                    <div className="text-xs text-indigo-400 mt-1">
+                                    <div className="text-xs text-emerald-400 mt-1">
                                         Total Obligations: {formatCurrency(totalMonthlyBills + totalMinPayments)}
                                     </div>
                                 </div>
@@ -436,16 +439,21 @@
 
                     <div className="max-w-5xl mx-auto px-4 -mt-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
                         
-                        {/* LEFT COLUMN: Credit Cards (8 cols) */}
+                        {/* LEFT COLUMN: Credit Cards */}
                         <div className="lg:col-span-7 space-y-6">
                             <div className="flex justify-between items-center">
-                                <h2 className="text-lg font-bold text-slate-700">Revolving Debt & Loans</h2>
-                                <button onClick={addDebt} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
+                                <h2 className="text-lg font-bold text-white">Revolving Debt & Loans</h2>
+                                <button onClick={addDebt} className="flex items-center gap-1 text-sm bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition">
                                     <Icons.Plus /> Add Account
                                 </button>
                             </div>
                             
                             <div className="space-y-4">
+                                {debts.length === 0 && (
+                                    <div className="bg-white p-8 rounded-lg shadow-sm border border-slate-200 text-center text-slate-400">
+                                        No accounts yet. Click "Add Account" to start tracking your debts.
+                                    </div>
+                                )}
                                 {debts.map(debt => (
                                     <DebtRow 
                                         key={debt.id} 
@@ -457,11 +465,11 @@
                             </div>
                         </div>
 
-                        {/* RIGHT COLUMN: Bills (4 cols) */}
+                        {/* RIGHT COLUMN: Bills */}
                         <div className="lg:col-span-5 space-y-6">
                             <div className="flex justify-between items-center">
-                                <h2 className="text-lg font-bold text-slate-700">Recurring Bills</h2>
-                                <button onClick={addBill} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
+                                <h2 className="text-lg font-bold text-white">Recurring Bills</h2>
+                                <button onClick={addBill} className="flex items-center gap-1 text-sm bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition">
                                     <Icons.Plus /> Add Bill
                                 </button>
                             </div>
@@ -474,7 +482,6 @@
                                     <div className="w-8"></div>
                                 </div>
                                 <div className="divide-y divide-slate-100">
-                                    {/* CHANGE: Map 'bills' directly instead of 'sortedBills' */}
                                     {bills.map(bill => (
                                         <BillRow 
                                             key={bill.id} 
@@ -486,7 +493,7 @@
                                 </div>
                                 {bills.length === 0 && (
                                     <div className="p-8 text-center text-slate-400 text-sm">
-                                        No bills added yet.
+                                        No bills added yet. Click "Add Bill" to start.
                                     </div>
                                 )}
                             </div>

@@ -155,17 +155,12 @@
             const [isLoading, setIsLoading] = useState(true);
             const [isEditorOpen, setIsEditorOpen] = useState(false);
             
-            // Domain Data
             const [schedule, setSchedule] = useState([]);
             const [selectedPeriodId, setSelectedPeriodId] = useState(null);
             const [masterPaycheck, setMasterPaycheck] = useState(null);
             const [masterAccounts, setMasterAccounts] = useState(null);
 
-            // --- DERIVED STATE (MOVED UP HERE) ---
-            // 1. Calculate currentPeriod immediately so it's available for the hook
             const currentPeriod = schedule.find(p => p.id === selectedPeriodId);
-
-            // 2. Define the Hook BEFORE any returns
             const sortedBills = useMemo(() => {
                 if (!currentPeriod || !currentPeriod.bills) return [];
                 
@@ -182,7 +177,6 @@
                 });
             }, [currentPeriod]);
 
-            // --- AUTH & DATA FETCHING ---
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
@@ -199,14 +193,8 @@
             useEffect(() => {
                 if (!user) return;
                 
-                // ... (Keep your existing snapshot listeners here) ...
-                // 1. Paycheck Config
                 onSnapshot(doc(db, 'users', user.uid, 'paycheck_data', 'current_config'), (snap) => setMasterPaycheck(snap.data() || {}));
-
-                // 2. Accounts Config
                 onSnapshot(doc(db, 'users', user.uid, 'accounts_data', 'current_config'), (snap) => setMasterAccounts(snap.data() || { bills: [], debts: [] }));
-
-                // 3. Schedule
                 onSnapshot(doc(db, 'users', user.uid, 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
                         setSchedule(snap.data().periods);
@@ -222,24 +210,16 @@
                         setIsEditorOpen(true); // Open editor if empty
                     }
                 });
-            }, [user]); // Removed selectedPeriodId from dependency array to prevent loops, though usually fine if logic is stable
-
-            // Save Schedule
+            }, [user]);
             const saveSchedule = async (newSchedule) => {
                 if(!user) return;
                 await setDoc(doc(db, 'users', user.uid, 'planner_data', 'schedule'), {
                     periods: newSchedule
                 });
             };
-
-            // Handle Manual Schedule Update
             const handleUpdateSchedule = (dateList) => {
-                // We reconstruct the schedule array based on the new list of dates.
-                
                 const newSchedule = dateList.map((dateStr, index) => {
                     const existingPeriod = schedule.find(p => p.id === dateStr);
-                    
-                    // Determine next date (either next in list, or 14 days later if last)
                     let nextDateStr;
                     if (index < dateList.length - 1) {
                         nextDateStr = dateList[index + 1];
@@ -249,17 +229,14 @@
                         nextDateStr = d.toISOString().split('T')[0];
                     }
 
-                    // --- NEW LOGIC: AUTO-DETECT DEDUCTION HOLIDAYS ---
-                    // Rule: If a month has 3 pay dates, the 3rd one is a holiday.
                     const monthKey = dateStr.substring(0, 7); // YYYY-MM
                     const checksInThisMonth = dateList.filter(d => d.startsWith(monthKey)).sort();
-                    // If we have 3 or more checks, and the current one is the 3rd (index 2)
+                    
                     const isAutoHoliday = checksInThisMonth.length >= 3 && checksInThisMonth[2] === dateStr;
                     // ------------------------------------------------
 
                     if (existingPeriod) {
-                        // Update the nextDate and isHoliday. 
-                        // We strictly apply the auto-holiday rule here to ensure consistency.
+                       
                         return { 
                             ...existingPeriod, 
                             nextDate: nextDateStr,
@@ -320,7 +297,6 @@
                     return false;
                 };
 
-                // Add Bills
                 (masterAccounts.bills || []).forEach(b => {
                     if (checkDateMatch(b.dueDay)) {
                         // FIX: Change '...b' to ensure ID is unique
@@ -331,7 +307,6 @@
                 // Add Debts
                 (masterAccounts.debts || []).forEach(d => {
                      if (checkDateMatch(d.dueDay)) {
-                        // FIX: Change '...d' to ensure ID is unique
                         newBills.push({ 
                             ...d, 
                             id: `debt-${d.id}`, // <--- Unique ID here
@@ -386,11 +361,9 @@
                 saveSchedule(updated);
             }
 
-// --- RENDER CHECKS (NOW SAFE TO USE) ---
             if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>;
             if (!user) return <LoginScreen onLogin={handleLogin} />;
 
-            // If no period selected (empty schedule), show placeholder or editor
             if (!currentPeriod && !isEditorOpen) return (
                 <div className="h-screen flex flex-col items-center justify-center gap-4">
                     <p className="text-slate-500">No schedule found.</p>

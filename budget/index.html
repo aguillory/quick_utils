@@ -6,7 +6,6 @@
     <title>Finance Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Custom scrollbar for the tab bar if needed */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
@@ -40,6 +39,13 @@
                     Paycheck Manager
                 </button>
 
+                <!-- NEW TAB BUTTON -->
+                <button onclick="switchTab('budgetitems')" id="btn-budgetitems" 
+                    class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
+                    Budget Items
+                </button>
+
             </div>
         </div>
     </nav>
@@ -55,31 +61,28 @@
         <iframe id="frame-paycheck" src="paycheck.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
 
+        <!-- NEW IFRAME -->
+        <iframe id="frame-budgetitems" src="budget.html" 
+            class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
+
     </main>
 
     <script>
         function switchTab(tabName) {
-            // 1. Hide all frames
             document.querySelectorAll('iframe').forEach(frame => {
                 frame.classList.add('hidden');
             });
-
-            // 2. Reset all button styles
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.remove('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
                 btn.classList.add('text-slate-400', 'border-transparent');
             });
-
-            // 3. Show selected frame
             document.getElementById(`frame-${tabName}`).classList.remove('hidden');
 
-            // 4. Highlight selected button
             const activeBtn = document.getElementById(`btn-${tabName}`);
             activeBtn.classList.remove('text-slate-400', 'border-transparent');
             activeBtn.classList.add('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
         }
 
-        // Initialize with Budget tab active
         switchTab('budget');
     </script>
 </body>
