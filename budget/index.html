@@ -20,30 +20,34 @@
     <nav class="bg-slate-900 border-b border-slate-700 shadow-md z-10">
         <div class="max-w-7xl mx-auto px-4">
             <div class="flex items-center h-14 gap-2 overflow-x-auto scrollbar-hide" id="tab-container">
-                
-                <button onclick="switchTab('budget')" id="btn-budget" 
+                <button onclick="switchTab('planner')" id="btn-planner" 
                     class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                    Budget Planner
+                    Planner
                 </button>
-
-                <button onclick="switchTab('accounts')" id="btn-accounts" 
-                    class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                    Accounts & Bills
-                </button>
-
+                
                 <button onclick="switchTab('paycheck')" id="btn-paycheck" 
                     class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
-                    Paycheck Manager
+                    Paycheck
+                </button>
+                
+                <button onclick="switchTab('accounts')" id="btn-accounts" 
+                    class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                    Accounts
                 </button>
 
-                <!-- NEW TAB BUTTON -->
-                <button onclick="switchTab('budgetitems')" id="btn-budgetitems" 
+                <button onclick="switchTab('budget')" id="btn-budget" 
                     class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Budget Items
+                    Budget
+                </button>
+            
+                <button onclick="switchTab('savings')" id="btn-savings" 
+                    class="tab-btn flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-transparent text-slate-400 hover:text-white hover:bg-slate-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    Savings
                 </button>
 
             </div>
@@ -52,38 +56,51 @@
 
     <main class="flex-1 relative bg-slate-50">
         
-        <iframe id="frame-budget" src="payperiod.html" 
-            class="w-full h-full border-none absolute inset-0 bg-white"></iframe>
-            
         <iframe id="frame-accounts" src="accounts.html" 
+            class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
+
+        <iframe id="frame-budget" src="budget.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
             
         <iframe id="frame-paycheck" src="paycheck.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
 
-        <!-- NEW IFRAME -->
-        <iframe id="frame-budgetitems" src="budget.html" 
+        <iframe id="frame-planner" src="planner.html" 
+            class="w-full h-full border-none absolute inset-0 bg-white"></iframe>
+
+        <iframe id="frame-savings" src="savings.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
 
     </main>
 
     <script>
         function switchTab(tabName) {
+            // Hide all frames
             document.querySelectorAll('iframe').forEach(frame => {
                 frame.classList.add('hidden');
             });
+            // Reset all buttons
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.remove('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
                 btn.classList.add('text-slate-400', 'border-transparent');
             });
-            document.getElementById(`frame-${tabName}`).classList.remove('hidden');
 
+            // Show selected frame
+            const selectedFrame = document.getElementById(`frame-${tabName}`);
+            if (selectedFrame) {
+                selectedFrame.classList.remove('hidden');
+            }
+
+            // Highlight selected button
             const activeBtn = document.getElementById(`btn-${tabName}`);
-            activeBtn.classList.remove('text-slate-400', 'border-transparent');
-            activeBtn.classList.add('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-400', 'border-transparent');
+                activeBtn.classList.add('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
+            }
         }
 
-        switchTab('budget');
+        // Set Default Tab (Planner is usually the main dashboard view)
+        switchTab('planner');
     </script>
 </body>
 </html>
