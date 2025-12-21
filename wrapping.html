@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wrapping Paper Calculator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+            text-align: center;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: 500;
+            color: #555;
+            font-size: 0.9rem;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box; /* Ensures padding doesn't affect width */
+            font-size: 1rem;
+        }
+        button {
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px;
+            margin-top: 20px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: #e9ecef;
+            display: none;
+            line-height: 1.5;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .note {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🎁 Wrapping Calculator</h2>
+    
+    <label>Box Length (L)</label>
+    <input type="number" id="boxL" placeholder="e.g., 10">
+
+    <label>Box Width (W)</label>
+    <input type="number" id="boxW" placeholder="e.g., 5">
+
+    <label>Box Height (H)</label>
+    <input type="number" id="boxH" placeholder="e.g., 3">
+    
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+    <label>Roll Width (Total Paper Length available)</label>
+    <div class="note">Usually 30 inches for standard rolls</div>
+    <input type="number" id="rollWidth" placeholder="e.g., 30">
+
+    <button onclick="calculatePaper()">Calculate Cut</button>
+
+    <div id="result"></div>
+</div>
+
+<script>
+    function calculatePaper() {
+        // 1. Get values
+        let L = parseFloat(document.getElementById('boxL').value);
+        let W = parseFloat(document.getElementById('boxW').value);
+        let H = parseFloat(document.getElementById('boxH').value);
+        let paperWidth = parseFloat(document.getElementById('rollWidth').value);
+        let resultDiv = document.getElementById('result');
+
+        // Reset classes
+        resultDiv.className = ''; 
+        resultDiv.style.display = 'block';
+
+        if (!L || !W || !H || !paperWidth) {
+            resultDiv.innerHTML = "Please fill in all fields.";
+            resultDiv.classList.add('error');
+            return;
+        }
+
+        // 2. Logic: There are two main ways to orient a box on paper.
+        // Method A: Roll wraps around Width/Height (Length is parallel to roll edge)
+        // Method B: Roll wraps around Length/Height (Width is parallel to roll edge)
+        
+        // We add 2 inches of overlap for safety
+        const overlap = 2; 
+
+        // Calculate requirements for Orientation A
+        // The paper width needs to cover: 2*Height + Length
+        // The roll out needs to cover: 2*Width + 2*Height + Overlap
+        let reqWidthA = (2 * H) + L;
+        let cutLengthA = (2 * W) + (2 * H) + overlap;
+
+        // Calculate requirements for Orientation B
+        // The paper width needs to cover: 2*Height + Width
+        // The roll out needs to cover: 2*Length + 2*Height + Overlap
+        let reqWidthB = (2 * H) + W;
+        let cutLengthB = (2 * L) + (2 * H) + overlap;
+
+        let options = [];
+
+        // Check if Orientation A fits on the roll
+        if (paperWidth >= reqWidthA) {
+            options.push({
+                type: "Standard",
+                cut: cutLengthA,
+                excess: paperWidth - reqWidthA,
+                desc: `<b>Orient box length parallel to roll edge.</b><br>Pull out <b>${cutLengthA}"</b> of paper.`
+            });
+        }
+
+        // Check if Orientation B fits on the roll
+        if (paperWidth >= reqWidthB) {
+            options.push({
+                type: "Rotated",
+                cut: cutLengthB,
+                excess: paperWidth - reqWidthB,
+                desc: `<b>Orient box width parallel to roll edge.</b><br>Pull out <b>${cutLengthB}"</b> of paper.`
+            });
+        }
+
+        // 3. Display Results
+        if (options.length === 0) {
+            // Diagonal wrapping is complex math, usually this means "Not Possible" for standard wrapping
+            resultDiv.innerHTML = "❌ <b>Not Possible</b><br>This box is too large for the width of your wrapping paper roll using standard wrapping methods.";
+            resultDiv.classList.add('error');
+        } else {
+            // Sort by which wastes less paper (smallest cut length)
+            options.sort((a, b) => a.cut - b.cut);
+            
+            let best = options[0];
+            let msg = "✅ <b>It Fits!</b><br><br>" + best.desc;
+            
+            if (best.excess > 4) {
+                 msg += `<br><br><small>Note: You will have about ${best.excess}" of extra paper width to trim off.</small>`;
+            }
+
+            resultDiv.innerHTML = msg;
+            resultDiv.classList.add('success');
+        }
+    }
+</script>
+
+</body>
+</html>
