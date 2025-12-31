@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clean Kitchen Scale</title>
+    <style>
+        :root {
+            /* Vibrant gradient matching the concept */
+            --gradient: linear-gradient(90deg, #84cc16 0%, #06b6d4 50%, #6366f1 100%);
+            --bar-height: 36px;
+            --bg-color: #f8fafc;
+            --line-color: #334155;
+            --text-color: #0f172a;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 { margin-top: 0; color: #0f172a; text-align: center; }
+
+        /* --- CONTROLS SECTION --- */
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            background: #f1f5f9;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 40px;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 8px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #334155;
+            box-sizing: border-box;
+        }
+
+        button#goBtn {
+            grid-column: 1 / -1;
+            background: var(--gradient);
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 800;
+            border: none;
+            padding: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            transition: opacity 0.2s;
+        }
+        button#goBtn:hover { opacity: 0.9; }
+
+        /* --- THE CHART --- */
+        
+        .scroll-container {
+            /* Handles scrolling for mobile only */
+            overflow-x: auto;
+            padding: 10px 0; /* Slight padding to avoid clipping shadows */
+        }
+
+        .chart-wrapper {
+            /* Tall enough to fit labels top and bottom without clipping */
+            height: 250px; 
+            position: relative;
+            margin: 0 auto;
+            /* Ensures bar doesn't get too squished, allows scroll on tiny screens */
+            min-width: 600px; 
+            width: 95%; /* Responsive width */
+        }
+
+        /* The Colored Bar */
+        .timeline-bar {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: var(--bar-height);
+            transform: translateY(-50%); 
+            background: var(--gradient);
+            border-radius: 20px;
+            border: 3px solid var(--line-color);
+            z-index: 1;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        /* --- TICKS AND LABELS --- */
+
+        /* The vertical line extending OUT of the bar */
+        .tick-line {
+            position: absolute;
+            width: 2px;
+            background-color: var(--line-color);
+            z-index: 0; 
+            pointer-events: none;
+        }
+
+        /* Top Ticks extend from center UP */
+        .tick-top { 
+            bottom: 50%; /* Starts at vertical center */
+            height: 60px; /* How long the stick is */
+        } 
+        
+        /* Bottom Ticks extend from center DOWN */
+        .tick-bottom { 
+            top: 50%; /* Starts at vertical center */
+            height: 60px; 
+        }
+
+        /* The text label container */
+        .measurement-label {
+            position: absolute;
+            transform: translateX(-50%);
+            text-align: center;
+            white-space: nowrap;
+            z-index: 10;
+            
+            /* Solid background hides the line if it accidentally touches */
+            background-color: #ffffff; 
+            border: 1px solid #e2e8f0;
+            padding: 6px 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        /* Main measurement text (e.g. "1/2 cup") */
+        .measure-text {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+
+        /* Percentage text small */
+        .measure-pct {
+            display: block;
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        /* Positioning the labels at the ends of the tick lines */
+        .pos-top { 
+            bottom: 50%; 
+            margin-bottom: 65px; /* 60px line height + gap */
+        }
+        
+        .pos-bottom { 
+            top: 50%;
+            margin-top: 65px; /* 60px line height + gap */
+        }
+
+        /* Triangle Arrows connecting box to line */
+        .arrow-box {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; 
+            height: 0; 
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+        }
+
+        /* Point Down (for Top Labels) */
+        .pos-top .arrow-box {
+            bottom: -6px;
+            border-top: 6px solid #e2e8f0; /* Matches border color */
+        }
+        
+        /* Point Up (for Bottom Labels) */
+        .pos-bottom .arrow-box {
+            top: -6px; 
+            border-bottom: 6px solid #e2e8f0;
+        }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+        th { text-align: left; background: #e2e8f0; padding: 12px; color: #475569; }
+        td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+        .badge { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Clean Kitchen Scale</h1>
+    
+    <div class="controls">
+        <div class="full-width">
+            <label>Total Volume Base</label>
+            <div style="display: flex; gap: 15px;">
+                <input type="number" id="baseValue" value="1" style="flex:1;">
+                <select id="baseUnit" style="flex:2;">
+                    <option value="128" selected>Gallons</option>
+                    <option value="32">Quarts</option>
+                    <option value="16">Pints</option>
+                    <option value="8">Cups</option>
+                    <option value="1">Fluid Ounces</option>
+                    <option value="33.814">Liters</option>
+                </select>
+            </div>
+        </div>
+
+        <div>
+            <label>Start %</label>
+            <input type="number" id="startPct" value="0.5" step="0.1">
+        </div>
+        <div>
+            <label>End %</label>
+            <input type="number" id="endPct" value="3.0" step="0.1">
+        </div>
+
+        <button id="goBtn">Visualize Measurements</button>
+    </div>
+
+    <div class="scroll-container">
+        <div class="chart-wrapper" id="chartWrapper" style="display:none;">
+            
+            <div class="timeline-bar"></div>
+            
+            <div id="ticksLayer"></div>
+
+        </div>
+    </div>
+
+    <table id="resultsTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>Exact Percent</th>
+                <th>Measurement</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    </table>
+</div>
+
+<script>
+    /* --- DATA & CONFIG --- */
+    const tspOz = 1/6;
+    const tbspOz = 0.5;
+    const cupOz = 8;
+
+    // The Allowed List of "Clean" Measurements
+    let commonMeasurements = [
+        // Teaspoons 
+        { l: "1/8", u: "tsp", oz: tspOz * 0.125 },
+        { l: "1/4", u: "tsp", oz: tspOz * 0.25 },
+        { l: "1/2", u: "tsp", oz: tspOz * 0.5 },
+        { l: "3/4", u: "tsp", oz: tspOz * 0.75 },
+        { l: "1",   u: "tsp", oz: tspOz * 1 },
+        { l: "1 1/2", u: "tsp", oz: tspOz * 1.5 },
+        { l: "2",   u: "tsp", oz: tspOz * 2 },
+        { l: "2 1/2", u: "tsp", oz: tspOz * 2.5 },
+        
+        // Tablespoons 
+        { l: "1",   u: "Tbsp", oz: tbspOz * 1 },
+        { l: "1 1/2", u: "Tbsp", oz: tbspOz * 1.5 },
+        { l: "2",   u: "Tbsp", oz: tbspOz * 2 },
+        { l: "2 1/2", u: "Tbsp", oz: tbspOz * 2.5 },
+        { l: "3",   u: "Tbsp", oz: tbspOz * 3 },
+        
+        // Ounces 
+        { l: "1",   u: "oz", oz: 1 },
+        { l: "1 1/2", u: "oz", oz: 1.5 },
+        { l: "2",   u: "oz", oz: 2 },
+        { l: "2 1/2", u: "oz", oz: 2.5 },
+        { l: "3",   u: "oz", oz: 3 },
+        { l: "4",   u: "oz", oz: 4 },
+        { l: "5",   u: "oz", oz: 5 },
+        { l: "6",   u: "oz", oz: 6 },
+        { l: "8",   u: "oz", oz: 8 },
+
+        // Cups 
+        { l: "1/4", u: "cup", oz: cupOz * 0.25 },
+        { l: "1/3", u: "cup", oz: cupOz * (1/3) },
+        { l: "1/2", u: "cup", oz: cupOz * 0.5 },
+        { l: "2/3", u: "cup", oz: cupOz * (2/3) },
+        { l: "3/4", u: "cup", oz: cupOz * 0.75 },
+        { l: "1",   u: "cup", oz: cupOz * 1 },
+    ];
+
+    /* --- LOGIC --- */
+    const goBtn = document.getElementById('goBtn');
+    const chartWrapper = document.getElementById('chartWrapper');
+    const ticksLayer = document.getElementById('ticksLayer');
+    const resultsTable = document.getElementById('resultsTable');
+    const resultsBody = document.getElementById('resultsBody');
+
+    goBtn.addEventListener('click', calculate);
+
+    function calculate() {
+        // 1. Get Values
+        const baseVol = parseFloat(document.getElementById('baseValue').value);
+        const unitMultiplier = parseFloat(document.getElementById('baseUnit').value);
+        const totalOz = baseVol * unitMultiplier;
+        let startPct = parseFloat(document.getElementById('startPct').value);
+        let endPct = parseFloat(document.getElementById('endPct').value);
+
+        if(startPct > endPct) [startPct, endPct] = [endPct, startPct]; // Swap if backwards
+        if(totalOz <= 0) return alert("Volume must be > 0");
+
+        // 2. Find Matches
+        let matches = [];
+        commonMeasurements.forEach(m => {
+            let pct = (m.oz / totalOz) * 100;
+            // Use small epsilon for float comparison
+            if (pct >= (startPct - 0.001) && pct <= (endPct + 0.001)) {
+                matches.push({ ...m, pct: pct });
+            }
+        });
+
+        // 3. Clean up duplicates (prefer larger units like Cups > Oz > Tbsp)
+        matches = deduplicate(matches);
+        matches.sort((a,b) => a.pct - b.pct);
+
+        // 4. Render
+        render(matches, startPct, endPct);
+    }
+
+    function deduplicate(list) {
+        let groups = {};
+        list.forEach(m => {
+            let k = m.oz.toFixed(3);
+            if(!groups[k]) groups[k] = [];
+            groups[k].push(m);
+        });
+
+        let out = [];
+        const rank = {'cup':4, 'oz':3, 'Tbsp':2, 'tsp':1};
+        for(let k in groups) {
+            groups[k].sort((a,b) => rank[b.u] - rank[a.u]); // Sort by rank desc
+            out.push(groups[k][0]);
+        }
+        return out;
+    }
+
+    function render(matches, start, end) {
+        ticksLayer.innerHTML = '';
+        resultsBody.innerHTML = '';
+        chartWrapper.style.display = 'block';
+        resultsTable.style.display = 'table';
+        
+        if(matches.length === 0) {
+            resultsBody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:20px;">No clean measurements found in this range.</td></tr>';
+            return;
+        }
+
+        let range = end - start;
+        if(range < 0.01) range = 0.01;
+
+        matches.forEach((m, i) => {
+            // A. Table Row
+            let tr = document.createElement('tr');
+            tr.innerHTML = `<td>${m.pct.toFixed(2)}%</td><td><strong>${m.l}</strong> <span class="badge">${m.u}</span></td>`;
+            resultsBody.appendChild(tr);
+
+            // B. Chart Element
+            let pos = ((m.pct - start) / range) * 100;
+            // Clamp visual position (2% to 98%) to ensure no label cutoff on left/right edges
+            pos = Math.max(2, Math.min(98, pos));
+
+            let isTop = (i % 2 === 0); // Alternate top/bottom
+            
+            // 1. The Line (Tick)
+            let line = document.createElement('div');
+            line.className = `tick-line ${isTop ? 'tick-top' : 'tick-bottom'}`;
+            line.style.left = `${pos}%`;
+            
+            // 2. The Text Label
+            let label = document.createElement('div');
+            label.className = `measurement-label ${isTop ? 'pos-top' : 'pos-bottom'}`;
+            label.style.left = `${pos}%`;
+            
+            label.innerHTML = `
+                <div class="measure-text">${m.l} ${m.u}</div>
+                <span class="measure-pct">${m.pct.toFixed(1)}%</span>
+                <div class="arrow-box"></div> 
+            `;
+
+            ticksLayer.appendChild(line);
+            ticksLayer.appendChild(label);
+        });
+    }
+</script>
+
+</body>
+</html>
