@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heat Safety Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+            transition: all 0.3s ease-in-out;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 220px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        #stationIdCustom {
+            transition: all 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Personal Weather Station WBGT Monitor</h1>
+            <p class="text-gray-600 mt-2">Live outdoor safety analysis from local Weather Underground stations.</p>
+        </header>
+
+        <div class="card mb-8">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">Configuration</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <div>
+                        <label for="apiCode" class="block text-sm font-medium text-gray-700">What is the password?</label>
+                        <input type="password" id="apiCode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter in the password you were given to unlock the API key.">
+                    </div>
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700">PWS Station ID</label>
+                        <div id="station-group" class="mt-2 space-y-2">
+                            <div class="flex items-center">
+                                <input id="station-default" name="station-option" type="radio" value="KLAOAKRI12" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300" checked>
+                                <label for="station-default" class="ml-3 block text-sm font-medium text-gray-700">KLAOAKRI12 (Default, Alyssa's house)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="station-2" name="station-option" type="radio" value="KLABASTR9" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                <label for="station-2" class="ml-3 block text-sm font-medium text-gray-700">KLABASTR9 (Bastrop, close to Stefani)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="station-3" name="station-option" type="radio" value="KLAMONRO111" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                <label for="station-3" class="ml-3 block text-sm font-medium text-gray-700">KLAMONRO111</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="station-4" name="station-option" type="radio" value="KLAMERRO2" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                <label for="station-4" class="ml-3 block text-sm font-medium text-gray-700">KLAMERRO2 (Closest to Carrina's house)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="station-5" name="station-option" type="radio" value="KLAMERRO6" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                <label for="station-5" class="ml-3 block text-sm font-medium text-gray-700">KLAMERRO6</label>
+                            </div>
+                            <div class="flex items-center flex-wrap">
+                                <input id="station-other" name="station-option" type="radio" value="other" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                <label for="station-other" class="ml-3 block text-sm font-medium text-gray-700">Other:</label>
+                                <input type="text" id="stationIdCustom" class="ml-2 flex-grow min-w-[150px] rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm hidden" placeholder="Enter Station ID">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center justify-center">
+                    <img src="map.png" alt="Map of weather stations" class="rounded-md shadow-md">
+                </div>
+            </div>
+            <div class="mt-4 flex justify-end">
+                 <button id="fetchButton" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    Start Monitoring
+                </button>
+            </div>
+            <div id="status" class="mt-4 text-center text-sm text-gray-500 h-5"></div>
+        </div>
+
+        <div id="dashboard" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 hidden">
+            <div class="lg:col-span-2 xl:col-span-4 card text-center">
+                 <h2 class="text-lg font-medium text-gray-600 flex items-center justify-center">
+                    Estimated WBGT
+                    <div class="tooltip ml-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.055.482.172.58.322.194.295.293.65.293.995 0 .63-.324 1.205-.734 1.634-.44.444-1.036.72-1.733.72-1.148 0-1.802-.633-1.802-1.614 0-.886.516-1.428 1.187-1.428.59 0 .95.244 1.187.452l.211-.755-.211-.083zM8 4.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5z"/>
+                        </svg>
+                        <span class="tooltiptext">Wet Bulb Globe Temperature is an estimate of heat stress in direct sunlight, calculated from temperature, humidity, wind, and solar radiation.</span>
+                    </div>
+                </h2>
+                <div id="wbgt-display" class="my-2">
+                    </div>
+                <p id="solarStationNote" class="text-xs text-gray-500 mt-2 h-3"></p>
+            </div>
+
+            <div id="tempCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Temperature</h3>
+                <p id="tempValue" class="text-4xl font-bold mt-2">--.- °F</p>
+                <p id="tempNote" class="font-bold mt-2 h-5"></p>
+            </div>
+            <div id="humidityCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Humidity</h3>
+                <p id="humidityValue" class="text-4xl font-bold mt-2">-- %</p>
+                <p id="humidityNote" class="font-bold mt-2 h-5"></p>
+            </div>
+            <div id="solarCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Solar Radiation</h3>
+                <p id="solarValue" class="text-4xl font-bold mt-2">--</p>
+                <p id="solarNote" class="font-bold mt-2 h-5"></p>
+            </div>
+            <div id="windCard" class="card text-center transition-colors">
+                <h3 class="text-lg font-medium">Wind Speed</h3>
+                <p id="windValue" class="text-4xl font-bold mt-2">-- mph</p>
+                <p id="windNote" class="font-bold mt-2 h-5"></p>
+            </div>
+            
+            <div class="lg:col-span-2 xl:col-span-4 card">
+                <h2 class="text-xl font-semibold mb-4">Work & Rest Guidelines (per hour)</h2>
+                <div class="overflow-x-auto">
+                    <table id="guidelines-table" class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr id="guidelines-header-row">
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity Level</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rest</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guidelinesTableBody" class="bg-white divide-y divide-gray-200">
+                           <tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">Awaiting data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center mt-8 text-sm text-gray-500">
+            <p>Data provided by Weather Underground. WBGT and guidelines are estimates for informational purposes only.</p>
+            <p>Always listen to your body and take breaks as needed.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Element References
+            const apiCodeInput = document.getElementById('apiCode');
+            const stationOptions = document.querySelectorAll('input[name="station-option"]');
+            const stationIdCustomInput = document.getElementById('stationIdCustom');
+            const fetchButton = document.getElementById('fetchButton');
+            const statusDiv = document.getElementById('status');
+            const dashboardDiv = document.getElementById('dashboard');
+
+            const wbgtDisplayDiv = document.getElementById('wbgt-display');
+            const solarStationNote = document.getElementById('solarStationNote');
+            const guidelinesTableBody = document.getElementById('guidelinesTableBody');
+            const guidelinesHeaderRow = document.getElementById('guidelines-header-row');
+
+            const tempCard = document.getElementById('tempCard');
+            const humidityCard = document.getElementById('humidityCard');
+            const solarCard = document.getElementById('solarCard');
+            const windCard = document.getElementById('windCard');
+            const tempValue = document.getElementById('tempValue');
+            const humidityValue = document.getElementById('humidityValue');
+            const solarValue = document.getElementById('solarValue');
+            const windValue = document.getElementById('windValue');
+            const tempNote = document.getElementById('tempNote');
+            const humidityNote = document.getElementById('humidityNote');
+            const solarNote = document.getElementById('solarNote');
+            const windNote = document.getElementById('windNote');
+
+            let refreshIntervalId = null;
+            let apiKey = '';
+
+            const resetDashboard = () => {
+                dashboardDiv.classList.add('hidden');
+                wbgtDisplayDiv.innerHTML = '';
+                solarStationNote.textContent = '';
+                
+                tempValue.textContent = '--.- °F';
+                humidityValue.textContent = '-- %';
+                solarValue.textContent = '--';
+                windValue.textContent = '-- mph';
+                
+                [tempNote, humidityNote, solarNote, windNote].forEach(n => n.textContent = '');
+                [tempCard, humidityCard, solarCard, windCard].forEach(c => c.className = 'card text-center transition-colors');
+                
+                guidelinesHeaderRow.innerHTML = `
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity Level</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rest</th>`;
+                guidelinesTableBody.innerHTML = `<tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">Awaiting data...</td></tr>`;
+            };
+
+            stationOptions.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    stationIdCustomInput.classList.toggle('hidden', radio.value !== 'other');
+                    if (apiKey) handleFetch();
+                });
+            });
+            
+            const loadCredentials = () => {
+                const savedApiCode = localStorage.getItem('wuApiCode');
+                const savedStationOption = localStorage.getItem('wuStationOption');
+                const savedStationIdCustom = localStorage.getItem('wuStationIdCustom');
+
+                if (savedApiCode && savedStationOption) {
+                    apiCodeInput.value = savedApiCode;
+                    const radioToSelect = document.querySelector(`input[name="station-option"][value="${savedStationOption}"]`);
+                    if (radioToSelect) {
+                        radioToSelect.checked = true;
+                        radioToSelect.dispatchEvent(new Event('change'));
+                        if (savedStationOption === 'other') stationIdCustomInput.value = savedStationIdCustom || '';
+                    }
+                    handleFetch();
+                }
+            };
+            
+            const saveCredentials = (code, stationOption, stationIdCustom) => {
+                localStorage.setItem('wuApiCode', code);
+                localStorage.setItem('wuStationOption', stationOption);
+                if (stationOption === 'other') localStorage.setItem('wuStationIdCustom', stationIdCustom);
+                else localStorage.removeItem('wuStationIdCustom');
+            };
+
+            const getApiKey = () => {
+                const apiCode = apiCodeInput.value.trim();
+                const apiKeyTemplate = "90fe5810c9a8{{CODE}}7{{CODE}}{{CODE}}be5810c9a8a7{{CODE}}{{CODE}}d5";
+                if (!apiCode) {
+                    statusDiv.textContent = 'Invalid API Key Code. Please enter the correct code.';
+                    statusDiv.classList.add('text-red-500');
+                    return null;
+                }
+                return apiKeyTemplate.replace(/{{CODE}}/g, apiCode);
+            };
+
+            const fetchWeatherData = async (stationId) => {
+                const url = `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=e&apiKey=${apiKey}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    if (response.status === 401) throw new Error('Unauthorized API Key');
+                    if (response.status === 400) throw new Error(`Bad Request for Station ID: ${stationId}`);
+                    throw new Error(`HTTP error ${response.status} for ${stationId}`);
+                }
+                const data = await response.json();
+                if (!data.observations || data.observations.length === 0) throw new Error(`No observation data for ${stationId}`);
+                return data.observations[0];
+            };
+
+            const fetchData = async () => {
+                resetDashboard();
+                apiKey = getApiKey();
+                if (!apiKey) return;
+
+                let stationId = document.querySelector('input[name="station-option"]:checked').value;
+                if (stationId === 'other') stationId = stationIdCustomInput.value.trim();
+
+                if (!stationId) {
+                    statusDiv.textContent = 'A Station ID is required.';
+                    statusDiv.classList.add('text-red-500');
+                    return;
+                }
+                
+                statusDiv.textContent = `Fetching data for ${stationId}...`;
+                statusDiv.classList.remove('text-red-500', 'text-green-600');
+                fetchButton.disabled = true;
+                fetchButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+                try {
+                    const primaryObs = await fetchWeatherData(stationId);
+                    saveCredentials(apiCodeInput.value.trim(), document.querySelector('input[name="station-option"]:checked').value, stationId);
+                    processWeatherData(primaryObs);
+                } catch (error) {
+                    console.error('Fetch process error:', error);
+                    statusDiv.textContent = `Error: ${error.message}`;
+                    statusDiv.classList.add('text-red-500');
+                    resetDashboard();
+                    if (refreshIntervalId) clearInterval(refreshIntervalId);
+                } finally {
+                    fetchButton.disabled = false;
+                    fetchButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            };
+            
+            const processWeatherData = (observation) => {
+                const { imperial, humidity, solarRadiation } = observation;
+                const { temp, windSpeed } = imperial;
+
+                if (temp === null || humidity === null || windSpeed === null) {
+                    statusDiv.textContent = 'Incomplete data received from station.';
+                    statusDiv.classList.add('text-red-500');
+                    resetDashboard();
+                    return;
+                }
+
+                dashboardDiv.classList.remove('hidden');
+                statusDiv.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                statusDiv.classList.add('text-green-600');
+                
+                updateMetricCards(temp, humidity, solarRadiation, windSpeed);
+
+                if (solarRadiation === null || solarRadiation < 10) {
+                    solarStationNote.textContent = 'Station lacks solar data. Showing estimates for Shade and Full Sun.';
+                    const wbgtShade = calculateWBGT(temp, humidity, windSpeed, null);
+                    const wbgtSun = calculateWBGT(temp, humidity, windSpeed, 1000);
+                    
+                    const shadeCat = getSafetyCategory(wbgtShade);
+                    const sunCat = getSafetyCategory(wbgtSun);
+
+                    wbgtDisplayDiv.innerHTML = `
+                        <div class="flex justify-around items-start">
+                            <div class="text-center">
+                                <div class="text-sm font-semibold">SHADE</div>
+                                <div class="text-6xl font-black text-gray-900">${wbgtShade.toFixed(1)} °F</div>
+                                <div class="p-2 mt-2 rounded-md font-bold transition-colors ${shadeCat.flag.color}">${shadeCat.flag.text}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm font-semibold">FULL SUN</div>
+                                <div class="text-6xl font-black text-gray-900">${wbgtSun.toFixed(1)} °F</div>
+                                <div class="p-2 mt-2 rounded-md font-bold transition-colors ${sunCat.flag.color}">${sunCat.flag.text}</div>
+                            </div>
+                        </div>`;
+                    updateSafetyInfo(wbgtShade, wbgtSun);
+
+                } else {
+                    solarStationNote.textContent = '';
+                    const wbgtF = calculateWBGT(temp, humidity, windSpeed, solarRadiation);
+                    const category = getSafetyCategory(wbgtF);
+                    wbgtDisplayDiv.innerHTML = `
+                        <p class="text-7xl font-black text-gray-900">${wbgtF.toFixed(1)} °F</p>
+                        <div class="p-2 mt-2 rounded-md font-bold text-white transition-colors ${category.flag.color}">${category.flag.text}</div>`;
+                    updateSafetyInfo(wbgtF);
+                }
+            };
+            
+            const getTempStyles = (tempF) => {
+                if (tempF > 100) return { text: 'Extreme', color: 'bg-red-800 text-white' };
+                if (tempF >= 92) return { text: 'Very Hot', color: 'bg-red-600 text-white' };
+                if (tempF >= 85) return { text: 'Hot', color: 'bg-orange-500 text-white' };
+                if (tempF >= 75) return { text: 'Warm', color: 'bg-yellow-400 text-gray-800' };
+                if (tempF >= 60) return { text: 'Comfortable', color: 'bg-green-400 text-gray-800' };
+                return { text: 'Cool', color: 'bg-blue-300 text-gray-800' };
+            };
+
+            const getHumidityStyles = (rh) => {
+                if (rh > 80) return { text: 'Very Humid', color: 'bg-blue-800 text-white' };
+                if (rh > 60) return { text: 'Humid', color: 'bg-blue-600 text-white' };
+                if (rh > 30) return { text: 'Comfortable', color: 'bg-cyan-400 text-gray-800' };
+                return { text: 'Dry', color: 'bg-cyan-200 text-gray-800' };
+            };
+
+            const getSolarStyles = (solar) => {
+                if (solar === null || solar < 10) return { text: 'N/A', note: '', color: 'bg-gray-300 text-gray-800' };
+                if (solar > 1000) return { text: `${solar.toFixed(0)} W/m²`, note: 'Extreme', color: 'bg-purple-800 text-white' };
+                if (solar > 800) return { text: `${solar.toFixed(0)} W/m²`, note: 'Very High', color: 'bg-red-600 text-white' };
+                if (solar > 500) return { text: `${solar.toFixed(0)} W/m²`, note: 'High', color: 'bg-orange-500 text-white' };
+                if (solar > 200) return { text: `${solar.toFixed(0)} W/m²`, note: 'Moderate', color: 'bg-yellow-400 text-gray-800' };
+                return { text: `${solar.toFixed(0)} W/m²`, note: 'Low', color: 'bg-green-400 text-gray-800' };
+            };
+
+            const getWindStyles = (windMph) => {
+                if (windMph > 25) return { text: 'High Wind', color: 'bg-indigo-700 text-white' };
+                if (windMph > 15) return { text: 'Windy', color: 'bg-indigo-500 text-white' };
+                if (windMph > 5) return { text: 'Breezy', color: 'bg-sky-400 text-gray-800' };
+                return { text: 'Calm', color: 'bg-gray-300 text-gray-800' };
+            };
+
+            const updateMetricCards = (temp, humidity, solarRadiation, windSpeed) => {
+                tempValue.textContent = `${temp.toFixed(1)} °F`;
+                const tempStyle = getTempStyles(temp);
+                tempCard.className = `card text-center transition-colors ${tempStyle.color}`;
+                tempNote.textContent = tempStyle.text;
+                
+                humidityValue.textContent = `${humidity} %`;
+                const humidityStyle = getHumidityStyles(humidity);
+                humidityCard.className = `card text-center transition-colors ${humidityStyle.color}`;
+                humidityNote.textContent = humidityStyle.text;
+
+                const solarStyle = getSolarStyles(solarRadiation);
+                solarValue.textContent = solarStyle.text;
+                solarCard.className = `card text-center transition-colors ${solarStyle.color}`;
+                solarNote.textContent = solarStyle.note;
+
+                windValue.textContent = `${windSpeed.toFixed(0)} mph`;
+                const windStyle = getWindStyles(windSpeed);
+                windCard.className = `card text-center transition-colors ${windStyle.color}`;
+                windNote.textContent = windStyle.text;
+            };
+            
+            const calculateWBGT = (tempF, rh, windMph, solarRadiation) => {
+                const tempC = (tempF - 32) * 5 / 9;
+                const windMs = windMph * 0.44704;
+                const twC = tempC * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) + Math.atan(tempC + rh) - Math.atan(rh - 1.676331) + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) - 4.686035;
+                if (solarRadiation === null) return (0.7 * twC + 0.3 * tempC) * 9 / 5 + 32;
+                const tgC = tempC + (0.0055 * solarRadiation) - (1.1 * Math.sqrt(windMs));
+                return (0.7 * twC + 0.2 * tgC + 0.1 * tempC) * 9 / 5 + 32;
+            };
+            
+            const getSafetyCategory = (wbgtF) => {
+                if (wbgtF < 80) return { level: 0, flag: { text: 'Low Risk', color: 'bg-green-500' }, guidelines: { light: { work: 60, rest: 0 }, moderate: { work: 60, rest: 0 }, heavy: { work: 60, rest: 0 } } };
+                if (wbgtF < 85) return { level: 1, flag: { text: 'Moderate Risk', color: 'bg-yellow-400 text-gray-800' }, guidelines: { light: { work: 50, rest: 10 }, moderate: { work: 40, rest: 20 }, heavy: { work: 30, rest: 30 } } };
+                if (wbgtF < 88) return { level: 2, flag: { text: 'High Risk', color: 'bg-red-500 text-white' }, guidelines: { light: { work: 40, rest: 20 }, moderate: { work: 30, rest: 30 }, heavy: { work: 20, rest: 40 } } };
+                if (wbgtF < 90) return { level: 3, flag: { text: 'Very High Risk', color: 'bg-red-700 text-white' }, guidelines: { light: { work: 30, rest: 30 }, moderate: { work: 20, rest: 40 }, heavy: { work: 10, rest: 50 } } };
+                return { level: 4, flag: { text: 'Extreme Risk / Black Flag', color: 'bg-black text-white' }, guidelines: { light: { work: 20, rest: 40 }, moderate: { work: 10, rest: 50 }, heavy: { work: 0, rest: 60 } } };
+            };
+
+            const updateSafetyInfo = (wbgt1, wbgt2) => {
+                const cat1 = getSafetyCategory(wbgt1);
+                if (wbgt2 === undefined || cat1.level === getSafetyCategory(wbgt2).level) {
+                    guidelinesHeaderRow.innerHTML = `
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity Level</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rest</th>`;
+                    guidelinesTableBody.innerHTML = createGuidelineRows(cat1.guidelines);
+                } else {
+                    const cat2 = getSafetyCategory(wbgt2);
+                    const lowerCat = cat1.level < cat2.level ? cat1 : cat2;
+                    const upperCat = cat1.level < cat2.level ? cat2 : cat1;
+                    guidelinesHeaderRow.innerHTML = `
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity Level</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work (Sun - Shade)</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rest (Sun - Shade)</th>`;
+                    const combinedGuidelines = {
+                        light: { work: [upperCat.guidelines.light.work, lowerCat.guidelines.light.work], rest: [lowerCat.guidelines.light.rest, upperCat.guidelines.light.rest] },
+                        moderate: { work: [upperCat.guidelines.moderate.work, lowerCat.guidelines.moderate.work], rest: [lowerCat.guidelines.moderate.rest, upperCat.guidelines.moderate.rest] },
+                        heavy: { work: [upperCat.guidelines.heavy.work, lowerCat.guidelines.heavy.work], rest: [lowerCat.guidelines.heavy.rest, upperCat.guidelines.heavy.rest] }
+                    };
+                    guidelinesTableBody.innerHTML = createGuidelineRows(combinedGuidelines, true);
+                }
+            };
+
+            const createGuidelineRows = (guidelines, isRange = false) => {
+                return `
+                    ${createGuidelineRow('Light', 'e.g., general maintenance, desk work', guidelines.light, isRange)}
+                    ${createGuidelineRow('Moderate', 'e.g., brisk walking, carrying moderate loads', guidelines.moderate, isRange)}
+                    ${createGuidelineRow('Heavy / Strenuous', 'e.g., intense exercise, heavy lifting', guidelines.heavy, isRange)}
+                `;
+            };
+
+            const createGuidelineRow = (level, example, data, isRange) => {
+                const workText = isRange ? `${data.work[0]} - ${data.work[1]}` : data.work;
+                const restText = isRange ? `${data.rest[0]} - ${data.rest[1]}` : data.rest;
+                 return `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="font-medium text-gray-900">${level}</div>
+                            <div class="text-sm text-gray-500">${example}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-green-600 font-semibold">${workText} min</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-red-600 font-semibold">${restText} min</td>
+                    </tr>
+                `;
+            };
+
+            const handleFetch = () => {
+                if (refreshIntervalId) clearInterval(refreshIntervalId);
+                fetchData();
+                refreshIntervalId = setInterval(fetchData, 60000);
+            };
+
+            fetchButton.addEventListener('click', handleFetch);
+            loadCredentials();
+        });
+    </script>
+</body>
+</html>
+
