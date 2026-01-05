@@ -3,70 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - FarmTrak</title>
+    <title>Dashboard - Farm Manager</title>
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Poppins:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/dashboard.css">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-brand">Farm Manager</div>
-        <div class="nav-user">
-            <span id="farmNameDisplay">Loading Farm...</span>
-            <button id="logoutBtn" class="btn-small">Logout</button>
-        </div>
-    </nav>
+    <div id="global-nav"></div>
 
-    <div class="main-container">
-        <aside class="sidebar">
-            <a href="#" class="nav-link active">Dashboard</a>
-            <a href="#" class="nav-link">Animals</a>
-        </aside>
+    <main class="container">
+        <header class="page-header">
+            <h2>Farm Management</h2>
+        </header>
 
-        <main class="content">
-            <header class="page-header">
-                <h2>Farm Management</h2>
-            </header>
+        <section class="dashboard-card">
+            <div class="card-header">
+                <h3>Farm Profile</h3>
+                <button id="editProfileBtn" class="btn-text">Edit</button>
+            </div>
+            <div class="card-body" id="farmProfileView">
+                <p><strong>Farm Name:</strong> <span id="viewFarmName">Loading...</span></p>
+                <p><strong>Location:</strong> <span id="viewLocation">Loading...</span></p>
+            </div>
 
-            <section class="dashboard-card">
-                <div class="card-header">
-                    <h3>Farm Profile</h3>
-                    <button id="editProfileBtn" class="btn-text">Edit</button>
+            <form id="farmProfileForm" class="hidden">
+                <div class="form-group">
+                    <label>Farm Name</label>
+                    <input type="text" id="inputFarmName">
                 </div>
-                <div class="card-body" id="farmProfileView">
-                    <p><strong>Farm Name:</strong> <span id="viewFarmName">...</span></p>
-                    <p><strong>Location:</strong> <span id="viewLocation">...</span></p>
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" id="inputLocation">
                 </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Save Changes</button>
+                    <button type="button" id="cancelEditBtn" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </section>
 
-                <form id="farmProfileForm" class="hidden">
-                    <div class="form-group">
-                        <label>Farm Name</label>
-                        <input type="text" id="inputFarmName">
-                    </div>
-                    <div class="form-group">
-                        <label>Location</label>
-                        <input type="text" id="inputLocation">
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-primary">Save Changes</button>
-                        <button type="button" id="cancelEditBtn" class="btn-secondary">Cancel</button>
-                    </div>
-                </form>
+        <section class="stats-grid">
+            <div class="stat-card">
+                <h4>Total Animals</h4>
+                <p class="stat-number" id="statTotalAnimals">0</p>
+            </div>
             </section>
+    </main>
 
-            <section class="stats-grid">
-                <div class="stat-card">
-                    <h4>Total Animals</h4>
-                    <p class="stat-number">0</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Tasks Due</h4>
-                    <p class="stat-number">0</p>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <script type="module" src="js/dashboard.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    
+    <script src="js/firebase-config.js"></script>
+    <script src="js/nav.js"></script> <script src="js/dashboard.js"></script>
 </body>
 </html>

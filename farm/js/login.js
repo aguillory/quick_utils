@@ -1,6 +1,4 @@
-import { auth } from './firebase-config.js';
-import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
+// js/login.js
 const loginForm = document.getElementById('loginForm');
 const errorMsg = document.getElementById('errorMessage');
 
@@ -11,11 +9,12 @@ loginForm.addEventListener('submit', async (e) => {
 
     try {
         errorMsg.textContent = "Logging in...";
-        // Firebase Login
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
         
-        // Success: Redirect to Dashboard
-        console.log("Logged in:", userCredential.user.uid);
+        // Use global firebase object instead of import
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+        
+        // Auth state listener in other files will handle redirect, 
+        // but we can force it here for better UX
         window.location.href = "dashboard.html"; 
         
     } catch (error) {

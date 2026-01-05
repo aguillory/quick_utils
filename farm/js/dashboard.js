@@ -1,45 +1,57 @@
-import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// js/dashboard.js
+// No imports needed, we use global 'firebase', 'auth', and 'db' from config
 
 // DOM Elements
-const farmNameDisplay = document.getElementById('farmNameDisplay');
+const farmNameDisplay = document.getElementById('viewFarmName'); // Updated ID to match HTML
 const viewDiv = document.getElementById('farmProfileView');
 const form = document.getElementById('farmProfileForm');
 const editBtn = document.getElementById('editProfileBtn');
 const cancelBtn = document.getElementById('cancelEditBtn');
-const logoutBtn = document.getElementById('logoutBtn');
 
-// 1. Auth Check (Security Gate)
-onAuthStateChanged(auth, async (user) => {
+// 1. Auth Check
+firebase.auth().onAuthStateChanged(async (user) => {
     if (user) {
         console.log("User authorized:", user.uid);
         loadFarmProfile(user.uid);
+        loadStats(user.uid);
     } else {
-        // No user? Go back to login
         window.location.href = "index.html";
     }
 });
 
 // 2. Load Data
 async function loadFarmProfile(userId) {
-    // We assume the Farm ID is the same as the User ID for MVP 
-    // (One farm per user as per Doc A)
-    const farmRef = doc(db, "farms", userId);
-    const docSnap = await getDoc(farmRef);
+    try {
+        // Using Compat syntax: db.collection().doc().get()
+        const docSnap = await db.collection("farms").doc(userId).get();
 
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        // Update UI
-        farmNameDisplay.textContent = data.farmName || "My Farm";
-        document.getElementById('viewFarmName').textContent = data.farmName;
-        document.getElementById('viewLocation').textContent = data.location || "Not set";
-        
-        // Pre-fill form
-        document.getElementById('inputFarmName').value = data.farmName || "";
-        document.getElementById('inputLocation').value = data.location || "";
-    } else {
-        farmNameDisplay.textContent = "New Farm";
+        if (docSnap.exists) {
+            const data = docSnap.data();
+            
+            // Update UI
+            document.getElementById('viewFarmName').textContent = data.farmName || "My Farm";
+            document.getElementById('viewLocation').textContent = data.location || "Not set";
+            
+            // Pre-fill form
+            document.getElementById('inputFarmName').value = data.farmName || "";
+            document.getElementById('inputLocation').value = data.location || "";
+        } else {
+            document.getElementById('viewFarmName').textContent = "New Farm (Please Edit)";
+        }
+    } catch (error) {
+        console.error("Error loading profile:", error);
+    }
+}
+
+async function loadStats(userId) {
+    try {
+        // Example: Get count of animals
+        const snapshot = await db.collection("animals")
+            .where("ownerId", "==", userId)
+            .get();
+        document.getElementById('statTotalAnimals').textContent = snapshot.size;
+    } catch (error) {
+        console.error("Error loading stats:", error);
     }
 }
 
@@ -59,19 +71,20 @@ cancelBtn.addEventListener('click', () => {
 // 4. Save Data
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const user = auth.currentUser;
+    const user = firebase.auth().currentUser;
     if (!user) return;
 
     const newName = document.getElementById('inputFarmName').value;
     const newLocation = document.getElementById('inputLocation').value;
 
     try {
-        await setDoc(doc(db, "farms", user.uid), {
+        await db.collection("farms").doc(user.uid).set({
             farmName: newName,
             location: newLocation,
             ownerId: user.uid,
-            email: user.email
-        }, { merge: true }); // Merge updates, don't overwrite everything
+            email: user.email,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
 
         // Reload UI
         loadFarmProfile(user.uid);
@@ -84,10 +97,4 @@ form.addEventListener('submit', async (e) => {
         alert("Could not save changes.");
     }
 });
-
-// 5. Logout
-logoutBtn.addEventListener('click', () => {
-    signOut(auth).then(() => {
-        window.location.href = "index.html";
-    });
-});
+// Note: Logout is now handled by nav.js
