@@ -3,93 +3,223 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goat Milk Calculator</title>
+    <title>Goat Bottle Feeding Calculator</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 20px auto;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
             padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
         }
-        .unit-section, .bottle-section {
-            margin-bottom: 20px;
+
+        h1 { text-align: center; color: #2c3e50; }
+        h2 { border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-top: 30px; font-size: 1.2rem; color: #555; }
+
+        /* Calculator Styles */
+        .calculator-card {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
         }
-        .input-group {
-            margin: 10px 0;
+
+        .input-group { margin: 15px 0; }
+        label { display: inline-block; width: 120px; font-weight: bold; }
+        input[type="number"], input[type="date"] {
+            width: 120px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
         }
-        label {
-            display: inline-block;
-            width: 150px;
-            margin-right: 10px;
+        
+        /* Make date input slightly wider to fit the text comfortably */
+        input[type="date"] { width: 150px; }
+
+        .results-box {
+            background-color: #e8f4fd;
+            border: 1px solid #b6dbf9;
+            padding: 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+            text-align: center;
         }
-        input[type="number"] {
-            width: 100px;
-            padding: 5px;
-        }
-        .results {
-            background-color: #f0f0f0;
+
+        .results-box h3 { margin: 0 0 5px 0; color: #2c3e50; }
+        .sub-text { font-size: 0.9em; color: #666; font-style: italic; margin-bottom: 10px; }
+        .big-result { font-size: 1.5em; font-weight: bold; color: #0056b3; }
+        .conversion-text { display: block; font-size: 0.6em; color: #555; font-weight: normal; margin-top: 4px; }
+
+        .bottle-selector {
+            margin-top: 20px;
+            text-align: center;
             padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
+            background: #f0f0f0;
+            border-radius: 6px;
         }
-        .radio-group {
-            margin: 10px 0;
+        
+        .radio-group label { width: auto; margin: 0 10px; cursor: pointer; }
+        
+        /* Info Section Styles */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
-        .radio-group label {
-            width: auto;
-            margin-right: 15px;
+
+        .info-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .schedule-table th, .schedule-table td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .schedule-table th { background-color: #f8f9fa; }
+        
+        .age-calculator-box {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #eee;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .info-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-	<h1>Bottle Baby Goat Milk Need Calculator</h1>
-    <div class="unit-section">
-        <div class="radio-group">
-            <label>
-                <input type="radio" name="unit" id="lb" checked> LB
+
+    <h1>Goat Milk Calculator</h1>
+
+    <div class="calculator-card">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <label style="width:auto; margin-right: 15px;">
+                <input type="radio" name="unit" id="lb" checked> Pounds (LB)
             </label>
-            <label>
-                <input type="radio" name="unit" id="kg"> KG
+            <label style="width:auto;">
+                <input type="radio" name="unit" id="kg"> Kilograms (KG)
             </label>
         </div>
 
-        <div id="lb-inputs">
+        <div id="lb-inputs" style="text-align: center;">
             <div class="input-group">
-                <label>Pounds:</label>
-                <input type="number" id="pounds" min="0" step="0.1">
+                <label>Weight (Lbs):</label>
+                <input type="number" id="pounds" min="0" step="1" placeholder="0">
             </div>
             <div class="input-group">
-                <label>Ounces:</label>
-                <input type="number" id="ounces" min="0" step="0.1">
+                <label>Weight (Oz):</label>
+                <input type="number" id="ounces" min="0" step="0.1" placeholder="0">
             </div>
         </div>
 
-        <div id="kg-inputs" style="display: none;">
+        <div id="kg-inputs" style="display: none; text-align: center;">
             <div class="input-group">
-                <label>Kilograms:</label>
-                <input type="number" id="kilograms" min="0" step="0.1">
+                <label>Weight (Kg):</label>
+                <input type="number" id="kilograms" min="0" step="0.1" placeholder="0">
             </div>
+        </div>
+
+        <div class="results-box">
+            <h3>Total Daily Need</h3>
+            <div class="sub-text">(Calculated at 15% - 20% of body weight)</div>
+            <div id="daily-result" class="big-result">0.00 oz - 0.00 oz</div>
+        </div>
+
+        <div class="bottle-selector">
+            <strong>How many bottles per day?</strong><br><br>
+            <div id="bottle-buttons" class="radio-group"></div>
+        </div>
+
+        <div class="results-box" style="background-color: #e9f7ef; border-color: #c3e6cb;">
+            <h3>Amount Per Bottle</h3>
+            <div id="bottle-result" class="big-result">Select bottle count</div>
         </div>
     </div>
 
-    <div class="results">
-        <h3>Daily Milk Need:</h3>
-        <div id="daily-result"></div>
-    </div>
+    <div class="info-grid">
+        <div class="info-card">
+            <h3 style="margin-top:0; color: #d32f2f;">Important Feeding Rules</h3>
+            
+            <div class="warning-box">
+                <strong>Do NOT Overfeed:</strong> Bottle babies always act hungry due to their instinct to suckle. Stick to the calculated amounts.
+            </div>
 
-    <div class="bottle-section">
-        <div class="radio-group">
-            <h3>Bottles per day:</h3>
-            <div id="bottle-buttons"></div>
+            <ul style="padding-left: 20px; line-height: 1.6;">
+                <li><strong>Milk Type:</strong> Feed <u>Whole Cow's Milk</u> or <u>Whole Goat's Milk</u>.</li>
+                <li><strong>Baking Soda:</strong> Add a pinch of baking soda to the first bottle of the day to aid digestion.</li>
+                <li><strong>Temperature:</strong> Warm milk to approx 101°F - 103°F. </li>
+                <li><strong>Assessment:</strong> After feeding the suggested amount, feel the baby's tummy. It should feel firm, not rounded out or sunken in. Adjust feeding amounts accordingly.</li>
+            </ul>
         </div>
-        <div class="results">
-            <h3>Amount per bottle:</h3>
-            <div id="bottle-result"></div>
+
+        <div class="info-card">
+            <h3 style="margin-top:0;">Feeding Schedule</h3>
+            
+            <div class="age-calculator-box">
+                <div style="margin-bottom:5px;"><strong>Calculate Age:</strong></div>
+                <input type="date" id="dob-input">
+                <div id="age-result" style="margin-top: 10px; font-weight: bold; color: #0056b3;">
+                    Enter DOB above
+                </div>
+            </div>
+
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th>Age</th>
+                        <th>Frequency</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>First 24 Hours</strong></td>
+                        <td>Colostrum every 2 hrs</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Week 1</strong></td>
+                        <td>5 - 6 bottles daily</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Weeks 2 - 4</strong></td>
+                        <td>4 bottles daily</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Weeks 4 - 8</strong></td>
+                        <td>3 bottles daily</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Weeks 8 - 10</strong></td>
+                        <td>2 bottles daily</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        // Initialize bottle buttons
+        // --- 1. SETUP BOTTLE BUTTONS ---
         const bottleButtons = document.getElementById('bottle-buttons');
         for (let i = 1; i <= 6; i++) {
             bottleButtons.innerHTML += `
@@ -99,58 +229,134 @@
             `;
         }
 
-        // Unit toggle
+        // --- 2. UNIT SWITCHING LOGIC ---
         document.querySelectorAll('input[name="unit"]').forEach(radio => {
             radio.addEventListener('change', () => {
-                document.getElementById('lb-inputs').style.display = 
-                    radio.id === 'lb' ? 'block' : 'none';
-                document.getElementById('kg-inputs').style.display = 
-                    radio.id === 'kg' ? 'block' : 'none';
-                calculate();
+                const isLB = radio.id === 'lb';
+                document.getElementById('lb-inputs').style.display = isLB ? 'block' : 'none';
+                document.getElementById('kg-inputs').style.display = isLB ? 'none' : 'block';
+                
+                // Clear inputs/results to avoid confusion
+                document.getElementById('pounds').value = '';
+                document.getElementById('ounces').value = '';
+                document.getElementById('kilograms').value = '';
+                document.getElementById('daily-result').innerText = '0.00 - 0.00';
+                document.getElementById('bottle-result').innerText = 'Select bottle count';
             });
         });
 
-        // Input listeners
-        document.querySelectorAll('input[type="number"], input[name="bottles"]').forEach(input => {
-            input.addEventListener('input', calculate);
-        });
+        // --- 3. MILK CALCULATOR LOGIC ---
+        const inputs = document.querySelectorAll('input[type="number"], input[name="bottles"]');
+        inputs.forEach(input => input.addEventListener('input', calculate));
 
         function calculate() {
             const isLB = document.getElementById('lb').checked;
-            let weight = 0;
+            
+            // We will calculate Min/Max logic based on the selected unit
+            // Variables to hold the final display strings
+            let displayDaily = "0.00 - 0.00";
+            let minVal = 0, maxVal = 0;
 
             if (isLB) {
-                const pounds = parseFloat(document.getElementById('pounds').value) || 0;
-                const ounces = parseFloat(document.getElementById('ounces').value) || 0;
-                weight = pounds * 16 + ounces; // Convert to total ounces
+                // --- POUNDS LOGIC (Result in Oz) ---
+                const lbs = parseFloat(document.getElementById('pounds').value) || 0;
+                const ozInput = parseFloat(document.getElementById('ounces').value) || 0;
+                const totalOzWeight = (lbs * 16) + ozInput;
+
+                if (totalOzWeight > 0) {
+                    minVal = totalOzWeight * 0.15;
+                    maxVal = totalOzWeight * 0.20;
+
+                    displayDaily = `${minVal.toFixed(2)} oz - ${maxVal.toFixed(2)} oz`;
+                }
             } else {
+                // --- KILOGRAMS LOGIC (Result in Grams + Oz conversion) ---
                 const kg = parseFloat(document.getElementById('kilograms').value) || 0;
-                weight = kg * 35.274; // Convert kg to ounces for calculation
+                
+                if (kg > 0) {
+                    // Calculate in Grams (1kg = 1000g)
+                    const weightInGrams = kg * 1000;
+                    minVal = weightInGrams * 0.15;
+                    maxVal = weightInGrams * 0.20; // These are in grams
+
+                    // Convert to Oz for the secondary display (1g = 0.035274 oz)
+                    const minOz = minVal * 0.035274;
+                    const maxOz = maxVal * 0.035274;
+
+                    displayDaily = `${minVal.toFixed(0)}g - ${maxVal.toFixed(0)}g <span class="conversion-text">(${minOz.toFixed(1)} oz - ${maxOz.toFixed(1)} oz)</span>`;
+                }
             }
 
-            // Calculate daily needs
-            const dailyMin = weight * 0.15;
-            const dailyMax = weight * 0.20;
-            
-            // Convert back to kg if needed
-            const unit = isLB ? 'oz' : 'kg';
-            const displayMin = isLB ? dailyMin : dailyMin / 35.274;
-            const displayMax = isLB ? dailyMax : dailyMax / 35.274;
+            // Update Daily Result
+            document.getElementById('daily-result').innerHTML = displayDaily;
 
-            document.getElementById('daily-result').innerHTML = 
-                `${displayMin.toFixed(2)}${unit} - ${displayMax.toFixed(2)}${unit}`;
-
-            // Calculate bottle amount
+            // Update Per Bottle Result
             const bottles = document.querySelector('input[name="bottles"]:checked')?.value;
-            if (bottles) {
-                const perBottleMin = displayMin / bottles;
-                const perBottleMax = displayMax / bottles;
-                document.getElementById('bottle-result').innerHTML = 
-                    `${perBottleMin.toFixed(2)}${unit} - ${perBottleMax.toFixed(2)}${unit}`;
+            if (bottles && (minVal > 0)) {
+                const perBottleMin = minVal / bottles;
+                const perBottleMax = maxVal / bottles;
+
+                if (isLB) {
+                    // Simple Oz display
+                    document.getElementById('bottle-result').innerHTML = 
+                        `${perBottleMin.toFixed(2)} oz - ${perBottleMax.toFixed(2)} oz`;
+                } else {
+                    // Grams + Oz display
+                    const perBottleMinOz = perBottleMin * 0.035274;
+                    const perBottleMaxOz = perBottleMax * 0.035274;
+                    
+                    document.getElementById('bottle-result').innerHTML = 
+                        `${perBottleMin.toFixed(0)}g - ${perBottleMax.toFixed(0)}g <span class="conversion-text">(${perBottleMinOz.toFixed(1)} oz - ${perBottleMaxOz.toFixed(1)} oz)</span>`;
+                }
             } else {
-                document.getElementById('bottle-result').innerHTML = 'Select number of bottles';
+                 if(minVal > 0) {
+                     document.getElementById('bottle-result').innerText = "Select bottle count";
+                 } else {
+                     document.getElementById('bottle-result').innerText = "0.00 - 0.00";
+                 }
             }
         }
+
+        // --- 4. AGE CALCULATOR LOGIC ---
+        const dobInput = document.getElementById('dob-input');
+        const ageResult = document.getElementById('age-result');
+
+        dobInput.addEventListener('change', function() {
+            const dob = new Date(this.value);
+            const today = new Date();
+            
+            // Remove time portion for accurate day calculation
+            dob.setHours(0,0,0,0);
+            today.setHours(0,0,0,0);
+
+            if (isNaN(dob.getTime())) {
+                ageResult.innerText = "Invalid Date";
+                return;
+            }
+
+            // Calculate difference in time
+            const diffTime = today - dob;
+            
+            // Logic for future dates
+            if (diffTime < 0) {
+                ageResult.innerText = "Date is in the future!";
+                return;
+            }
+
+            // Convert to days
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Convert to weeks and remaining days
+            const weeks = Math.floor(diffDays / 7);
+            const days = diffDays % 7;
+
+            let text = "";
+            if (weeks > 0) text += `${weeks} Week${weeks > 1 ? 's' : ''}`;
+            if (weeks > 0 && days > 0) text += ", ";
+            if (days > 0 || weeks === 0) text += `${days} Day${days !== 1 ? 's' : ''}`;
+            
+            ageResult.innerText = text;
+        });
     </script>
 </body>
 </html>
