@@ -1,0 +1,216 @@
+.filters-section {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.filter-select,
+.search-input {
+    padding: 0.75rem;
+    border: 1px solid #e0e0e0;
+    border-radius: var(--border-radius);
+    font-family: var(--font-body);
+}
+
+.filter-select {
+    min-width: 150px;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 200px;
+}
+
+.animals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.animal-card {
+    background: white;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.animal-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.animal-photo {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background: var(--bg-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+}
+
+.animal-info {
+    padding: 1rem;
+}
+
+.animal-name {
+    font-family: var(--font-headers);
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
+.animal-details {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+}
+
+.animal-status {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.status-active {
+    background: #d4f4dd;
+    color: var(--success-color);
+}
+
+.status-sold {
+    background: #fff4e5;
+    color: var(--accent-color);
+}
+
+.status-deceased {
+    background: #ffe5e5;
+    color: var(--danger-color);
+}
+
+.status-transferred {
+    background: #e5f3ff;
+    color: #2196F3;
+}
+
+/* Modal Extensions */
+.modal-content.large {
+    max-width: 800px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.form-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.form-section h4 {
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+#animalOwnerType {
+    margin-bottom: 0.5rem;
+}
+
+/* Animal Detail View */
+.animal-detail-modal {
+    padding: 2rem;
+}
+
+.detail-header {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.detail-photo {
+    width: 200px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: var(--border-radius);
+}
+
+.detail-info h3 {
+    font-family: var(--font-headers);
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 0.5rem;
+}
+
+.detail-label {
+    font-weight: 600;
+    color: #666;
+}
+
+.genealogy-tree {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: var(--bg-color);
+    border-radius: var(--border-radius);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #666;
+    font-size: 1.1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filters-section {
+        flex-direction: column;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .animals-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .detail-header {
+        flex-direction: column;
+    }
+}
+
+/* Add to animals.css */
+.animal-photo-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.status-details-small {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.25rem;
+}
+
+/* Hide modal by default */
+.modal {
+    display: none;
+}
+
+.modal.active {
+    display: flex;
+}

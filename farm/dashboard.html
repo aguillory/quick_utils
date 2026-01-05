@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - FarmTrak</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Poppins:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Farm Manager</div>
+        <div class="nav-user">
+            <span id="farmNameDisplay">Loading Farm...</span>
+            <button id="logoutBtn" class="btn-small">Logout</button>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <aside class="sidebar">
+            <a href="#" class="nav-link active">Dashboard</a>
+            <a href="#" class="nav-link">Animals</a>
+        </aside>
+
+        <main class="content">
+            <header class="page-header">
+                <h2>Farm Management</h2>
+            </header>
+
+            <section class="dashboard-card">
+                <div class="card-header">
+                    <h3>Farm Profile</h3>
+                    <button id="editProfileBtn" class="btn-text">Edit</button>
+                </div>
+                <div class="card-body" id="farmProfileView">
+                    <p><strong>Farm Name:</strong> <span id="viewFarmName">...</span></p>
+                    <p><strong>Location:</strong> <span id="viewLocation">...</span></p>
+                </div>
+
+                <form id="farmProfileForm" class="hidden">
+                    <div class="form-group">
+                        <label>Farm Name</label>
+                        <input type="text" id="inputFarmName">
+                    </div>
+                    <div class="form-group">
+                        <label>Location</label>
+                        <input type="text" id="inputLocation">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                        <button type="button" id="cancelEditBtn" class="btn-secondary">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <h4>Total Animals</h4>
+                    <p class="stat-number">0</p>
+                </div>
+                <div class="stat-card">
+                    <h4>Tasks Due</h4>
+                    <p class="stat-number">0</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

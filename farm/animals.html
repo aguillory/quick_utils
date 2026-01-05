@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animals - Farm Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/animals.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1><i class="fas fa-seedling"></i> Farm Manager</h1>
+            <div class="nav-links">
+                <a href="dashboard.html"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="species.html"><i class="fas fa-paw"></i> Species</a>
+                <a href="animals.html" class="active"><i class="fas fa-horse"></i> Animals</a>
+                <button id="logoutBtn" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header">
+            <h2>Animals</h2>
+            <button id="addAnimalBtn" class="btn-primary">
+                <i class="fas fa-plus"></i> Add Animal
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-section">
+            <select id="speciesFilter" class="filter-select">
+                <option value="">All Species</option>
+            </select>
+            <select id="statusFilter" class="filter-select">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="sold">Sold</option>
+                <option value="deceased">Deceased</option>
+                <option value="transferred">Transferred</option>
+            </select>
+            <select id="genderFilter" class="filter-select">
+                <option value="">All Genders</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="unknown">Unknown</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Search animals..." class="search-input">
+        </div>
+
+        <div id="animalsList" class="animals-grid">
+            <!-- Animal cards will be dynamically added here -->
+        </div>
+    </main>
+<!-- Add/Edit Animal Modal -->
+<div id="animalModal" class="modal">
+    <div class="modal-content large">
+        <div class="modal-header">
+            <h3 id="modalTitle">Add Animal</h3>
+            <button class="modal-close">&times;</button>
+        </div>
+        <form id="animalForm">
+            <input type="hidden" id="animalId">
+            <input type="hidden" id="animalPhotoData">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="animalSpecies">Species *</label>
+                    <select id="animalSpecies" required>
+                        <option value="">Select Species</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="animalName">Name *</label>
+                    <input type="text" id="animalName" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="animalGender">Gender</label>
+                    <select id="animalGender">
+                        <option value="unknown">Unknown</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="animalStatus">Status</label>
+                    <select id="animalStatus">
+                        <option value="active">Active</option>
+                        <option value="sold">Sold</option>
+                        <option value="deceased">Deceased</option>
+                        <option value="transferred">Transferred</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="animalOwner">Owner</label>
+                <select id="animalOwnerType">
+                    <option value="farm">Farm Owner</option>
+                    <option value="custom">Other</option>
+                </select>
+                <select id="animalOwnerFarm">
+                    <!-- Farm owners will be loaded here -->
+                </select>
+                <input type="text" id="animalOwnerCustom" placeholder="Enter owner name" style="display:none;">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="animalBirthDate">Birth Date</label>
+                    <input type="date" id="animalBirthDate">
+                </div>
+                
+                <div class="form-group">
+                    <label for="animalPhotoFile">Photo</label>
+                    <input type="file" id="animalPhotoFile" accept="image/*">
+                    <div id="animalPhotoPreview" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+
+            <!-- Status Details (shown based on status) -->
+            <div id="statusDetails" style="display:none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="statusDate">Date</label>
+                        <input type="date" id="statusDate">
+                    </div>
+                    <div class="form-group">
+                        <label id="statusDetailsLabel" for="statusDetailsText">Details</label>
+                        <input type="text" id="statusDetailsText">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Genealogy -->
+            <div class="form-section">
+                <h4>Genealogy (Optional)</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="animalSire">Sire (Father)</label>
+                        <select id="animalSire">
+                            <option value="">Unknown</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="animalDam">Dam (Mother)</label>
+                        <select id="animalDam">
+                            <option value="">Unknown</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Fields Container -->
+            <div id="customFieldsContainer" class="form-section">
+                <!-- Custom fields will be dynamically added based on species -->
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel">Cancel</button>
+                <button type="submit" class="btn-primary">Save Animal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/shared.js"></script>
+    <script src="js/animals.js"></script>
+</body>
+</html>
