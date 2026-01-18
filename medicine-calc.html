@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Livestock Medicine Calculator</title>
+    <style>
+        :root {
+            --primary: #2d5a27;
+            --primary-light: #4a7c43;
+            --secondary: #8b4513;
+            --background: #f5f5dc;
+            --card-bg: #ffffff;
+            --text: #333333;
+            --text-light: #666666;
+            --border: #ddd;
+            --warning: #d4a017;
+            --danger: #c41e3a;
+            --success: #228b22;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--text-light);
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary-light);
+            font-size: 1.3em;
+        }
+
+        .card h3 {
+            color: var(--secondary);
+            margin: 15px 0 10px 0;
+            font-size: 1.1em;
+        }
+
+        /* Animal Selection */
+        .animal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .animal-btn {
+            padding: 15px 10px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            background: var(--card-bg);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .animal-btn:hover {
+            border-color: var(--primary-light);
+            background: #f0f7f0;
+        }
+
+        .animal-btn.selected {
+            border-color: var(--primary);
+            background: #e8f5e8;
+        }
+
+        .animal-btn .icon {
+            font-size: 2em;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .animal-btn .name {
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        select, input[type="text"], input[type="number"], input[type="password"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.2s;
+        }
+
+        select:focus, input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .input-row .form-group {
+            flex: 1;
+        }
+
+        .unit-toggle {
+            display: flex;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .unit-toggle button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: var(--card-bg);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .unit-toggle button.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .unit-toggle button:hover:not(.active) {
+            background: #f0f0f0;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+        }
+
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #a0522d;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Results */
+        .results-box {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f7f0 100%);
+            border: 2px solid var(--primary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .result-main {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: var(--primary);
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .result-detail {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .result-detail strong {
+            color: var(--secondary);
+        }
+
+        .result-label {
+            font-size: 0.9em;
+            color: var(--text-light);
+            text-align: center;
+        }
+
+        .warning-box {
+            background: #fff8e1;
+            border-left: 4px solid var(--warning);
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning-box .title {
+            font-weight: bold;
+            color: var(--warning);
+            margin-bottom: 5px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-light);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Medicine Info Display */
+        .medicine-info {
+            display: grid;
+            gap: 10px;
+        }
+
+        .info-item {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-item .label {
+            font-weight: 500;
+            color: var(--secondary);
+            min-width: 140px;
+        }
+
+        .info-item .value {
+            flex: 1;
+        }
+
+        /* Condition Cards */
+        .condition-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .condition-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .condition-card.selected {
+            border-color: var(--primary);
+            background: #f0f7f0;
+        }
+
+        .condition-card .condition-name {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        .condition-card .condition-details {
+            font-size: 0.9em;
+            color: var(--text-light);
+        }
+
+        /* Slider */
+        .slider-container {
+            margin: 20px 0;
+        }
+
+        .slider-container input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--border);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 0.9em;
+            color: var(--text-light);
+        }
+
+        .slider-value {
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--primary);
+            margin: 10px 0;
+        }
+
+        /* Tools Grid */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .tool-card {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tool-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .tool-card .tool-icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .tool-card .tool-name {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .tool-card .tool-desc {
+            font-size: 0.85em;
+            color: var(--text-light);
+            margin-top: 5px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: 12px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 25px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: var(--primary);
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: var(--text-light);
+        }
+
+        .modal-close:hover {
+            color: var(--danger);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .animal-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .input-row {
+                flex-direction: column;
+            }
+
+            .tabs {
+                overflow-x: auto;
+            }
+
+            .tab {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+
+            .result-main {
+                font-size: 2em;
+            }
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-light);
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Injection Site Info */
+        .injection-sites {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .injection-badge {
+            background: #e8f5e8;
+            color: var(--primary);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .card {
+                box-shadow: none;
+                border: 1px solid #ddd;
+            }
+
+            .tabs, .tools-grid, .btn {
+                display: none;
+            }
+
+            .tab-content {
+                display: block !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🐄 Livestock Medicine Calculator</h1>
+    <p class="subtitle">Quick dosage calculations for farm medications</p>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="calculator">💊 Calculator</button>
+        <button class="tab" data-tab="tools">🔧 Tools</button>
+        <button class="tab" data-tab="add-medicine">➕ Add Medicine</button>
+        <button class="tab" data-tab="database">📋 Database</button>
+    </div>
+
+    <!-- Calculator Tab -->
+    <div id="calculator" class="tab-content active">
+        <div class="card">
+            <h2>1. Select Animal</h2>
+            <div class="animal-grid" id="animalGrid">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <div class="card" id="medicineSection">
+            <h2>2. Select Medicine</h2>
+            <div class="form-group">
+                <select id="medicineSelect">
+                    <option value="">-- Select a medicine --</option>
+                </select>
+            </div>
+            <div id="medicineInfo" class="hidden">
+                <!-- Populated when medicine selected -->
+            </div>
+        </div>
+
+        <div class="card hidden" id="conditionSection">
+            <h2>3. Select Condition</h2>
+            <div id="conditionList">
+                <!-- Populated when medicine selected -->
+            </div>
+        </div>
+
+        <div class="card hidden" id="weightSection">
+            <h2>4. Enter Weight</h2>
+            <div class="input-row">
+                <div class="form-group">
+                    <label for="weightInput">Animal Weight</label>
+                    <input type="number" id="weightInput" placeholder="Enter weight" min="0" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Unit</label>
+                    <div class="unit-toggle">
+                        <button class="active" data-unit="lb">lb</button>
+                        <button data-unit="kg">kg</button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-block" id="calculateBtn" style="margin-top: 15px;">
+                Calculate Dosage
+            </button>
+        </div>
+
+        <div class="card hidden" id="resultsSection">
+            <h2>📊 Dosage Results</h2>
+            <div class="results-box" id="resultsBox">
+                <!-- Populated by calculation -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Tools Tab -->
+    <div id="tools" class="tab-content">
+        <div class="card">
+            <h2>Helpful Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-card" onclick="openModal('percentCalc')">
+                    <div class="tool-icon">💉</div>
+                    <div class="tool-name">% Solution Calculator</div>
+                    <div class="tool-desc">Convert % solutions to mg/ml and calculate volumes</div>
+                </div>
+                <div class="tool-card" onclick="openModal('pillSuspension')">
+                    <div class="tool-icon">💊</div>
+                    <div class="tool-name">Pill to Suspension</div>
+                    <div class="tool-desc">Create liquid suspensions from pills</div>
+                </div>
+                <div class="tool-card" onclick="window.open('https://www.drugs.com/imprints.php', '_blank')">
+                    <div class="tool-icon">🔍</div>
+                    <div class="tool-name">Pill Identifier</div>
+                    <div class="tool-desc">Look up pills by imprint code</div>
+                </div>
+                <div class="tool-card" onclick="openModal('unitConverter')">
+                    <div class="tool-icon">⚖️</div>
+                    <div class="tool-name">Unit Converter</div>
+                    <div class="tool-desc">Convert between mg, mcg, ml, etc.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Medicine Tab -->
+    <div id="add-medicine" class="tab-content">
+        <div class="card">
+            <h2>Add Custom Medicine</h2>
+            
+            <div class="form-group">
+                <label for="newMedName">Medicine Name *</label>
+                <input type="text" id="newMedName" placeholder="e.g., Penicillin G">
+            </div>
+
+            <div class="form-group">
+                <label for="newMedType">Type</label>
+                <select id="newMedType">
+                    <option value="injectable">Injectable</option>
+                    <option value="oral-liquid">Oral Liquid</option>
+                    <option value="oral-pill">Oral Pill</option>
+                    <option value="topical">Topical</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="newMedUsage">Usage/Category</label>
+                <input type="text" id="newMedUsage" placeholder="e.g., Antibiotic, Antiparasitic">
+            </div>
+
+            <div class="input-row">
+                <div class="form-group">
+                    <label for="newMedConc">Concentration</label>
+                    <input type="number" id="newMedConc" placeholder="e.g., 200" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="newMedConcUnit">Unit</label>
+                    <select id="newMedConcUnit">
+                        <option value="mg/ml">mg/ml</option>
+                        <option value="mcg/ml">mcg/ml</option>
+                        <option value="mg/tablet">mg/tablet</option>
+                        <option value="%">% solution</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="newMedStorage">Storage Instructions</label>
+                <input type="text" id="newMedStorage" placeholder="e.g., Refrigerate, protect from light">
+            </div>
+
+            <div class="form-group">
+                <label for="newMedNotes">General Notes</label>
+                <textarea id="newMedNotes" placeholder="Any important notes about this medicine"></textarea>
+            </div>
+
+            <h3>Dosing Information</h3>
+            <p style="color: var(--text-light); font-size: 0.9em; margin-bottom: 15px;">
+                Add dosing for specific animals and conditions
+            </p>
+
+            <div id="dosingEntries">
+                <div class="dosing-entry card" style="background: #f9f9f9;">
+                    <div class="input-row">
+                        <div class="form-group">
+                            <label>Animal</label>
+                            <select class="dosingAnimal">
+                                <option value="cattle">Cattle</option>
+                                <option value="swine">Swine</option>
+                                <option value="goat">Goat</option>
+                                <option value="sheep">Sheep</option>
+                                <option value="horse">Horse</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Condition</label>
+                            <input type="text" class="dosingCondition" placeholder="e.g., Respiratory infection">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="form-group">
+                            <label>Dosage</label>
+                            <input type="number" class="dosingValue" placeholder="Amount" step="any">
+                        </div>
+                        <div class="form-group">
+                            <label>Unit</label>
+                            <select class="dosingUnit">
+                                <option value="mg/lb">mg per lb</option>
+                                <option value="mg/kg">mg per kg</option>
+                                <option value="mcg/lb">mcg per lb</option>
+                                <option value="mcg/kg">mcg per kg</option>
+                                <option value="ml/lb">ml per lb</option>
+                                <option value="ml/kg">ml per kg</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="form-group">
+                            <label>Route</label>
+                            <select class="dosingRoute">
+                                <option value="SubQ">SubQ (Subcutaneous)</option>
+                                <option value="IM">IM (Intramuscular)</option>
+                                <option value="IV">IV (Intravenous)</option>
+                                <option value="Oral">Oral</option>
+                                <option value="Topical">Topical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Location</label>
+                            <input type="text" class="dosingLocation" placeholder="e.g., Neck">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <input type="text" class="dosingFrequency" placeholder="e.g., Single dose, Daily for 3 days">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <input type="text" class="dosingNotes" placeholder="Any specific notes for this dosing">
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-outline btn-small" onclick="addDosingEntry()" style="margin: 10px 0;">
+                + Add Another Dosing
+            </button>
+
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border);">
+
+            <h3>Save to Database</h3>
+            <div class="form-group">
+                <label for="githubPassword">Update Password</label>
+                <input type="password" id="githubPassword" placeholder="Enter password to save to database">
+            </div>
+
+            <div class="input-row">
+                <button class="btn btn-primary" onclick="saveNewMedicine(true)">
+                    💾 Save to GitHub
+                </button>
+                <button class="btn btn-secondary" onclick="saveNewMedicine(false)">
+                    📋 Save Locally Only
+                </button>
+            </div>
+
+            <div id="saveStatus"></div>
+        </div>
+    </div>
+
+    <!-- Database Tab -->
+    <div id="database" class="tab-content">
+        <div class="card">
+            <h2>Medicine Database</h2>
+            <p style="color: var(--text-light); margin-bottom: 15px;">
+                All medicines currently in the system
+            </p>
+            <div id="databaseList">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="percentCalcModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>% Solution Calculator</h2>
+                <button class="modal-close" onclick="closeModal('percentCalc')">&times;</button>
+            </div>
+            
+            <div class="info-box">
+                <strong>How it works:</strong> A 1% solution means 1g (1000mg) per 100ml, or 10mg/ml.
+            </div>
+
+            <div class="form-group">
+                <label for="percentInput">Solution Percentage (%)</label>
+                <input type="number" id="percentInput" placeholder="e.g., 1" step="any" oninput="calcPercent()">
+            </div>
+
+            <div class="results-box" id="percentResults">
+                <div class="result-label">Concentration</div>
+                <div class="result-main" id="percentConc">-- mg/ml</div>
+            </div>
+
+            <hr style="margin: 20px 0;">
+
+            <h3>Volume Calculator</h3>
+            <div class="input-row">
+                <div class="form-group">
+                    <label for="needMg">I need this much:</label>
+                    <input type="number" id="needMg" placeholder="Amount" step="any" oninput="calcVolume()">
+                </div>
+                <div class="form-group">
+                    <label for="needUnit">Unit</label>
+                    <select id="needUnit" onchange="calcVolume()">
+                        <option value="mg">mg</option>
+                        <option value="mcg">mcg</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="results-box">
+                <div class="result-label">Volume needed</div>
+                <div class="result-main" id="volumeResult">-- ml</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="pillSuspensionModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Pill to Suspension Calculator</h2>
+                <button class="modal-close" onclick="closeModal('pillSuspension')">&times;</button>
+            </div>
+
+            <div class="form-group">
+                <label for="pillStrength">Pill Strength (mg)</label>
+                <input type="number" id="pillStrength" placeholder="e.g., 100" step="any" oninput="calcSuspension()">
+            </div>
+
+            <div class="form-group">
+                <label for="targetDose">Target Dose (mg)</label>
+                <input type="number" id="targetDose" placeholder="e.g., 10" step="any" oninput="calcSuspension()">
+            </div>
+
+            <div class="input-row">
+                <div class="form-group">
+                    <label for="liquidMin">Min Liquid (ml)</label>
+                    <input type="number" id="liquidMin" value="0.5" step="0.1" oninput="updateSliderRange()">
+                </div>
+                <div class="form-group">
+                    <label for="liquidMax">Max Liquid (ml)</label>
+                    <input type="number" id="liquidMax" value="10" step="0.1" oninput="updateSliderRange()">
+                </div>
+            </div>
+
+            <div class="slider-container">
+                <label>Amount of liquid to add:</label>
+                <div class="slider-value" id="liquidValue">5 ml</div>
+                <input type="range" id="liquidSlider" min="0.5" max="10" step="0.1" value="5" oninput="calcSuspension()">
+                <div class="slider-labels">
+                    <span id="sliderMinLabel">0.5 ml</span>
+                    <span id="sliderMaxLabel">10 ml</span>
+                </div>
+            </div>
+
+            <div class="results-box">
+                <div class="result-label">Resulting concentration</div>
+                <div class="result-main" id="suspConc">-- mg/ml</div>
+                <div class="result-detail">
+                    <strong>To give <span id="targetDoseDisplay">--</span> mg:</strong> 
+                    Give <span id="doseVolume" style="color: var(--primary); font-weight: bold;">--</span> ml of suspension
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="unitConverterModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Unit Converter</h2>
+                <button class="modal-close" onclick="closeModal('unitConverter')">&times;</button>
+            </div>
+
+            <div class="input-row">
+                <div class="form-group">
+                    <label for="convertValue">Value</label>
+                    <input type="number" id="convertValue" placeholder="Enter value" step="any" oninput="convertUnits()">
+                </div>
+                <div class="form-group">
+                    <label for="convertFrom">From</label>
+                    <select id="convertFrom" onchange="convertUnits()">
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                        <option value="mg">mg</option>
+                        <option value="mcg">mcg</option>
+                        <option value="g">g</option>
+                        <option value="ml">ml</option>
+                        <option value="l">L</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="results-box" id="conversionResults">
+                <div id="conversionOutput" style="text-align: center; padding: 10px;">
+                    Enter a value to convert
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            DB_FILE: 'med-db.json',
+            GITHUB_REPO: 'YOUR_USERNAME/YOUR_REPO', // Update this!
+            // Masked API key - # symbols will be replaced by password characters
+            // Map format: password_position -> key_position (1-indexed)
+            MASKED_KEY: '#1bcde23#5fg#i67j8klmn9##10qr11121314st#vwx15161718#z1920',
+            KEY_MAP: {
+                1: 2,   // password[0] -> key[1] (a -> position 2)
+                2: 1,   // password[1] -> key[0] (1 -> position 1)  
+                3: 8,   // password[2] -> key[7]
+                4: 12,  // password[3] -> key[11]
+                5: 24,  // password[4] -> key[23]
+                6: 25,  // password[5] -> key[24]
+                7: 35,  // password[6] -> key[34]
+                8: 45,  // password[7] -> key[44]
+                9: 55   // password[8] -> key[54]
+            }
+        };
+
+        // State
+        let database = { animals: [], medicines: [], customMedicines: [] };
+        let selectedAnimal = null;
+        let selectedMedicine = null;
+        let selectedCondition = null;
+        let weightUnit = 'lb';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadDatabase();
+            setupEventListeners();
+            renderAnimals();
+            renderMedicineSelect();
+            renderDatabaseList();
+        });
+
+        // Load database
+        async function loadDatabase() {
+            try {
+                const response = await fetch(CONFIG.DB_FILE);
+                if (response.ok) {
+                    database = await response.json();
+                    // Merge custom medicines into main list
+                    if (database.customMedicines) {
+                        database.medicines = [...database.medicines, ...database.customMedicines];
+                    }
+                }
+            } catch (e) {
+                console.log('Using default database');
+            }
+            
+            // Also load from localStorage
+            const localMeds = localStorage.getItem('customMedicines');
+            if (localMeds) {
+                const parsed = JSON.parse(localMeds);
+                database.medicines = [...database.medicines, ...parsed];
+            }
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(tab.dataset.tab).classList.add('active');
+                });
+            });
+
+            // Unit toggle
+            document.querySelectorAll('.unit-toggle button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.unit-toggle button').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    weightUnit = btn.dataset.unit;
+                });
+            });
+
+            // Medicine select
+            document.getElementById('medicineSelect').addEventListener('change', (e) => {
+                selectMedicine(e.target.value);
+            });
+
+            // Calculate button
+            document.getElementById('calculateBtn').addEventListener('click', calculateDosage);
+
+            // Weight input enter key
+            document.getElementById('weightInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') calculateDosage();
+            });
+        }
+
+        // Render animals
+        function renderAnimals() {
+            const grid = document.getElementById('animalGrid');
+            grid.innerHTML = database.animals.map(animal => `
+                <div class="animal-btn" data-id="${animal.id}" onclick="selectAnimal('${animal.id}')">
+                    <span class="icon">${animal.icon}</span>
+                    <span class="name">${animal.name}</span>
+                </div>
+            `).join('');
+        }
+
+        // Select animal
+        function selectAnimal(id) {
+            selectedAnimal = id;
+            selectedMedicine = null;
+            selectedCondition = null;
+            
+            document.querySelectorAll('.animal-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.id === id);
+            });
+            
+            renderMedicineSelect();
+            document.getElementById('conditionSection').classList.add('hidden');
+            document.getElementById('weightSection').classList.add('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+        }
+
+        // Render medicine select
+        function renderMedicineSelect() {
+            const select = document.getElementById('medicineSelect');
+            const relevantMeds = database.medicines.filter(med => 
+                !selectedAnimal || (med.animals && med.animals[selectedAnimal])
+            );
+            
+            select.innerHTML = `
+                <option value="">-- Select a medicine --</option>
+                ${relevantMeds.map(med => `
+                    <option value="${med.id}">${med.name}</option>
+                `).join('')}
+                <option value="other">➕ Other (Manual Entry)</option>
+            `;
+        }
+
+        // Select medicine
+        function selectMedicine(id) {
+            if (id === 'other') {
+                document.querySelector('[data-tab="add-medicine"]').click();
+                return;
+            }
+            
+            if (!id) {
+                document.getElementById('medicineInfo').classList.add('hidden');
+                document.getElementById('conditionSection').classList.add('hidden');
+                document.getElementById('weightSection').classList.add('hidden');
+                return;
+            }
+            
+            selectedMedicine = database.medicines.find(m => m.id === id);
+            selectedCondition = null;
+            
+            renderMedicineInfo();
+            renderConditions();
+            
+            document.getElementById('medicineInfo').classList.remove('hidden');
+            document.getElementById('weightSection').classList.add('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+        }
+
+        // Render medicine info
+        function renderMedicineInfo() {
+            const med = selectedMedicine;
+            const infoDiv = document.getElementById('medicineInfo');
+            
+            let withdrawalInfo = '';
+            if (med.withdrawal) {
+                withdrawalInfo = Object.entries(med.withdrawal)
+                    .map(([animal, time]) => `<strong>${animal}:</strong> ${time}`)
+                    .join('<br>');
+            }
+            
+            infoDiv.innerHTML = `
+                <div class="medicine-info">
+                    <div class="info-item">
+                        <span class="label">Type:</span>
+                        <span class="value">${med.type || 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Usage:</span>
+                        <span class="value">${med.usage || 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Concentration:</span>
+                        <span class="value">${med.concentration ? `${med.concentration.value} ${med.concentration.unit}/${med.concentration.per}` : 'N/A'}${med.percentSolution ? ` (${med.percentSolution}% solution)` : ''}</span>
+                    </div>
+                    ${med.storage ? `
+                    <div class="info-item">
+                        <span class="label">Storage:</span>
+                        <span class="value">${med.storage}</span>
+                    </div>` : ''}
+                    ${withdrawalInfo ? `
+                    <div class="info-item">
+                        <span class="label">Withdrawal:</span>
+                        <span class="value">${withdrawalInfo}</span>
+                    </div>` : ''}
+                    ${med.notes ? `
+                    <div class="info-item">
+                        <span class="label">Notes:</span>
+                        <span class="value">${med.notes}</span>
+                    </div>` : ''}
+                </div>
+            `;
+        }
+
+        // Render conditions
+        function renderConditions() {
+            const med = selectedMedicine;
+            const condSection = document.getElementById('conditionSection');
+            const condList = document.getElementById('conditionList');
+            
+            if (!selectedAnimal || !med.animals || !med.animals[selectedAnimal]) {
+                condSection.classList.add('hidden');
+                return;
+            }
+            
+            const conditions = med.animals[selectedAnimal].conditions;
+            
+            condList.innerHTML = conditions.map((cond, idx) => `
+                <div class="condition-card" data-idx="${idx}" onclick="selectCondition(${idx})">
+                    <div class="condition-name">${cond.name}</div>
+                    <div class="condition-details">
+                        ${cond.dosage.value}${cond.dosage.valueMax ? '-' + cond.dosage.valueMax : ''} ${cond.dosage.unit}/${cond.dosage.per} • 
+                        ${cond.route} • ${cond.frequency}
+                    </div>
+                </div>
+            `).join('');
+            
+            condSection.classList.remove('hidden');
+        }
+
+        // Select condition
+        function selectCondition(idx) {
+            const conditions = selectedMedicine.animals[selectedAnimal].conditions;
+            selectedCondition = conditions[idx];
+            
+            document.querySelectorAll('.condition-card').forEach((card, i) => {
+                card.classList.toggle('selected', i === idx);
+            });
+            
+            document.getElementById('weightSection').classList.remove('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+            
+            // Focus weight input
+            document.getElementById('weightInput').focus();
+        }
+
+        // Calculate dosage
+        function calculateDosage() {
+            const weightInput = document.getElementById('weightInput').value;
+            if (!weightInput || !selectedCondition || !selectedMedicine) {
+                alert('Please complete all selections');
+                return;
+            }
+            
+            let weight = parseFloat(weightInput);
+            const dosage = selectedCondition.dosage;
+            const conc = selectedMedicine.concentration;
+            
+            // Convert weight to match dosage unit
+            let weightInDosageUnit = weight;
+            if (weightUnit === 'lb' && dosage.per === 'kg') {
+                weightInDosageUnit = weight * 0.453592;
+            } else if (weightUnit === 'kg' && dosage.per === 'lb') {
+                weightInDosageUnit = weight * 2.20462;
+            }
+            
+            // Calculate medicine amount needed
+            let medicineNeeded = dosage.value * weightInDosageUnit;
+            let medicineNeededMax = dosage.valueMax ? dosage.valueMax * weightInDosageUnit : null;
+            
+            // Convert to ml based on concentration
+            let mlNeeded, mlNeededMax;
+            if (conc) {
+                // Handle unit conversions
+                let concValue = conc.value;
+                let medUnit = dosage.unit;
+                
+                // Convert mcg to mg if needed
+                if (medUnit === 'mcg' && conc.unit === 'mg') {
+                    medicineNeeded = medicineNeeded / 1000;
+                    if (medicineNeededMax) medicineNeededMax = medicineNeededMax / 1000;
+                    medUnit = 'mg';
+                } else if (medUnit === 'mg' && conc.unit === 'mcg') {
+                    medicineNeeded = medicineNeeded * 1000;
+                    if (medicineNeededMax) medicineNeededMax = medicineNeededMax * 1000;
+                    medUnit = 'mcg';
+                }
+                
+                mlNeeded = medicineNeeded / concValue;
+                mlNeededMax = medicineNeededMax ? medicineNeededMax / concValue : null;
+            }
+            
+            // Display results
+            displayResults({
+                weight: weight,
+                weightUnit: weightUnit,
+                medicineNeeded: medicineNeeded,
+                medicineNeededMax: medicineNeededMax,
+                medicineUnit: dosage.unit,
+                mlNeeded: mlNeeded,
+                mlNeededMax: mlNeededMax,
+                condition: selectedCondition,
+                medicine: selectedMedicine
+            });
+        }
+
+        // Display results
+        function displayResults(data) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsBox = document.getElementById('resultsBox');
+            
+            let mainResult = '';
+            if (data.mlNeeded !== undefined) {
+                if (data.mlNeededMax) {
+                    mainResult = `${data.mlNeeded.toFixed(2)} - ${data.mlNeededMax.toFixed(2)} ml`;
+                } else {
+                    mainResult = `${data.mlNeeded.toFixed(2)} ml`;
+                }
+            } else {
+                if (data.medicineNeededMax) {
+                    mainResult = `${data.medicineNeeded.toFixed(2)} - ${data.medicineNeededMax.toFixed(2)} ${data.medicineUnit}`;
+                } else {
+                    mainResult = `${data.medicineNeeded.toFixed(2)} ${data.medicineUnit}`;
+                }
+            }
+            
+            const cond = data.condition;
+            const med = data.medicine;
+            
+            let injectionSites = '';
+            if (cond.maxPerSite && data.mlNeeded > cond.maxPerSite.value) {
+                const numSites = Math.ceil(data.mlNeeded / cond.maxPerSite.value);
+                const perSite = data.mlNeeded / numSites;
+                injectionSites = `
+                    <div class="warning-box">
+                        <div class="title">⚠️ Multiple Injection Sites Required</div>
+                        Volume exceeds ${cond.maxPerSite.value}ml max per site. 
+                        Use ${numSites} injection sites at approximately ${perSite.toFixed(2)}ml each.
+                    </div>
+                `;
+            }
+            
+            resultsBox.innerHTML = `
+                <div class="result-label">Give this animal:</div>
+                <div class="result-main">${mainResult}</div>
+                <div class="result-label">of ${med.name}</div>
+                
+                <div class="result-detail">
+                    <strong>For:</strong> ${cond.name}
+                </div>
+                
+                <div class="result-detail">
+                    <strong>Route:</strong> ${cond.route}
+                    ${cond.location ? `<br><strong>Location:</strong> ${cond.location}` : ''}
+                </div>
+                
+                <div class="result-detail">
+                    <strong>Frequency:</strong> ${cond.frequency}
+                    ${cond.duration ? `<br><strong>Duration:</strong> ${cond.duration}` : ''}
+                </div>
+                
+                ${injectionSites}
+                
+                ${cond.notes ? `
+                <div class="info-box">
+                    <strong>Note:</strong> ${cond.notes}
+                </div>` : ''}
+                
+                <div class="result-detail" style="font-size: 0.85em; color: var(--text-light);">
+                    <strong>Calculation:</strong> ${data.weight} ${data.weightUnit} × ${cond.dosage.value}${cond.dosage.valueMax ? '-' + cond.dosage.valueMax : ''} ${cond.dosage.unit}/${cond.dosage.per}
+                    ${med.concentration ? `÷ ${med.concentration.value} ${med.concentration.unit}/${med.concentration.per}` : ''}
+                </div>
+            `;
+            
+            resultsSection.classList.remove('hidden');
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Database list
+        function renderDatabaseList() {
+            const list = document.getElementById('databaseList');
+            
+            list.innerHTML = database.medicines.map(med => `
+                <div class="card" style="margin: 10px 0; background: #f9f9f9;">
+                    <h3 style="margin: 0 0 10px 0;">${med.name}</h3>
+                    <div class="medicine-info">
+                        <div class="info-item">
+                            <span class="label">Type:</span>
+                            <span class="value">${med.type || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Usage:</span>
+                            <span class="value">${med.usage || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Concentration:</span>
+                            <span class="value">${med.concentration ? `${med.concentration.value} ${med.concentration.unit}/${med.concentration.per}` : 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Animals:</span>
+                            <span class="value">${med.animals ? Object.keys(med.animals).join(', ') : 'N/A'}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Modal functions
+        function openModal(name) {
+            document.getElementById(name + 'Modal').classList.add('active');
+        }
+
+        function closeModal(name) {
+            document.getElementById(name + 'Modal').classList.remove('active');
+        }
+
+        // Close modal on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+
+        // % Solution Calculator
+        function calcPercent() {
+            const percent = parseFloat(document.getElementById('percentInput').value);
+            if (isNaN(percent)) {
+                document.getElementById('percentConc').textContent = '-- mg/ml';
+                return;
+            }
+            const mgPerMl = percent * 10; // 1% = 10mg/ml
+            document.getElementById('percentConc').textContent = `${mgPerMl} mg/ml`;
+            calcVolume();
+        }
+
+        function calcVolume() {
+            const percent = parseFloat(document.getElementById('percentInput').value);
+            const need = parseFloat(document.getElementById('needMg').value);
+            const unit = document.getElementById('needUnit').value;
+            
+            if (isNaN(percent) || isNaN(need)) {
+                document.getElementById('volumeResult').textContent = '-- ml';
+                return;
+            }
+            
+            const mgPerMl = percent * 10;
+            let needMg = need;
+            if (unit === 'mcg') needMg = need / 1000;
+            
+            const ml = needMg / mgPerMl;
+            document.getElementById('volumeResult').textContent = `${ml.toFixed(3)} ml`;
+        }
+
+        // Pill Suspension Calculator
+        function updateSliderRange() {
+            const min = parseFloat(document.getElementById('liquidMin').value) || 0.5;
+            const max = parseFloat(document.getElementById('liquidMax').value) || 10;
+            const slider = document.getElementById('liquidSlider');
+            
+            slider.min = min;
+            slider.max = max;
+            slider.value = Math.min(Math.max(slider.value, min), max);
+            
+            document.getElementById('sliderMinLabel').textContent = min + ' ml';
+            document.getElementById('sliderMaxLabel').textContent = max + ' ml';
+            
+            calcSuspension();
+        }
+
+        function calcSuspension() {
+            const pillMg = parseFloat(document.getElementById('pillStrength').value);
+            const targetMg = parseFloat(document.getElementById('targetDose').value);
+            const liquid = parseFloat(document.getElementById('liquidSlider').value);
+            
+            document.getElementById('liquidValue').textContent = liquid.toFixed(1) + ' ml';
+            
+            if (isNaN(pillMg) || isNaN(liquid) || liquid === 0) {
+                document.getElementById('suspConc').textContent = '-- mg/ml';
+                document.getElementById('doseVolume').textContent = '--';
+                return;
+            }
+            
+            const conc = pillMg / liquid;
+            document.getElementById('suspConc').textContent = conc.toFixed(2) + ' mg/ml';
+            
+            if (!isNaN(targetMg) && targetMg > 0) {
+                const doseVol = targetMg / conc;
+                document.getElementById('targetDoseDisplay').textContent = targetMg;
+                document.getElementById('doseVolume').textContent = doseVol.toFixed(2);
+            }
+        }
+
+        // Unit Converter
+        function convertUnits() {
+            const value = parseFloat(document.getElementById('convertValue').value);
+            const from = document.getElementById('convertFrom').value;
+            const output = document.getElementById('conversionOutput');
+            
+            if (isNaN(value)) {
+                output.innerHTML = 'Enter a value to convert';
+                return;
+            }
+            
+            let results = [];
+            
+            // Weight conversions
+            if (from === 'kg') {
+                results.push(`${(value * 2.20462).toFixed(3)} lb`);
+                results.push(`${(value * 1000).toFixed(1)} g`);
+            } else if (from === 'lb') {
+                results.push(`${(value * 0.453592).toFixed(3)} kg`);
+                results.push(`${(value * 453.592).toFixed(1)} g`);
+            } else if (from === 'g') {
+                results.push(`${(value / 1000).toFixed(4)} kg`);
+                results.push(`${(value * 1000).toFixed(0)} mg`);
+            } else if (from === 'mg') {
+                results.push(`${(value / 1000).toFixed(4)} g`);
+                results.push(`${(value * 1000).toFixed(0)} mcg`);
+            } else if (from === 'mcg') {
+                results.push(`${(value / 1000).toFixed(4)} mg`);
+                results.push(`${(value / 1000000).toFixed(6)} g`);
+            } else if (from === 'ml') {
+                results.push(`${(value / 1000).toFixed(4)} L`);
+                results.push(`${value} cc`);
+            } else if (from === 'l') {
+                results.push(`${(value * 1000).toFixed(0)} ml`);
+                results.push(`${(value * 1000).toFixed(0)} cc`);
+            }
+            
+            output.innerHTML = results.map(r => `<div style="padding: 5px; font-size: 1.2em;">${value} ${from} = <strong>${r}</strong></div>`).join('');
+        }
+
+        // Add dosing entry
+        function addDosingEntry() {
+            const container = document.getElementById('dosingEntries');
+            const template = container.querySelector('.dosing-entry').cloneNode(true);
+            template.querySelectorAll('input').forEach(inp => inp.value = '');
+            container.appendChild(template);
+        }
+
+        // Reconstruct API key from password
+        function reconstructKey(password) {
+            let key = CONFIG.MASKED_KEY.split('');
+            let passIdx = 0;
+            
+            for (let i = 0; i < key.length; i++) {
+                if (key[i] === '#') {
+                    // Find which password character goes here
+                    for (let [passPos, keyPos] of Object.entries(CONFIG.KEY_MAP)) {
+                        if (keyPos - 1 === i) {
+                            key[i] = password[passPos - 1] || '';
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            return key.join('');
+        }
+
+        // Save new medicine
+        async function saveNewMedicine(toGithub) {
+            const statusDiv = document.getElementById('saveStatus');
+            
+            // Gather form data
+            const medName = document.getElementById('newMedName').value.trim();
+            if (!medName) {
+                statusDiv.innerHTML = '<div class="status-message status-error">Please enter a medicine name</div>';
+                return;
+            }
+            
+            const medId = medName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            
+            // Parse concentration
+            const concValue = parseFloat(document.getElementById('newMedConc').value);
+            const concUnit = document.getElementById('newMedConcUnit').value;
+            let concentration = null;
+            let percentSolution = null;
+            
+            if (!isNaN(concValue)) {
+                if (concUnit === '%') {
+                    percentSolution = concValue;
+                    concentration = { value: concValue * 10, unit: 'mg', per: 'ml' };
+                } else {
+                    const parts = concUnit.split('/');
+                    concentration = { value: concValue, unit: parts[0], per: parts[1] || 'ml' };
+                }
+            }
+            
+            // Gather dosing info
+            const animals = {};
+            document.querySelectorAll('.dosing-entry').forEach(entry => {
+                const animal = entry.querySelector('.dosingAnimal').value;
+                const condition = entry.querySelector('.dosingCondition').value.trim();
+                
+                if (condition) {
+                    if (!animals[animal]) {
+                        animals[animal] = { conditions: [] };
+                    }
+                    
+                    const dosageValue = parseFloat(entry.querySelector('.dosingValue').value);
+                    const dosageUnit = entry.querySelector('.dosingUnit').value;
+                    const [dUnit, dPer] = dosageUnit.split('/');
+                    
+                    animals[animal].conditions.push({
+                        name: condition,
+                        dosage: {
+                            value: dosageValue || 0,
+                            unit: dUnit,
+                            per: dPer
+                        },
+                        route: entry.querySelector('.dosingRoute').value,
+                        location: entry.querySelector('.dosingLocation').value.trim(),
+                        frequency: entry.querySelector('.dosingFrequency').value.trim(),
+                        notes: entry.querySelector('.dosingNotes').value.trim()
+                    });
+                }
+            });
+            
+            const newMedicine = {
+                id: medId,
+                name: medName,
+                type: document.getElementById('newMedType').value,
+                usage: document.getElementById('newMedUsage').value.trim(),
+                concentration: concentration,
+                percentSolution: percentSolution,
+                storage: document.getElementById('newMedStorage').value.trim(),
+                notes: document.getElementById('newMedNotes').value.trim(),
+                animals: animals
+            };
+            
+            // Save locally
+            let localMeds = JSON.parse(localStorage.getItem('customMedicines') || '[]');
+            localMeds.push(newMedicine);
+            localStorage.setItem('customMedicines', JSON.stringify(localMeds));
+            
+            // Add to current session
+            database.medicines.push(newMedicine);
+            renderMedicineSelect();
+            renderDatabaseList();
+            
+            if (toGithub) {
+                const password = document.getElementById('githubPassword').value;
+                if (!password) {
+                    statusDiv.innerHTML = '<div class="status-message status-error">Please enter password for GitHub update</div>';
+                    return;
+                }
+                
+                statusDiv.innerHTML = '<div class="status-message">Saving to GitHub...</div>';
+                
+                try {
+                    const apiKey = reconstructKey(password);
+                    
+                    // Get current file
+                    const getResponse = await fetch(
+                        `https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`,
+                        {
+                            headers: {
+                                'Authorization': `token ${apiKey}`,
+                                'Accept': 'application/vnd.github.v3+json'
+                            }
+                        }
+                    );
+                    
+                    if (!getResponse.ok) throw new Error('Could not fetch database file');
+                    
+                    const fileData = await getResponse.json();
+                    const currentContent = JSON.parse(atob(fileData.content));
+                    
+                    // Add new medicine
+                    if (!currentContent.customMedicines) {
+                        currentContent.customMedicines = [];
+                    }
+                    currentContent.customMedicines.push(newMedicine);
+                    
+                    // Update file
+                    const updateResponse = await fetch(
+                        `https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`,
+                        {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `token ${apiKey}`,
+                                'Accept': 'application/vnd.github.v3+json',
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                message: `Add medicine: ${medName}`,
+                                content: btoa(JSON.stringify(currentContent, null, 2)),
+                                sha: fileData.sha
+                            })
+                        }
+                    );
+                    
+                    if (!updateResponse.ok) throw new Error('Could not update file');
+                    
+                    statusDiv.innerHTML = '<div class="status-message status-success">✓ Saved to GitHub successfully!</div>';
+                    
+                    // Clear form
+                    clearMedicineForm();
+                    
+                } catch (e) {
+                    console.error(e);
+                    statusDiv.innerHTML = `<div class="status-message status-error">GitHub save failed: ${e.message}. Medicine saved locally.</div>`;
+                }
+            } else {
+                statusDiv.innerHTML = '<div class="status-message status-success">✓ Saved locally! (Will persist in this browser)</div>';
+                clearMedicineForm();
+            }
+        }
+
+        function clearMedicineForm() {
+            document.getElementById('newMedName').value = '';
+            document.getElementById('newMedUsage').value = '';
+            document.getElementById('newMedConc').value = '';
+            document.getElementById('newMedStorage').value = '';
+            document.getElementById('newMedNotes').value = '';
+            
+            const dosingContainer = document.getElementById('dosingEntries');
+            const entries = dosingContainer.querySelectorAll('.dosing-entry');
+            entries.forEach((entry, i) => {
+                if (i === 0) {
+                    entry.querySelectorAll('input').forEach(inp => inp.value = '');
+                } else {
+                    entry.remove();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

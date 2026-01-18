@@ -1,0 +1,186 @@
+{
+  "animals": [
+    {
+      "id": "cattle",
+      "name": "Cattle",
+      "icon": "🐄"
+    },
+    {
+      "id": "swine",
+      "name": "Swine",
+      "icon": "🐷"
+    },
+    {
+      "id": "goat",
+      "name": "Goat",
+      "icon": "🐐"
+    },
+    {
+      "id": "sheep",
+      "name": "Sheep",
+      "icon": "🐑"
+    },
+    {
+      "id": "horse",
+      "name": "Horse",
+      "icon": "🐴"
+    }
+  ],
+  "medicines": [
+    {
+      "id": "ivermectin-1-inj",
+      "name": "Ivermectin 1% Injectable",
+      "type": "injectable",
+      "usage": "Antiparasitic",
+      "concentration": {
+        "value": 10,
+        "unit": "mg",
+        "per": "ml"
+      },
+      "percentSolution": 1,
+      "storage": "Store at controlled room temperature. Protect from light.",
+      "withdrawal": {
+        "cattle": "35 days (meat)",
+        "swine": "18 days (meat)"
+      },
+      "notes": "Works well on roundworms, lungworms, grubs, sucking lice, and mange mites. Do not use in dairy cattle of breeding age.",
+      "animals": {
+        "cattle": {
+          "conditions": [
+            {
+              "name": "General Parasites (roundworms, lungworms, grubs, lice, mites)",
+              "dosage": {
+                "value": 200,
+                "unit": "mcg",
+                "per": "kg"
+              },
+              "route": "SubQ",
+              "location": "In front of or behind shoulder",
+              "frequency": "Single dose",
+              "maxPerSite": {
+                "value": 10,
+                "unit": "ml"
+              },
+              "notes": "For multiple injection sites if volume exceeds 10ml"
+            }
+          ]
+        },
+        "swine": {
+          "conditions": [
+            {
+              "name": "General Parasites",
+              "dosage": {
+                "value": 300,
+                "unit": "mcg",
+                "per": "kg"
+              },
+              "route": "SubQ",
+              "location": "Neck",
+              "frequency": "Single dose",
+              "maxPerSite": null,
+              "notes": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "la200",
+      "name": "Liquamycin LA-200 (Oxytetracycline)",
+      "type": "injectable",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 200,
+        "unit": "mg",
+        "per": "ml"
+      },
+      "percentSolution": null,
+      "storage": "Store at controlled room temperature.",
+      "withdrawal": {
+        "cattle": "28 days (meat), do not use in lactating dairy cattle",
+        "swine": "28 days (meat)"
+      },
+      "notes": "Prescription medication. Long-acting formulation.",
+      "animals": {
+        "cattle": {
+          "conditions": [
+            {
+              "name": "Pneumonia / Shipping Fever",
+              "dosage": {
+                "value": 9,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "SubQ or IV",
+              "location": "SubQ preferred",
+              "frequency": "Single dose",
+              "maxPerSite": null,
+              "notes": "Single injection treatment"
+            },
+            {
+              "name": "Infectious Bovine Keratoconjunctivitis (Pinkeye)",
+              "dosage": {
+                "value": 9,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "SubQ or IV",
+              "location": "SubQ preferred",
+              "frequency": "Single dose",
+              "maxPerSite": null,
+              "notes": "Single injection treatment"
+            },
+            {
+              "name": "Foot Rot / Diphtheria / Bacterial Enteritis / Wooden Tongue",
+              "dosage": {
+                "value": 3,
+                "unit": "mg",
+                "per": "lb",
+                "valueMax": 5
+              },
+              "route": "SubQ or IV",
+              "location": "SubQ preferred",
+              "frequency": "Daily",
+              "duration": "No more than 4 consecutive days",
+              "maxPerSite": null,
+              "notes": "Continue 24-48 hours after remission of disease signs"
+            }
+          ]
+        },
+        "swine": {
+          "conditions": [
+            {
+              "name": "Bacterial Pneumonia",
+              "dosage": {
+                "value": 9,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "IM",
+              "location": "Neck",
+              "frequency": "Single dose",
+              "maxPerSite": null,
+              "notes": "Single injection treatment"
+            },
+            {
+              "name": "Bacterial Enteritis / Leptospirosis",
+              "dosage": {
+                "value": 3,
+                "unit": "mg",
+                "per": "lb",
+                "valueMax": 5
+              },
+              "route": "IM",
+              "location": "Neck",
+              "frequency": "Daily",
+              "duration": "No more than 4 consecutive days",
+              "maxPerSite": null,
+              "notes": "Continue 24-48 hours after remission of disease signs"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "customMedicines": []
+}

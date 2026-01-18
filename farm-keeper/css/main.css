@@ -1,0 +1,78 @@
+:root {
+    /* Color Palette - Single Source of Truth */
+    --primary-color: #4A7C59;   /* Earthy Green */
+    --secondary-color: #8B6F47; /* Warm Brown */
+    --accent-color: #E89C3A;    /* Bright Orange/Gold */
+    --bg-color: #F9F7F4;        /* Soft Cream */
+    --text-main: #2C3E50;       /* Dark Charcoal */
+    --text-light: #FFFFFF;      /* White */
+    --danger-color: #E74C3C;    /* Red */
+    --success-color: #27AE60;   /* Green */
+
+    /* Typography */
+    --font-headers: 'Poppins', sans-serif;
+    --font-body: 'Open Sans', sans-serif;
+
+    /* Spacing & UI */
+    --spacing-md: 1rem;
+    --border-radius: 8px;
+    --touch-target: 44px; /* Mobile-friendly size */
+}
+
+/* Global Reset */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-body);
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    line-height: 1.6;
+}
+
+h1, h2, h3 {
+    font-family: var(--font-headers);
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-md);
+}
+
+button {
+    cursor: pointer;
+    font-family: var(--font-headers);
+    min-height: var(--touch-target); /* Accessible touch target */
+}
+
+/* Utility Classes */
+.btn-primary {
+    background-color: var(--primary-color);
+    color: var(--text-light);
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+}
+
+.btn-primary:hover {
+    background-color: #3a6346; /* Slightly darker green */
+}
+
+.form-group {
+    margin-bottom: 1.2rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+}
