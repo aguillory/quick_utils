@@ -1,202 +1,483 @@
 {
   "animals": [
     {
-      "id": "cattle",
-      "name": "Cattle",
+      "id": "cat",
+      "name": "Cat",
+      "icon": "🐈"
+    },
+    {
+      "id": "dog",
+      "name": "Dog",
+      "icon": "🐕"
+    },
+    {
+      "id": "cow",
+      "name": "Cow",
       "icon": "🐄"
     },
     {
-      "id": "swine",
-      "name": "Swine",
-      "icon": "🐷"
+      "id": "pig",
+      "name": "Pig",
+      "icon": "🐖"
     },
     {
       "id": "goat",
       "name": "Goat",
       "icon": "🐐"
-    },
-    {
-      "id": "sheep",
-      "name": "Sheep",
-      "icon": "🐑"
-    },
-    {
-      "id": "horse",
-      "name": "Horse",
-      "icon": "🐴"
     }
   ],
   "medicines": [
     {
-      "id": "ivermectin-1-inj",
-      "name": "Ivermectin 1% Injectable",
-      "type": "injectable",
-      "usage": "Antiparasitic",
-      "concentration": {
-        "value": 10,
-        "unit": "mg",
-        "per": "ml"
-      },
-      "percentSolution": 1,
-      "storage": "Store at controlled room temperature. Protect from light.",
-      "withdrawal": {
-        "cattle": "35 days (meat)",
-        "swine": "18 days (meat)"
-      },
-      "notes": "Works well on roundworms, lungworms, grubs, sucking lice, and mange mites. Do not use in dairy cattle of breeding age.",
-      "animals": {
-        "cattle": {
-          "conditions": [
-            {
-              "name": "General Parasites (roundworms, lungworms, grubs, lice, mites)",
-              "dosage": {
-                "value": 200,
-                "unit": "mcg",
-                "per": "kg"
-              },
-              "route": "SubQ",
-              "location": "In front of or behind shoulder",
-              "frequency": "Single dose",
-              "maxPerSite": {
-                "value": 10,
-                "unit": "ml"
-              },
-              "notes": "For multiple injection sites if volume exceeds 10ml"
-            }
-          ]
-        },
-        "swine": {
-          "conditions": [
-            {
-              "name": "General Parasites",
-              "dosage": {
-                "value": 300,
-                "unit": "mcg",
-                "per": "kg"
-              },
-              "route": "SubQ",
-              "location": "Neck",
-              "frequency": "Single dose",
-              "maxPerSite": null,
-              "notes": ""
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "la200",
-      "name": "Liquamycin LA-200 (Oxytetracycline)",
-      "type": "injectable",
-      "usage": "Antibiotic",
-      "concentration": {
-        "value": 200,
-        "unit": "mg",
-        "per": "ml"
-      },
-      "percentSolution": null,
-      "storage": "Store at controlled room temperature.",
-      "withdrawal": {
-        "cattle": "28 days (meat), do not use in lactating dairy cattle",
-        "swine": "28 days (meat)"
-      },
-      "notes": "Prescription medication. Long-acting formulation.",
-      "animals": {
-        "cattle": {
-          "conditions": [
-            {
-              "name": "Pneumonia / Shipping Fever",
-              "dosage": {
-                "value": 9,
-                "unit": "mg",
-                "per": "lb"
-              },
-              "route": "SubQ or IV",
-              "location": "SubQ preferred",
-              "frequency": "Single dose",
-              "maxPerSite": null,
-              "notes": "Single injection treatment"
-            },
-            {
-              "name": "Infectious Bovine Keratoconjunctivitis (Pinkeye)",
-              "dosage": {
-                "value": 9,
-                "unit": "mg",
-                "per": "lb"
-              },
-              "route": "SubQ or IV",
-              "location": "SubQ preferred",
-              "frequency": "Single dose",
-              "maxPerSite": null,
-              "notes": "Single injection treatment"
-            },
-            {
-              "name": "Foot Rot / Diphtheria / Bacterial Enteritis / Wooden Tongue",
-              "dosage": {
-                "value": 3,
-                "unit": "mg",
-                "per": "lb",
-                "valueMax": 5
-              },
-              "route": "SubQ or IV",
-              "location": "SubQ preferred",
-              "frequency": "Daily",
-              "duration": "No more than 4 consecutive days",
-              "maxPerSite": null,
-              "notes": "Continue 24-48 hours after remission of disease signs"
-            }
-          ]
-        },
-        "swine": {
-          "conditions": [
-            {
-              "name": "Bacterial Pneumonia",
-              "dosage": {
-                "value": 9,
-                "unit": "mg",
-                "per": "lb"
-              },
-              "route": "IM",
-              "location": "Neck",
-              "frequency": "Single dose",
-              "maxPerSite": null,
-              "notes": "Single injection treatment"
-            },
-            {
-              "name": "Bacterial Enteritis / Leptospirosis",
-              "dosage": {
-                "value": 3,
-                "unit": "mg",
-                "per": "lb",
-                "valueMax": 5
-              },
-              "route": "IM",
-              "location": "Neck",
-              "frequency": "Daily",
-              "duration": "No more than 4 consecutive days",
-              "maxPerSite": null,
-              "notes": "Continue 24-48 hours after remission of disease signs"
-            }
-          ]
-        }
-      }
-    }
-  ],
-  "customMedicines": [
-    {
-      "id": "test",
-      "name": "Test",
+      "id": "amoxicillin-susp",
+      "name": "Amoxicillin Tablets",
       "type": "oral-pill",
-      "usage": "TestAntibiotic",
+      "usage": "Antibiotic",
       "concentration": {
         "value": 100,
         "unit": "mg",
         "per": "tablet"
       },
-      "percentSolution": null,
-      "storage": "",
-      "notes": "",
-      "animals": {}
+      "storage": "Refrigerate. Shake well.",
+      "notes": "Common antibiotic for UTIs and skin infections.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Diarrhea / UTI / Unthrifty",
+              "dosage": {
+                "value": 5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "BID (Twice daily)",
+              "duration": "10 days",
+              "notes": "",
+              "frequencyPerDay": 2,
+              "durationDays": 10
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "UTI / Skin Infections",
+              "dosage": {
+                "value": 5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "BID (Twice daily)",
+              "duration": "10-14 days",
+              "notes": "",
+              "frequencyPerDay": 2,
+              "durationDays": 10,
+              "durationDaysMax": 14
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "azithromycin",
+      "name": "Azithromycin (Zithromax) Tablets",
+      "type": "oral-pill",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 250,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "storage": "Refrigerate.",
+      "notes": "Used for moderate to severe URI.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Moderate to Severe URI",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "3-6 days, then every 3 days",
+              "notes": "",
+              "frequencyPerDay": 1,
+              "durationDays": 3,
+              "durationDaysMax": 6
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Severe URI / Pneumonia",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "3 days, then every 3 days",
+              "notes": "",
+              "frequencyPerDay": 1,
+              "durationDays": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "baytril-100",
+      "name": "Baytril (Enrofloxacin)",
+      "type": "injectable",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 100,
+        "unit": "mg",
+        "per": "ml"
+      },
+      "notes": "DVM Rx Only. Can be used orally or injectable.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Pneumonia / Severe UTI",
+              "dosage": {
+                "value": 2.2,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "SubQ or Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "7-14 days",
+              "notes": "Labor, open mouth breathing, fever.",
+              "frequencyPerDay": 1,
+              "durationDays": 7,
+              "durationDaysMax": 14
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Severe URI / Pneumonia / Parvo",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb",
+                "valueMax": 9
+              },
+              "route": "SubQ or Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "3-5 days",
+              "notes": "Inj is 4.5 mg/lb. Tabs can go up to 9 mg/lb.",
+              "frequencyPerDay": 1,
+              "durationDays": 3,
+              "durationDaysMax": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "clavamox",
+      "name": "Clavamox / Augmentin Tablets",
+      "type": "oral-pill",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 62.5,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "storage": "Refrigerate.",
+      "notes": "DVM Rx Only. Expensive.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Soft-tissue wounds",
+              "dosage": {
+                "value": 6.25,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "BID (Twice daily)",
+              "duration": "7-14 days",
+              "notes": "",
+              "frequencyPerDay": 2,
+              "durationDays": 7,
+              "durationDaysMax": 14
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Soft tissue infections",
+              "dosage": {
+                "value": 6.25,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "BID (Twice daily)",
+              "duration": "7-14 days",
+              "notes": "",
+              "frequencyPerDay": 2,
+              "durationDays": 7,
+              "durationDaysMax": 14
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "doxycycline-susp",
+      "name": "Doxycycline Tablets",
+      "type": "oral-pill",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 100,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "storage": "Protect from light.",
+      "notes": "Mild URI, tick borne illnesses.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Mild URI / Abscesses",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "10 days",
+              "notes": "",
+              "frequencyPerDay": 1,
+              "durationDays": 10
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Kennel Cough / URI / Pre-Heartworm",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "10 days (28 days for pre-heartworm)",
+              "notes": "",
+              "frequencyPerDay": 1,
+              "durationDays": 10,
+              "durationDaysMax": 28
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "metronidazole",
+      "name": "Metronidazole",
+      "type": "oral-pill",
+      "usage": "Antibiotic / Antiprotozoal",
+      "concentration": {
+        "value": 250,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "notes": "Treats Giardia and diarrhea. DO NOT OVERESTIMATE.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Giardia / Diarrhea",
+              "dosage": {
+                "value": 9,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "5 days",
+              "notes": "Round down if needed.",
+              "frequencyPerDay": 1,
+              "durationDays": 5
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Diarrhea / Giardia",
+              "dosage": {
+                "value": 22.7,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "5 days",
+              "notes": "Round down if needed.",
+              "frequencyPerDay": 1,
+              "durationDays": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "clindamycin",
+      "name": "Clindamycin",
+      "type": "oral-pill",
+      "usage": "Antibiotic",
+      "concentration": {
+        "value": 150,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "notes": "DVM Rx Only. For neurologic signs, toxoplasmosis, dental disease.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Neurologic signs / Dental / Toxo",
+              "dosage": {
+                "value": 9,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "BID (Twice daily)",
+              "duration": "4 weeks for toxo",
+              "notes": "",
+              "frequencyPerDay": 2,
+              "durationDays": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "terbinafine",
+      "name": "Terbinafine",
+      "type": "oral-pill",
+      "usage": "Antifungal",
+      "concentration": {
+        "value": 250,
+        "unit": "mg",
+        "per": "tablet"
+      },
+      "notes": "Ringworm treatment. Always give with food.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Ringworm",
+              "dosage": {
+                "value": 13.6,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "21 days",
+              "notes": "Then pulse 1 week on/off till resolved.",
+              "frequencyPerDay": 1,
+              "durationDays": 21
+            }
+          ]
+        },
+        "dog": {
+          "conditions": [
+            {
+              "name": "Ringworm",
+              "dosage": {
+                "value": 13.6,
+                "unit": "mg",
+                "per": "lb",
+                "valueMax": 18
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "21 days",
+              "notes": "Then pulse 1 week on/off till resolved.",
+              "frequencyPerDay": 1,
+              "durationDays": 21
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "penicillin-g",
+      "name": "Penicillin G (300k U/ml)",
+      "type": "injectable",
+      "usage": "Antibiotic",
+      "concentration": null,
+      "storage": "Refrigerate.",
+      "notes": "Diarrhea and intake on neonates.",
+      "animals": {
+        "cat": {
+          "conditions": [
+            {
+              "name": "Diarrhea / Neonate Intake",
+              "dosage": {
+                "value": 0.05,
+                "unit": "ml",
+                "per": "lb"
+              },
+              "route": "SubQ",
+              "frequency": "SID (Once daily)",
+              "duration": "3 days",
+              "notes": "Volume based dosage (0.05cc/lb).",
+              "frequencyPerDay": 1,
+              "durationDays": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ketoconazole",
+      "name": "Ketoconazole",
+      "type": "oral-pill",
+      "usage": "Antifungal",
+      "concentration": null,
+      "notes": "DVM Rx Only. Ringworm. Always give with food!",
+      "animals": {
+        "dog": {
+          "conditions": [
+            {
+              "name": "Ringworm",
+              "dosage": {
+                "value": 4.5,
+                "unit": "mg",
+                "per": "lb"
+              },
+              "route": "Oral",
+              "frequency": "SID (Once daily)",
+              "duration": "28 days",
+              "notes": "Help absorption with food.",
+              "frequencyPerDay": 1,
+              "durationDays": 28
+            }
+          ]
+        }
+      }
     }
   ]
 }
