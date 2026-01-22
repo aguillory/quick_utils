@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stefani's Ledgers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; display: none; /* Hidden until login */ }
+        
+        /* Login Styles */
+        #login-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+        }
+        .login-card {
+            background: white; padding: 2rem; border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            text-align: center; width: 300px;
+        }
+        .login-card input {
+            width: 100%; padding: 10px; margin-bottom: 10px;
+            border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;
+        }
+        .btn-primary {
+            background-color: var(--primary); color: white; border: none;
+            padding: 10px 20px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold;
+        }
+        #auth-error { color: var(--danger); font-size: 0.9rem; margin-top: 10px; min-height: 1.2em;}
+
+        /* App Styles */
+        header { margin-bottom: 2rem; text-align: center; display: flex; justify-content: space-between; align-items: center;}
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 1rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; font-weight: bold; font-size: 1.25rem;}
+        
+        .balance-display { text-align: center; margin: 1rem 0; padding: 1rem; background: #f1f5f9; border-radius: 8px; }
+        .balance-amount { font-size: 2rem; font-weight: 700; color: var(--primary); }
+        .input-group { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+        input, select { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; }
+        button { cursor: pointer; padding: 0.5rem 1rem; border: none; border-radius: 6px; font-weight: 600; }
+        .btn-pay { background-color: var(--success); color: white; }
+        .btn-charge { background-color: var(--danger); color: white; }
+        .btn-add { background-color: var(--primary); color: white; width: 100%; margin-top: 0.5rem;}
+        
+        .history-list { margin-top: 1.5rem; max-height: 300px; overflow-y: auto; border-top: 1px solid #e2e8f0; }
+        .history-item { display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
+        .amount-pos { color: var(--danger); } .amount-neg { color: var(--success); }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-card">
+        <h2>🔒 Login Required</h2>
+        <p style="color:#64748b; font-size: 0.9rem; margin-bottom: 1rem;">Use your Budget App credentials</p>
+        <form id="login-form">
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="password" id="password" placeholder="Password" required>
+            <button type="submit" class="btn-primary" id="login-btn">Sign In</button>
+        </form>
+        <div id="auth-error"></div>
+    </div>
+</div>
+
+<div class="container" id="app-container">
+    <header>
+        <h1>Stefani's Ledgers</h1>
+        <button onclick="handleLogout()" style="background:none; border:1px solid #ccc; color:#666;">Logout</button>
+    </header>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-header"><span>📖 The Ledger</span></div>
+            <div class="balance-display">
+                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">She Owes You</div>
+                <div class="balance-amount" id="ledger-balance">$0.00</div>
+            </div>
+            <div class="input-group">
+                <input type="text" id="ledger-desc" placeholder="Item / Reason">
+                <input type="number" id="ledger-amount" placeholder="0.00" step="0.01">
+            </div>
+            <div class="input-group"><input type="date" id="ledger-date"></div>
+            <div class="input-group">
+                <button class="btn-charge" onclick="addTransaction('ledger', 'charge')">➕ Charge</button>
+                <button class="btn-pay" onclick="addTransaction('ledger', 'payment')">➖ Payment</button>
+            </div>
+            <div class="history-list" id="ledger-history"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span>🏠 Mom's Rent</span></div>
+            <div class="balance-display">
+                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">Outstanding Rent</div>
+                <div class="balance-amount" id="rent-balance">$0.00</div>
+            </div>
+            <div class="input-group"><input type="text" id="rent-desc" placeholder="Month"></div>
+            <div class="input-group"><input type="number" id="rent-amount" placeholder="Amount" step="0.01"><input type="date" id="rent-date"></div>
+            <div class="input-group">
+                <button class="btn-charge" onclick="addTransaction('rent', 'charge')">➕ Charge</button>
+                <button class="btn-pay" onclick="addTransaction('rent', 'payment')">➖ Payment</button>
+            </div>
+            <div class="history-list" id="rent-history"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span>💳 Credit Card</span></div>
+            <div class="balance-display">
+                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">She Owes You</div>
+                <div class="balance-amount" id="cc-balance">$0.00</div>
+            </div>
+            <div style="text-align:center; font-size:0.8rem; color:#64748b; margin-bottom:1rem;">You paid bank: <strong id="cc-user-paid">$0.00</strong></div>
+            <div class="input-group">
+                <select id="cc-type">
+                    <option value="interest">📈 Interest/Fee (Increases Debt)</option>
+                    <option value="payment">💰 She Paid Me (Decreases Debt)</option>
+                    <option value="bank_payment">🏦 I Paid Bank (Tracking Only)</option>
+                </select>
+            </div>
+            <div class="input-group"><input type="text" id="cc-desc" placeholder="Note"><input type="number" id="cc-amount" placeholder="0.00" step="0.01"></div>
+            <div class="input-group"><input type="date" id="cc-date"><button class="btn-add" onclick="handleCCTransaction()">Add Entry</button></div>
+            <div class="history-list" id="cc-history"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+    // BUDGET Project Configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyBUNb26WpRCPUJN3k51X_A9OndQFZwICjY",
+        authDomain: "budget-87a6d.firebaseapp.com",
+        projectId: "budget-87a6d",
+        storageBucket: "budget-87a6d.firebasestorage.app",
+        messagingSenderId: "1040095975333",
+        appId: "1:1040095975333:web:8401747beb9e7e5ebd7a4c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const COLLECTION_NAME = "friend_debt_tracker";
+
+    // Set dates to today
+    document.querySelectorAll('input[type="date"]').forEach(input => input.valueAsDate = new Date());
+
+    // ---------------- AUTH LOGIC ----------------
+    const loginOverlay = document.getElementById('login-overlay');
+    const appContainer = document.getElementById('app-container');
+    const authError = document.getElementById('auth-error');
+
+    // Monitor Auth State
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            loginOverlay.style.display = 'none';
+            appContainer.style.display = 'block';
+            startDataListener(); // Only load data if logged in
+        } else {
+            loginOverlay.style.display = 'flex';
+            appContainer.style.display = 'none';
+        }
+    });
+
+    // Handle Login Submit
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('login-btn');
+        
+        try {
+            btn.textContent = "Signing In...";
+            authError.textContent = "";
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error) {
+            console.error(error);
+            authError.textContent = "Invalid Login. Please try again.";
+            btn.textContent = "Sign In";
+        }
+    });
+
+    window.handleLogout = () => signOut(auth);
+
+    // ---------------- DATA LOGIC ----------------
+    function startDataListener() {
+        const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const data = { ledger: { b: 0, h: [] }, rent: { b: 0, h: [] }, cc: { b: 0, paid: 0, h: [] } };
+
+            snapshot.forEach(doc => {
+                const t = doc.data(); t.id = doc.id;
+                
+                if (t.category === 'ledger') {
+                    if (t.type === 'charge') data.ledger.b += t.amount;
+                    if (t.type === 'payment') data.ledger.b -= t.amount;
+                    data.ledger.h.push(t);
+                }
+                if (t.category === 'rent') {
+                    if (t.type === 'charge') data.rent.b += t.amount;
+                    if (t.type === 'payment') data.rent.b -= t.amount;
+                    data.rent.h.push(t);
+                }
+                if (t.category === 'cc') {
+                    if (t.type === 'interest' || t.type === 'charge') data.cc.b += t.amount;
+                    else if (t.type === 'payment') data.cc.b -= t.amount;
+                    else if (t.type === 'bank_payment') data.cc.paid += t.amount;
+                    data.cc.h.push(t);
+                }
+            });
+
+            renderSection('ledger', data.ledger);
+            renderSection('rent', data.rent);
+            renderSection('cc', data.cc);
+        }, (error) => {
+            console.error("Data error:", error);
+            // If permission denied happens here, it usually means the rules blocked it
+            if(error.code === 'permission-denied') alert("Access Denied: You must be logged in.");
+        });
+    }
+
+    // Shared Add Function
+    window.addTransaction = async (category, type) => {
+        const desc = document.getElementById(`${category}-desc`).value || (type === 'charge' ? 'Charge' : 'Payment');
+        const amount = parseFloat(document.getElementById(`${category}-amount`).value);
+        const date = document.getElementById(`${category}-date`).value;
+
+        if (!amount) return alert("Enter an amount");
+
+        await addDoc(collection(db, COLLECTION_NAME), {
+            category, type, description: desc, amount: Math.abs(amount), date, createdAt: new Date().toISOString()
+        });
+        
+        document.getElementById(`${category}-desc`).value = "";
+        document.getElementById(`${category}-amount`).value = "";
+    };
+
+    window.handleCCTransaction = () => window.addTransaction('cc', document.getElementById('cc-type').value);
+
+    window.deleteTransaction = async (id) => {
+        if(confirm("Delete entry?")) await deleteDoc(doc(db, COLLECTION_NAME, id));
+    };
+
+    function renderSection(cat, data) {
+        document.getElementById(`${cat}-balance`).textContent = `$${data.b.toFixed(2)}`;
+        if(cat === 'cc') document.getElementById('cc-user-paid').textContent = `$${data.paid.toFixed(2)}`;
+        
+        const list = document.getElementById(`${cat}-history`);
+        list.innerHTML = data.h.map(t => {
+            let colorClass = (t.type === 'payment') ? 'amount-neg' : 'amount-pos';
+            let symbol = (t.type === 'payment') ? '-' : '+';
+            if(t.type === 'bank_payment') { colorClass = ''; symbol = ''; }
+            
+            return `<div class="history-item">
+                <div><strong>${t.description}</strong><br><span style="font-size:0.75rem;color:#aaa">${t.date}</span></div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="${colorClass}">${symbol}$${t.amount.toFixed(2)}</span>
+                    <button onclick="deleteTransaction('${t.id}')" style="color:#ccc;background:none;font-size:1.2rem;">×</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+</script>
+</body>
+</html>
