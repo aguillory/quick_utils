@@ -10,6 +10,7 @@
         "conditions": [
           {
             "name": "Roundworms / Hookworms",
+            "category": "Parasitic",
             "dosage": { "value": 0.1, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "Every 2 weeks",
@@ -21,6 +22,7 @@
         "conditions": [
           {
             "name": "Roundworms / Hookworms",
+            "category": "Parasitic",
             "dosage": { "value": 0.1, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "Every 2 weeks",
@@ -41,6 +43,7 @@
         "conditions": [
           {
             "name": "Parasites / Giardia",
+            "category": "Parasitic",
             "dosage": { "value": 0.2, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -55,6 +58,7 @@
         "conditions": [
           {
             "name": "Parasites / Giardia",
+            "category": "Parasitic",
             "dosage": { "value": 0.2, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -78,6 +82,7 @@
         "conditions": [
           {
             "name": "Coccidia",
+            "category": "Parasitic",
             "dosage": { "value": 0.3, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "Once",
@@ -89,6 +94,7 @@
         "conditions": [
           {
             "name": "Coccidia",
+            "category": "Parasitic",
             "dosage": { "value": 0.3, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "Once",
@@ -108,6 +114,7 @@
         "conditions": [
           {
             "name": "Tapeworms",
+            "category": "Parasitic",
             "dosage": { "value": 7.5, "unit": "mg", "per": "kg" },
             "route": "SubQ or Oral",
             "frequency": "Once"
@@ -118,6 +125,7 @@
         "conditions": [
           {
             "name": "Tapeworms",
+            "category": "Parasitic",
             "dosage": { "value": 7.5, "unit": "mg", "per": "kg" },
             "route": "SubQ or Oral",
             "frequency": "Once"
@@ -137,6 +145,7 @@
         "conditions": [
           {
             "name": "Nausea / Vomiting",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.2, "unit": "mg", "per": "lb" },
             "route": "SubQ or Oral",
             "frequency": "BID-TID",
@@ -148,6 +157,7 @@
         "conditions": [
           {
             "name": "Parvo / Nausea / Vomiting",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.2, "unit": "mg", "per": "lb" },
             "route": "SubQ or Oral",
             "frequency": "BID-TID",
@@ -168,6 +178,7 @@
         "conditions": [
           {
             "name": "Vomiting / Nausea",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.045, "unit": "ml", "per": "lb" },
             "route": "SubQ",
             "frequency": "SID (Once daily)",
@@ -179,10 +190,28 @@
         "conditions": [
           {
             "name": "Vomiting / Nausea",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.045, "unit": "ml", "per": "lb" },
             "route": "SubQ",
             "frequency": "SID (Once daily)",
             "frequencyPerDay": 1
+          },
+          {
+            "name": "Acute Vomiting (Oral)",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 2, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Prevention of acute vomiting."
+          },
+          {
+            "name": "Motion Sickness",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 8, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "duration": "2 days",
+            "notes": "Fast 1 hour before. Give 2 hours before travel. Max 2 days in a row."
           }
         ]
       }
@@ -199,6 +228,7 @@
         "conditions": [
           {
             "name": "Nausea / Vomiting",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.045, "unit": "mg", "per": "lb", "valueMax": 0.09 },
             "route": "IV or SubQ",
             "frequency": "PRN"
@@ -209,6 +239,7 @@
         "conditions": [
           {
             "name": "Nausea / Vomiting",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.045, "unit": "mg", "per": "lb", "valueMax": 0.09 },
             "route": "IV or SubQ",
             "frequency": "PRN"
@@ -228,6 +259,7 @@
         "conditions": [
           {
             "name": "Conjunctivitis / Ulcers",
+            "category": "Ophthalmic",
             "dosage": { "value": 1, "unit": "drop", "per": "eye" },
             "route": "Topical (Eye)",
             "frequency": "2-4x/day",
@@ -240,6 +272,7 @@
         "conditions": [
           {
             "name": "Conjunctivitis / Ulcers",
+            "category": "Ophthalmic",
             "dosage": { "value": 1, "unit": "drop", "per": "eye" },
             "route": "Topical (Eye)",
             "frequency": "2-4x/day",
@@ -261,6 +294,7 @@
         "conditions": [
           {
             "name": "Conjunctivitis / Ulcers",
+            "category": "Ophthalmic",
             "dosage": { "value": 1, "unit": "drop", "per": "eye" },
             "route": "Topical (Eye)",
             "frequency": "2-4x/day",
@@ -269,9 +303,10 @@
         ]
       },
       "dog": {
-          "conditions": [
+        "conditions": [
           {
             "name": "Conjunctivitis / Ulcers",
+            "category": "Ophthalmic",
             "dosage": { "value": 1, "unit": "drop", "per": "eye" },
             "route": "Topical (Eye)",
             "frequency": "2-4x/day",
@@ -292,6 +327,7 @@
         "conditions": [
           {
             "name": "Eye Infection",
+            "category": "Ophthalmic",
             "route": "Topical (Eye)",
             "frequency": "BID-TID",
             "duration": "7-10 days",
@@ -303,6 +339,7 @@
         "conditions": [
           {
             "name": "Eye Infection",
+            "category": "Ophthalmic",
             "route": "Topical (Eye)",
             "frequency": "BID-TID",
             "duration": "7-10 days"
@@ -322,6 +359,7 @@
         "conditions": [
           {
             "name": "Pain",
+            "category": "Pain & Inflammation",
             "route": "Oral",
             "frequency": "BID-TID",
             "frequencyPerDay": 2,
@@ -342,6 +380,7 @@
         "conditions": [
           {
             "name": "Pain",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.1, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "BID-TID",
@@ -363,6 +402,7 @@
         "conditions": [
           {
             "name": "Pain",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.054, "unit": "mg", "per": "lb" },
             "route": "SubQ",
             "frequency": "Every 3 days"
@@ -373,6 +413,7 @@
         "conditions": [
           {
             "name": "Pain",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.01, "unit": "mg", "per": "lb", "valueMax": 0.02 },
             "route": "SubQ",
             "frequency": "Every 3 days"
@@ -392,6 +433,7 @@
         "conditions": [
           {
             "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 2, "unit": "mg", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -414,6 +456,7 @@
         "conditions": [
           {
             "name": "Pain / Inflammation / Fever",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.01, "unit": "ml", "per": "lb" },
             "route": "SubQ (Injectable)",
             "frequency": "SID (Once daily)",
@@ -421,6 +464,7 @@
           },
           {
             "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.045, "unit": "mg", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -432,6 +476,7 @@
         "conditions": [
           {
             "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.01, "unit": "ml", "per": "lb" },
             "route": "SubQ (Injectable)",
             "frequency": "SID (Once daily)",
@@ -439,6 +484,7 @@
           },
           {
             "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
             "dosage": { "value": 0.045, "unit": "mg", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -459,6 +505,7 @@
         "conditions": [
           {
             "name": "Pain / Anxiety",
+            "category": "Behavioral",
             "dosage": { "value": 10, "unit": "mg", "per": "kg", "valueMax": 20 },
             "route": "Oral",
             "frequency": "BID (Twice daily)",
@@ -470,10 +517,30 @@
         "conditions": [
           {
             "name": "Pain / Anxiety",
+            "category": "Behavioral",
             "dosage": { "value": 10, "unit": "mg", "per": "kg", "valueMax": 20 },
             "route": "Oral",
             "frequency": "BID (Twice daily)",
             "frequencyPerDay": 2
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "ciprofloxacin-oral",
+    "name": "Ciprofloxacin (Oral)",
+    "type": "oral-pill",
+    "usage": "Antibiotic",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 5, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)"
           }
         ]
       }
@@ -490,6 +557,7 @@
         "conditions": [
           {
             "name": "Demodex Mange",
+            "category": "Dermatology",
             "dosage": { "value": 0.027, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -498,10 +566,23 @@
           },
           {
             "name": "Sarcoptic Mange",
+            "category": "Dermatology",
             "dosage": { "value": 0.027, "unit": "ml", "per": "lb" },
             "route": "Oral",
             "frequency": "Once a week",
             "duration": "6 weeks"
+          }
+        ]
+      },
+      "cat": {
+        "conditions": [
+          {
+            "name": "Roundworms / Mites",
+            "category": "Parasitic",
+            "dosage": { "value": 0.02, "unit": "ml", "per": "lb", "valueMax": 0.04 },
+            "route": "Oral",
+            "frequency": "Once",
+            "notes": "Repeat in 2-3 weeks. Dosage based on 1% solution (10mg/ml). PDF lists 0.2-0.4mg/lb."
           }
         ]
       }
@@ -518,6 +599,7 @@
         "conditions": [
           {
             "name": "Allergies",
+            "category": "Dermatology",
             "dosage": { "value": 0.5, "unit": "mg", "per": "lb" },
             "route": "Oral"
           }
@@ -527,6 +609,7 @@
         "conditions": [
           {
             "name": "Allergies",
+            "category": "Dermatology",
             "dosage": { "value": 1, "unit": "mg", "per": "lb" },
             "route": "Oral"
           }
@@ -545,6 +628,7 @@
         "conditions": [
           {
             "name": "Ulcers / Acid",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.22, "unit": "mg", "per": "lb" },
             "route": "SubQ or Oral",
             "frequency": "1-2 times a day"
@@ -555,7 +639,8 @@
         "conditions": [
           {
             "name": "Ulcers / Acid",
-            "dosage": { "value": 0.22, "unit": "mg", "per": "lb" },
+            "category": "Gastrointestinal",
+            "dosage": { "value": 0.22, "unit": "mg", "per": "lb", "valueMax": 0.44 },
             "route": "SubQ or Oral",
             "frequency": "1-2 times a day"
           }
@@ -573,6 +658,7 @@
         "conditions": [
           {
             "name": "Acid Reflux",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.45, "unit": "mg", "per": "lb" },
             "route": "Oral",
             "frequency": "SID (Once daily)",
@@ -592,6 +678,7 @@
         "conditions": [
           {
             "name": "Diarrhea",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.1, "unit": "ml", "per": "lb", "valueMax": 0.2 },
             "route": "Oral",
             "notes": "Give when diarrhea is seen."
@@ -602,6 +689,7 @@
         "conditions": [
           {
             "name": "Diarrhea",
+            "category": "Gastrointestinal",
             "dosage": { "value": 0.1, "unit": "ml", "per": "lb", "valueMax": 0.2 },
             "route": "Oral",
             "notes": "Give when diarrhea is seen."
@@ -609,5 +697,1394 @@
         ]
       }
     }
+  },
+  {
+    "id": "metronidazole",
+    "name": "Metronidazole (Flagyl)",
+    "type": "oral-pill/liquid",
+    "usage": "Antibiotic / Antiprotozoal",
+    "notes": "Used for Giardia and IBD. Bitter taste.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Giardia / IBD",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 5, "unit": "mg", "per": "lb", "valueMax": 20 },
+            "route": "Oral",
+            "frequency": "SID-BID",
+            "notes": "Give with food."
+          }
+        ]
+      },
+      "cattle": {
+  "conditions": [
+    {
+      "name": "BANNED",
+      "category": "Restricted",
+      "notes": "BANNED IN FOOD ANIMALS. Do not administer."
+    }
+  ]
+}
+    }
+  },
+  {
+    "id": "clavamox",
+    "name": "Amoxicillin / Clavulanate (Clavamox)",
+    "type": "oral-pill/liquid",
+    "usage": "Antibiotic",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 6.25, "unit": "mg", "per": "lb", "valueMax": 10 },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "PDF lists 2.5-5mg/lb, but standard Clavamox dose is often 6.25mg/lb (13.75mg/kg)."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "doxycycline",
+    "name": "Doxycycline",
+    "type": "oral-pill/liquid",
+    "usage": "Antibiotic",
+    "notes": "MUST be followed by water (syringe) or food to prevent esophageal strictures.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial / Mycoplasma / Chlamydia",
+            "category": "Systemic",
+            "dosage": { "value": 2, "unit": "mg", "per": "lb", "valueMax": 5 },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "PDF lists 3mg/lb. Common range 2-5mg/lb."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "albon",
+    "name": "Sulfadimethoxine (Albon)",
+    "type": "oral-liquid",
+    "usage": "Antibiotic / Coccidia",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Coccidiosis",
+            "category": "Parasitic",
+            "dosage": { "value": 12.5, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Double the first dose (25mg/lb), then 12.5mg/lb daily."
+          }
+        ]
+      },
+      "cattle": {
+  "conditions": [
+    {
+      "name": "Pneumonia / Bacterial Infection",
+      "category": "Systemic",
+      "dosage": { "value": 27.5, "unit": "mg", "per": "kg" },
+      "route": "IV or PO",
+      "frequency": "SID (Once daily)",
+      "notes": "Initial loading dose: 55 mg/kg (IV), then 27.5 mg/kg maintenance. Meat Withdrawal: 7 days. Milk Withdrawal: 60 hours."
+    }
+  ]
+}
+    }
+  },
+  {
+    "id": "clindamycin",
+    "name": "Clindamycin (Antirobe)",
+    "type": "oral-liquid/pill",
+    "usage": "Antibiotic",
+    "notes": "Good for dental infections/mouth.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 5, "unit": "mg", "per": "lb", "valueMax": 10 },
+            "route": "Oral",
+            "frequency": "SID-BID"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "azithromycin",
+    "name": "Azithromycin",
+    "type": "oral-liquid/pill",
+    "usage": "Antibiotic",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial / Mycoplasma",
+            "category": "Systemic",
+            "dosage": { "value": 2.5, "unit": "mg", "per": "lb", "valueMax": 10 },
+            "route": "Oral",
+            "frequency": "SID or Every other day"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "enrofloxacin",
+    "name": "Enrofloxacin (Baytril)",
+    "type": "oral-pill",
+    "usage": "Antibiotic",
+    "notes": "WARNING: Retinal toxicity in cats. Do not overdose.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 2, "unit": "mg", "per": "lb", "valueMax": 2.27 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Do NOT exceed 2.3 mg/lb (5 mg/kg) daily."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 2.27, "unit": "mg", "per": "lb", "valueMax": 9.07 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Can be divided into two doses. Do not use in young dogs."
+          }
+        ]
+      },
+      "cattle": {
+  "conditions": [
+    {
+      "name": "Respiratory Disease (BRD)",
+      "category": "Systemic",
+      "dosage": { "value": 2.5, "unit": "mg", "per": "kg", "valueMax": 5 },
+      "route": "SubQ",
+      "frequency": "SID (Once daily)",
+      "duration": "3-5 days",
+      "notes": "Do NOT use in dairy production cattle or veal calves. Meat Withdrawal: 28 days. Single high dose alternative: 7.5-12.5 mg/kg once."
+    }
+  ]
+}
+    }
+  },
+  {
+    "id": "lysine",
+    "name": "L-Lysine",
+    "type": "oral-powder/gel",
+    "usage": "Supplement",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Feline Herpesvirus",
+            "category": "Systemic",
+            "dosage": { "value": 250, "unit": "mg", "per": "cat" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "prednisolone",
+    "name": "Prednisolone / Methylprednisolone",
+    "type": "oral-pill/injectable",
+    "usage": "Steroid / Anti-inflammatory",
+    "notes": "Do not use with NSAIDs (Metacam).",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Inflammation",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 2.3, "unit": "mg", "per": "lb" },
+            "route": "SubQ (Depo-Medrol)",
+            "frequency": "Every 3-8 weeks"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "terbinafine",
+    "name": "Terbinafine (Lamisil)",
+    "type": "oral-pill",
+    "usage": "Antifungal",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Ringworm / Fungal",
+            "category": "Dermatology",
+            "dosage": { "value": 15, "unit": "mg", "per": "lb", "valueMax": 20 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "itraconazole",
+    "name": "Itraconazole (Sporonox)",
+    "type": "oral-liquid",
+    "usage": "Antifungal",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Ringworm / Fungal",
+            "category": "Dermatology",
+            "dosage": { "value": 5, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "aspirin-otc",
+    "name": "Aspirin (Buffered/Baby)",
+    "type": "oral-pill",
+    "usage": "Pain / Anti-inflammatory",
+    "notes": "EXTREME CAUTION. Do not use Tylenol or Ibuprofen varieties. Stop if vomiting/diarrhea occurs.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Pain",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 81, "unit": "mg", "per": "15 lbs" },
+            "route": "Oral",
+            "frequency": "Every 48 hours",
+            "notes": "ONLY Baby Aspirin (81mg). ONE pill per 15 lbs every 48 hours. Toxic if given more frequently."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Pain",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 5.4, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "BID (Every 12 hours)",
+            "notes": "1 Baby Aspirin (81mg) per 15 lbs OR 1 Adult Aspirin (325mg) per 60 lbs."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "acetaminophen-otc",
+    "name": "Tylenol (Acetaminophen)",
+    "type": "oral-pill/liquid",
+    "usage": "Pain / Fever",
+    "notes": "FATAL TO CATS. Use with caution in dogs; liver toxicity risk.",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Pain / Fever",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 6, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "Every 8-12 hours",
+            "notes": "Based on PDF: 1 Regular Strength (325mg) per 55 lbs. Do NOT give to cats."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "glucosamine-otc",
+    "name": "Glucosamine",
+    "type": "oral-pill",
+    "usage": "Joint Supplement",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Joint Support",
+            "category": "Musculoskeletal",
+            "dosage": { "value": 10, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "Double dose for first 2-4 weeks."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Joint Support",
+            "category": "Musculoskeletal",
+            "dosage": { "value": 10, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "Double dose for first 2-4 weeks."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "loratadine-otc",
+    "name": "Claritin (Loratadine)",
+    "type": "oral-pill",
+    "usage": "Antihistamine",
+    "notes": "Do NOT use 'Claritin-D' (contains decongestant which is toxic).",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Allergies",
+            "category": "Dermatology",
+            "dosage": { "value": 5, "unit": "mg", "per": "dog", "valueMax": 10 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Small dogs: 5mg (1/2 tab). Large dogs: 10mg (1 tab)."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "chlorpheniramine-otc",
+    "name": "Chlor-Trimeton (Chlorpheniramine)",
+    "type": "oral-pill",
+    "usage": "Antihistamine",
+    "notes": "Used for itching and hives.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Itching / Hives",
+            "category": "Dermatology",
+            "dosage": { "value": 2, "unit": "mg", "per": "cat" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "1/2 of a 4mg tablet."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Itching / Hives",
+            "category": "Dermatology",
+            "dosage": { "value": 0.25, "unit": "mg", "per": "lb", "valueMax": 0.5 },
+            "route": "Oral",
+            "frequency": "Every 8-12 hours",
+            "notes": "1 tablet (4mg) per 8-16 lbs."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "pepto-bismol",
+    "name": "Pepto-Bismol / Kaopectate",
+    "type": "oral-liquid",
+    "usage": "Anti-diarrheal",
+    "notes": "Contains Salicylates. TOXIC TO CATS if overdosed. Use with caution.",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Diarrhea",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 0.5, "unit": "ml", "per": "lb" },
+            "route": "Oral",
+            "frequency": "Every 6-8 hours",
+            "notes": "1 ml per 2 lbs OR 1 tsp per 10 lbs."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "loperamide-otc",
+    "name": "Immodium AD (Loperamide)",
+    "type": "oral-pill/liquid",
+    "usage": "Anti-diarrheal",
+    "notes": "Do NOT use in Collies/Shepherds (MDR1 gene). Constipation risk.",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Diarrhea",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 0.045, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "Every 12-24 hours",
+            "notes": "Approx 1 caplet (2mg) per 44 lbs."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "dimenhydrinate-otc",
+    "name": "Dramamine (Dimenhydrinate)",
+    "type": "oral-pill",
+    "usage": "Motion Sickness",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Motion Sickness",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 2, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "Every 8 hours",
+            "notes": "Approx 1 tablet (50mg) per 25 lbs (PDF says 1 per 14-28 lbs)."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "marbofloxacin",
+    "name": "Marbofloxacin (Zeniquin)",
+    "type": "oral-pill",
+    "usage": "Antibiotic",
+    "notes": "Fluoroquinolone. Do not use in young animals (cartilage issues).",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 2.75, "unit": "mg", "per": "kg", "valueMax": 5.5 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "2.75 - 5.5 mg/kg once daily."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 2.75, "unit": "mg", "per": "kg", "valueMax": 5.5 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "2.75 - 5.5 mg/kg once daily."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "pradofloxacin",
+    "name": "Pradofloxacin (Veraflox)",
+    "type": "oral-liquid",
+    "usage": "Antibiotic",
+    "notes": "Bone marrow suppression risk in dogs (not labeled for dogs in US).",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 7.5, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Do not use in kittens under 12 months."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "robenacoxib",
+    "name": "Robenacoxib (Onsior)",
+    "type": "oral-pill/injectable",
+    "usage": "NSAID / Pain",
+    "notes": "Short-term use in cats (up to 3 days).",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 1, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "duration": "3 days",
+            "notes": "Round up to nearest whole tablet."
+          },
+          {
+            "name": "Pain / Inflammation",
+            "category": "Pain & Inflammation",
+            "dosage": { "value": 2, "unit": "mg", "per": "kg" },
+            "route": "SubQ",
+            "frequency": "SID (Once daily)",
+            "duration": "3 days",
+            "notes": "Max 3 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "mirtazapine-transdermal",
+    "name": "Mirtazapine Transdermal (Mirataz)",
+    "type": "transdermal-ointment",
+    "usage": "Appetite Stimulant / Weight Loss",
+    "notes": "Wear gloves. Rotate ears.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Weight Loss / Appetite",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 2, "unit": "mg", "per": "cat" },
+            "route": "Topical (Inner Ear)",
+            "frequency": "SID (Once daily)",
+            "duration": "14 days",
+            "notes": "Apply 1.5-inch ribbon to inner pinna."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "capromorelin",
+    "name": "Capromorelin (Entyce/Elura)",
+    "type": "oral-liquid",
+    "usage": "Appetite Stimulant",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Inappetence",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 2, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "notes": "Range 1-3 mg/kg."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Inappetence",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 3, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)",
+            "duration": "4 days",
+            "notes": "Labeled for 4 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "pimobendan",
+    "name": "Pimobendan (Vetmedin)",
+    "type": "oral-pill",
+    "usage": "Heart Failure",
+    "notes": "Contraindicated in hypertrophic cardiomyopathy (HCM).",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Congestive Heart Failure",
+            "category": "Cardiovascular",
+            "dosage": { "value": 0.25, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "Typical dose per cat is 1.25 mg."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Congestive Heart Failure",
+            "category": "Cardiovascular",
+            "dosage": { "value": 0.25, "unit": "mg", "per": "kg" },
+            "route": "Oral",
+            "frequency": "BID (Twice daily)",
+            "notes": "0.3 mg/kg TID is alternative dose."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "oclacitinib",
+    "name": "Oclacitinib (Apoquel)",
+    "type": "oral-pill",
+    "usage": "Itch Relief / Allergy",
+    "notes": "Do not use in dogs < 12 months or with serious infections.",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Atopic Dermatitis / Itch",
+            "category": "Dermatology",
+            "dosage": { "value": 0.4, "unit": "mg", "per": "kg", "valueMax": 0.6 },
+            "route": "Oral",
+            "frequency": "BID for 14 days, then SID",
+            "notes": "Start BID for 14 days, then maintenance SID."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cisapride",
+    "name": "Cisapride",
+    "type": "oral-liquid/pill",
+    "usage": "GI Motility",
+    "notes": "Contraindicated in GI obstruction.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Megacolon / Constipation",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 2.5, "unit": "mg", "per": "cat", "valueMax": 7.5 },
+            "route": "Oral",
+            "frequency": "BID-TID",
+            "notes": "Dose is per cat, not per weight."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "GI Stasis",
+            "category": "Gastrointestinal",
+            "dosage": { "value": 0.5, "unit": "mg", "per": "kg", "valueMax": 1 },
+            "route": "Oral",
+            "frequency": "TID (Every 8 hours)",
+            "notes": "0.5-1 mg/kg every 8 hours."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sildenafil",
+    "name": "Sildenafil (Viagra)",
+    "type": "oral-pill",
+    "usage": "Pulmonary Hypertension",
+    "notes": "Improves energy/quality of life in heart/lung patients.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Pulmonary Hypertension",
+            "category": "Cardiovascular",
+            "dosage": { "value": 2.2, "unit": "mg", "per": "lb", "valueMax": 6.6 },
+            "route": "Oral",
+            "frequency": "2-3 times daily"
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Pulmonary Hypertension",
+            "category": "Cardiovascular",
+            "dosage": { "value": 2.2, "unit": "mg", "per": "lb", "valueMax": 6.6 },
+            "route": "Oral",
+            "frequency": "2-3 times daily"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "enalapril",
+    "name": "Enalapril",
+    "type": "oral-pill",
+    "usage": "Heart Failure / BP",
+    "notes": "ACE Inhibitor. Do not use in pregnant pets. FDA approved for dogs, commonly used in cats.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Heart Failure / Hypertension",
+            "category": "Cardiovascular",
+            "dosage": { "value": 0.1, "unit": "mg", "per": "lb", "valueMax": 0.25 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Heart Failure / Hypertension",
+            "category": "Cardiovascular",
+            "dosage": { "value": 0.25, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "levothyroxine",
+    "name": "Levothyroxine (Thyro-Tabs)",
+    "type": "oral-pill",
+    "usage": "Hypothyroidism",
+    "notes": "Monitor T4 levels. Overdose causes panting/thirst.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Hypothyroidism",
+            "category": "Endocrine",
+            "dosage": { "value": 0.05, "unit": "mg", "per": "cat", "valueMax": 0.1 },
+            "route": "Oral",
+            "frequency": "SID",
+            "notes": "Dose is PER CAT, not per lb."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Hypothyroidism",
+            "category": "Endocrine",
+            "dosage": { "value": 0.01, "unit": "mg", "per": "lb" },
+            "route": "Oral",
+            "frequency": "SID",
+            "notes": "PDF lists 0.1 mg per 10 lbs."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "furosemide",
+    "name": "Furosemide (Lasix)",
+    "type": "oral-liquid/pill",
+    "usage": "Diuretic",
+    "notes": "Ensure water is available. May cause sun sensitivity.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Fluid Retention / Edema",
+            "category": "Cardiovascular",
+            "dosage": { "value": 1, "unit": "mg", "per": "lb", "valueMax": 2 },
+            "route": "Oral",
+            "frequency": "1-2 times daily (q6-8h)",
+            "notes": "Cats usually get the lower dose."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Fluid Retention / Edema",
+            "category": "Cardiovascular",
+            "dosage": { "value": 1, "unit": "mg", "per": "lb", "valueMax": 2 },
+            "route": "Oral",
+            "frequency": "1-2 times daily (q6-8h)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simplicef",
+    "name": "Cefpodoxime (Simplicef)",
+    "type": "oral-pill",
+    "usage": "Antibiotic",
+    "notes": "Give with food to increase absorption.",
+    "animals": {
+      "dog": {
+        "conditions": [
+          {
+            "name": "Skin Infections",
+            "category": "Dermatology",
+            "dosage": { "value": 2.3, "unit": "mg", "per": "lb", "valueMax": 4.5 },
+            "route": "Oral",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "methocarbamol",
+    "name": "Methocarbamol (Robaxin)",
+    "type": "oral-pill",
+    "usage": "Muscle Relaxant",
+    "notes": "May darken urine. Causes drowsiness.",
+    "animals": {
+      "cat": {
+        "conditions": [
+          {
+            "name": "Muscle Spasms / Tremors",
+            "category": "Musculoskeletal",
+            "dosage": { "value": 10, "unit": "mg", "per": "lb", "valueMax": 30 },
+            "route": "Oral",
+            "frequency": "Every 8-12 hours",
+            "notes": "Loading dose day 1: 20-30 mg/lb. Maintenance: 10-30 mg/lb."
+          }
+        ]
+      },
+      "dog": {
+        "conditions": [
+          {
+            "name": "Muscle Spasms / Tremors",
+            "category": "Musculoskeletal",
+            "dosage": { "value": 10, "unit": "mg", "per": "lb", "valueMax": 30 },
+            "route": "Oral",
+            "frequency": "Every 8-12 hours",
+            "notes": "Loading dose day 1: 20-30 mg/lb. Maintenance: 10-30 mg/lb."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "penicillin-injectable",
+    "name": "Penicillin (Procaine / Pen G)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Withdrawal times vary significantly by formulation (Procaine vs. Benathine). See specific withdrawal notes.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Infections (Abscess, Pneumonia, Sepsis)",
+            "category": "Systemic",
+            "dosage": { "value": 24000, "unit": "units", "per": "kg", "valueMax": 66000 },
+            "route": "IM",
+            "frequency": "SID (Procaine) or q6h (Pen G)",
+            "notes": "Procaine: 24k-66k units/kg IM q24h. Na/K Pen G: 20k units/kg IM/IV q6h. Meat Withdrawal: Procaine (10-21 days), Benathine (30 days)."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "gentamicin-injectable",
+    "name": "Gentamicin (Injectable)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "WARNING: 18-month meat withdrawal. Nephrotoxicity risk.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Acute Infections",
+            "category": "Systemic",
+            "dosage": { "value": 4.4, "unit": "mg", "per": "kg", "valueMax": 6.6 },
+            "route": "IM",
+            "frequency": "Daily (divided 3 times)",
+            "notes": "Use with extreme caution. Meat Withdrawal: 18 months. Milk Withdrawal: 5 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "ceftiofur",
+    "name": "Ceftiofur",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Generally safe. Sensitivity may occur.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Respiratory / Metritis / Foot Rot",
+            "category": "Systemic",
+            "dosage": { "value": 1.1, "unit": "mg", "per": "kg", "valueMax": 2.2 },
+            "route": "IM or SubQ",
+            "frequency": "SID (Once daily)",
+            "notes": "Meat Withdrawal: 3 days. Milk Withdrawal: 0 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "tms-sulfa",
+    "name": "TMS (Trimethoprim Sulfadiazine)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Extralabel use in lactating dairy cattle is PROHIBITED. Oral dose not absorbed in ruminants.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Bacterial Infections",
+            "category": "Systemic",
+            "dosage": { "value": 25, "unit": "mg", "per": "kg", "valueMax": 44 },
+            "route": "IM or IV",
+            "frequency": "SID (Once daily)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "oxytetracycline",
+    "name": "Oxytetracycline",
+    "type": "injectable/oral",
+    "usage": "Antibiotic",
+    "notes": "Do not exceed 10ml per injection site. Give IV slowly. Renal necrosis at high doses.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Pneumonia / Sepsis (Standard)",
+            "category": "Systemic",
+            "dosage": { "value": 5, "unit": "mg", "per": "kg", "valueMax": 10 },
+            "route": "IM",
+            "frequency": "SID (Once daily)",
+            "notes": "Meat Withdrawal: 18-22 days."
+          },
+          {
+            "name": "Pneumonia / Sepsis (Depot)",
+            "category": "Systemic",
+            "dosage": { "value": 20, "unit": "mg", "per": "kg" },
+            "route": "IM",
+            "frequency": "Every 48-72 hours",
+            "notes": "Long acting formulation. Meat Withdrawal: 18-22 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "florphenicol",
+    "name": "Florphenicol",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Not for use in dairy cattle. Do not exceed 10ml per injection site.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Respiratory / Foot Rot / Pinkeye (IM)",
+            "category": "Systemic",
+            "dosage": { "value": 20, "unit": "mg", "per": "kg" },
+            "route": "IM (Neck Only)",
+            "frequency": "Every 48 hours",
+            "notes": "Meat Withdrawal: 28 days."
+          },
+          {
+            "name": "Respiratory / Foot Rot / Pinkeye (SubQ)",
+            "category": "Systemic",
+            "dosage": { "value": 40, "unit": "mg", "per": "kg" },
+            "route": "SubQ (Neck Only)",
+            "frequency": "Once",
+            "notes": "Meat Withdrawal: 38 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "erythromycin",
+    "name": "Erythromycin",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Prohibited in lactating dairy cattle >20 months.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Metritis / Pneumonia / Foot Rot",
+            "category": "Systemic",
+            "dosage": { "value": 2, "unit": "mg", "per": "kg", "valueMax": 8 },
+            "route": "IM",
+            "frequency": "SID-BID",
+            "notes": "Meat Withdrawal: 6 days (Recommended wait 21 days)."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "oxytetracycline-la",
+    "name": "Oxytetracycline (LA-200)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Rx. High dose/long acting. Rapid IV can cause collapse.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Pneumonia / Pinkeye / Foot Rot",
+            "category": "Systemic",
+            "dosage": { "value": 4.5, "unit": "ml", "per": "100 lbs" },
+            "route": "SubQ (Preferred)",
+            "frequency": "Once",
+            "notes": "9 mg/lb. Max 10ml per site. Meat Withdrawal: 28 days. Milk Discard: 96 hours."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "chlortetracycline-feed",
+    "name": "Chlortetracycline (Feed Grade)",
+    "type": "feed-additive",
+    "usage": "Antibiotic",
+    "notes": "VFD Required. Illegal for growth promotion.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Anaplasmosis / Pneumonia Control",
+            "category": "Systemic",
+            "route": "Oral (Feed)",
+            "notes": "Withdrawal varies by formulation (often 0 days for anaplasmosis control). Check VFD label."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "ceftiofur-excede",
+    "name": "Ceftiofur Crystalline Free Acid (Excede)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Rx. Injection site technique is paramount; fatal if arterial.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "BRD / Foot Rot / Acute Metritis",
+            "category": "Systemic",
+            "dosage": { "value": 1.5, "unit": "ml", "per": "100 lbs" },
+            "route": "SubQ (Base of Ear ONLY)",
+            "frequency": "Once",
+            "duration": "7 days (release)",
+            "notes": "Meat Withdrawal: 13 days. Milk Discard: 0 hours. Illegal to inject in neck/muscle."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "spectramast-lc",
+    "name": "Ceftiofur Hydrochloride (Spectramast LC)",
+    "type": "intramammary",
+    "usage": "Antibiotic",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Clinical Mastitis",
+            "category": "Localized",
+            "dosage": { "value": 1, "unit": "syringe", "per": "quarter" },
+            "route": "Intramammary",
+            "frequency": "Once daily",
+            "duration": "Up to 8 days",
+            "notes": "Repeat once in 24 hours. Meat Withdrawal: 2 days. Milk Discard: 72 hours."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "tulathromycin",
+    "name": "Tulathromycin (Draxxin)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Rx. Long half-life. Not for female dairy cattle >20 months.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "BRD / Pinkeye / Foot Rot",
+            "category": "Systemic",
+            "dosage": { "value": 1.1, "unit": "ml", "per": "100 lbs" },
+            "route": "SubQ (Neck)",
+            "frequency": "Once",
+            "notes": "2.5 mg/kg. Meat Withdrawal: 18 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "tylosin-injectable",
+    "name": "Tylosin (Tylan)",
+    "type": "injectable",
+    "usage": "Antibiotic",
+    "notes": "Rx. Not for use in lactating dairy cattle.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Pneumonia / Foot Rot / Metritis",
+            "category": "Systemic",
+            "dosage": { "value": 1, "unit": "ml", "per": "20 lbs" },
+            "route": "IM",
+            "frequency": "Daily",
+            "notes": "10-12 mg/kg. Meat Withdrawal: 21 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sulfamethazine-bolus",
+    "name": "Sulfamethazine (Sustain III)",
+    "type": "oral-bolus",
+    "usage": "Antibiotic",
+    "notes": "Rx. PROHIBITED in lactating dairy cattle (>20mo) and Veal.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Pneumonia / Scours",
+            "category": "Systemic",
+            "dosage": { "value": 1, "unit": "bolus", "per": "200 lbs" },
+            "route": "Oral",
+            "frequency": "Once (72h release)",
+            "notes": "Meat Withdrawal: 12 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "moxidectin",
+    "name": "Moxidectin (Cydectin)",
+    "type": "pour-on/injectable",
+    "usage": "Anthelmintic",
+    "notes": "Lipophilic; persistent activity.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Internal/External Parasites (Pour-On)",
+            "category": "Parasitic",
+            "dosage": { "value": 1, "unit": "ml", "per": "22 lbs" },
+            "route": "Topical",
+            "notes": "Meat Withdrawal: 0 days. Milk Withdrawal: 0 days."
+          },
+          {
+            "name": "Internal/External Parasites (Injectable)",
+            "category": "Parasitic",
+            "route": "SubQ",
+            "notes": "Meat Withdrawal: 21 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "eprinomectin",
+    "name": "Eprinomectin (Eprinex / LongRange)",
+    "type": "pour-on/injectable",
+    "usage": "Anthelmintic",
+    "notes": "LongRange is Rx only.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Parasites (Eprinex Pour-On)",
+            "category": "Parasitic",
+            "route": "Topical",
+            "notes": "OTC. Meat/Milk Withdrawal: 0 days."
+          },
+          {
+            "name": "Parasites (LongRange Injectable)",
+            "category": "Parasitic",
+            "route": "SubQ",
+            "notes": "Rx. Meat Withdrawal: 48 days. Do NOT use in breeding bulls."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "fenbendazole-cattle",
+    "name": "Fenbendazole (Safe-Guard)",
+    "type": "oral-suspension/paste",
+    "usage": "Dewormer",
+    "notes": "OTC. Safe for pregnant/lactating cows. Kills worms only (not lice).",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Internal Parasites",
+            "category": "Parasitic",
+            "dosage": { "value": 2.3, "unit": "ml", "per": "100 lbs" },
+            "route": "Oral",
+            "notes": "Dosage based on 10% suspension (2.3 mg/lb). Meat Withdrawal: 8 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "albendazole",
+    "name": "Albendazole (Valbazen)",
+    "type": "oral-suspension",
+    "usage": "Dewormer",
+    "notes": "OTC. TERATOGENIC: Do not use in first 45 days of pregnancy.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Liver Flukes / Parasites",
+            "category": "Parasitic",
+            "route": "Oral",
+            "notes": "Meat Withdrawal: 27 days."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "amprolium",
+    "name": "Amprolium (Corid)",
+    "type": "liquid/powder",
+    "usage": "Coccidiostat",
+    "notes": "High doses/prolonged use can cause Thiamine deficiency (PEM).",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Coccidiosis (Prevention)",
+            "category": "Parasitic",
+            "dosage": { "value": 5, "unit": "mg", "per": "kg" },
+            "route": "Oral (Water)",
+            "duration": "21 days",
+            "notes": "8 oz of 9.6% solution per 100 gal water. Meat Withdrawal: 24 hours."
+          },
+          {
+            "name": "Coccidiosis (Treatment)",
+            "category": "Parasitic",
+            "dosage": { "value": 10, "unit": "mg", "per": "kg" },
+            "route": "Oral (Water)",
+            "duration": "5 days",
+            "notes": "16 oz of 9.6% solution per 100 gal water. Meat Withdrawal: 24 hours."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "flunixin",
+    "name": "Flunixin Meglumine (Banamine)",
+    "type": "injectable/transdermal",
+    "usage": "NSAID",
+    "notes": "Rx. Injectable is IV ONLY (IM causes necrosis).",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Fever / Endotoxemia (Injectable)",
+            "category": "Systemic",
+            "dosage": { "value": 1, "unit": "ml", "per": "100 lbs", "valueMax": 2 },
+            "route": "IV ONLY",
+            "notes": "Meat Withdrawal: 4 days. Milk Withdrawal: 36 hours."
+          },
+          {
+            "name": "Fever / Pain (Transdermal)",
+            "category": "Systemic",
+            "dosage": { "value": 3, "unit": "ml", "per": "100 lbs" },
+            "route": "Topical (Pour-on)",
+            "notes": "Meat Withdrawal: 8 days. Not for lactating dairy cows."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "dexamethasone",
+    "name": "Dexamethasone",
+    "type": "injectable",
+    "usage": "Steroid",
+    "notes": "Rx. ABORTION RISK: High risk in 3rd trimester.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Inflammation / Ketosis / Allergy",
+            "category": "Systemic",
+            "dosage": { "value": 1, "unit": "ml", "per": "100 lbs" },
+            "route": "IM or IV",
+            "notes": "Approx dose (0.08 mg/kg). Check concentration."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "prostaglandins",
+    "name": "Prostaglandins (Lutalyse/Estrumate)",
+    "type": "injectable",
+    "usage": "Hormone",
+    "notes": "Rx. CAUTION: Absorbed through skin. Risk to women/asthmatics.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Estrus Synch / Abortion",
+            "category": "Reproductive",
+            "dosage": { "value": 5, "unit": "ml", "per": "cow" },
+            "route": "IM",
+            "notes": "Lutalyse dose: 5ml. Estrumate dose: 2ml."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thiamine-high-conc",
+    "name": "Thiamine (500 mg/mL)",
+    "type": "injectable",
+    "usage": "Vitamin",
+    "notes": "Rx. Use high concentration (500mg/ml) for Polio.",
+    "animals": {
+      "cattle": {
+        "conditions": [
+          {
+            "name": "Polioencephalomalacia (PEM)",
+            "category": "Neurological",
+            "dosage": { "value": 1, "unit": "ml", "per": "100 lbs", "valueMax": 2 },
+            "route": "IV or IM",
+            "notes": "10-20 mg/kg."
+          }
+        ]
+      }
+    }
   }
 ]
+  

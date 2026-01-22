@@ -118,6 +118,13 @@
         .tool-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         .tool-card .tool-icon { font-size: 2.5em; margin-bottom: 10px; }
 
+        /* Finder Styles */
+        .finder-cat-btn { padding: 10px 15px; border: 1px solid var(--border); border-radius: 20px; background: white; cursor: pointer; margin: 0 5px 5px 0; font-size: 0.9em; transition: 0.2s; display: inline-block; }
+        .finder-cat-btn:hover { border-color: var(--primary); }
+        .finder-cat-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        .finder-result { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid var(--border); padding: 15px; margin-bottom: 10px; border-radius: 8px; }
+        .finder-result:hover { border-color: var(--primary); }
+
         /* Modals */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
         .modal-overlay.active { display: flex; }
@@ -198,6 +205,7 @@
 
     <div class="tabs no-print">
         <button class="tab active" data-tab="calculator">💊 Calculator</button>
+        <button class="tab" data-tab="find-medicine">🔍 Find Meds</button>
         <button class="tab" data-tab="tools">🔧 Tools</button>
         <button class="tab" data-tab="add-medicine">➕ Add Medicine</button>
         <button class="tab" data-tab="database">📋 Database</button>
@@ -250,6 +258,22 @@
         <div class="card hidden" id="resultsSection">
             <h2>📊 Dosage Results</h2>
             <div class="results-box" id="resultsBox"></div>
+        </div>
+    </div>
+
+    <div id="find-medicine" class="tab-content">
+        <div class="card">
+            <h2>1. Select Animal</h2>
+            <div class="animal-grid" id="findAnimalGrid"></div>
+        </div>
+        <div class="card hidden" id="findCategoryCard">
+            <h2>2. Select Category</h2>
+            <div id="findCategoryList"></div>
+        </div>
+        <div class="card hidden" id="findResultsCard">
+            <h2>3. Matching Medicines</h2>
+            <p style="color: var(--text-light); margin-bottom: 10px;">Click a medicine to load it into the calculator.</p>
+            <div id="findResultsList"></div>
         </div>
     </div>
 
@@ -577,15 +601,27 @@
             KEY_MAP: { 1: 78, 2: 31, 3: 62, 4: 19, 5: 35, 6: 16, 7: 41, 8: 72, 9: 73 }
         };
 
-        let database = { animals: [], medicines: [] };
+        // Static definition of animals to fix initialization errors
+        const STATIC_ANIMALS = [
+            { id: 'cow', name: 'Cattle', icon: '🐄' },
+            { id: 'goat', name: 'Goat', icon: '🐐' },
+            { id: 'dog', name: 'Dog', icon: '🐕' },
+            { id: 'cat', name: 'Cat', icon: '🐈' },
+            { id: 'pig', name: 'Pig', icon: '🐖' }
+        ];
+
+        let database = { animals: STATIC_ANIMALS, medicines: [] };
         let selectedAnimal = null, selectedMedicine = null, selectedCondition = null;
         let weightUnit = 'lb', effectiveConcentration = null, isCustomCondition = false, lastCalculationData = null;
+        
+        // Find Tab Variables
+        let findAnimal = null, findCategory = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDatabase();
             setupEventListeners();
             renderAnimals();
-            renderMedicineSelect();
+            renderFindTab();
             renderDatabaseList();
             document.getElementById('sheetStartDate').valueAsDate = new Date();
         });
@@ -594,14 +630,39 @@
             try {
                 const response = await fetch(CONFIG.DB_FILE);
                 if (response.ok) {
-                    database = await response.json();
-                    if (database.customMedicines) database.medicines.push(...database.customMedicines);
+                    const data = await response.json();
+                    
+                    // FIXED: Handle if the JSON is just an array of medicines (raw format)
+                    if (Array.isArray(data)) {
+                        database.medicines = data;
+                    } else if (data.medicines) {
+                        database = data;
+                        if (!database.animals || database.animals.length === 0) {
+                            database.animals = STATIC_ANIMALS;
+                        }
+                    } else {
+                        console.warn("Unknown DB format, using defaults");
+                    }
+
+                    // Check for custom medicines in JSON structure
+                    if (database.customMedicines) {
+                        database.medicines.push(...database.customMedicines);
+                    }
                 }
-            } catch (e) { console.log('Using default database'); }
+            } catch (e) { 
+                console.log('Using default database structure due to load error: ', e); 
+            }
+            
+            // Load local storage customs
             const localMeds = JSON.parse(localStorage.getItem('customMedicines') || '[]');
             localMeds.forEach(lm => {
-                if(!database.medicines.find(m => m.id === lm.id)) database.medicines.push(lm);
+                // Avoid duplicates based on ID
+                if(!database.medicines.find(m => m.id === lm.id)) {
+                    database.medicines.push(lm);
+                }
             });
+            
+            renderMedicineSelect(); // Re-render after load
         }
 
         function setupEventListeners() {
@@ -625,6 +686,7 @@
         }
 
         function renderAnimals() {
+            if (!database.animals) return;
             document.getElementById('animalGrid').innerHTML = database.animals.map(animal => `
                 <div class="animal-btn" data-id="${animal.id}" onclick="selectAnimal('${animal.id}')">
                     <span class="icon">${animal.icon}</span><span class="name">${animal.name}</span>
@@ -634,18 +696,44 @@
 
         function selectAnimal(id) {
             selectedAnimal = id; selectedMedicine = null; selectedCondition = null;
-            document.querySelectorAll('.animal-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.id === id));
+            document.querySelectorAll('#animalGrid .animal-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.id === id));
             renderMedicineSelect();
             ['conditionSection', 'weightSection', 'resultsSection', 'editableConcentration', 'customDosageForm'].forEach(id => document.getElementById(id).classList.add('hidden'));
         }
 
         function renderMedicineSelect() {
-            const relevantMeds = database.medicines.filter(med => !selectedAnimal || (med.animals && med.animals[selectedAnimal]));
-            document.getElementById('medicineSelect').innerHTML = `
-                <option value="">-- Select a medicine --</option>
-                ${relevantMeds.map(med => `<option value="${med.id}">${med.name}</option>`).join('')}
-                <option value="other">➕ Other (Manual Entry)</option>
-            `;
+            let relevantMeds = database.medicines.filter(med => !selectedAnimal || (med.animals && med.animals[selectedAnimal]));
+            
+            // FIXED: Sort by Usage/Category first, then Name
+            relevantMeds.sort((a, b) => {
+                const useA = (a.usage || 'Other').toUpperCase();
+                const useB = (b.usage || 'Other').toUpperCase();
+                if (useA < useB) return -1;
+                if (useA > useB) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            // FIXED: Group by Usage
+            const groups = {};
+            relevantMeds.forEach(med => {
+                const use = med.usage || "Other";
+                if (!groups[use]) groups[use] = [];
+                groups[use].push(med);
+            });
+
+            let html = `<option value="">-- Select a medicine --</option>`;
+            
+            // Sort group keys alphabetically
+            Object.keys(groups).sort().forEach(group => {
+                html += `<optgroup label="${group}">`;
+                groups[group].forEach(med => {
+                    html += `<option value="${med.id}">${med.name}</option>`;
+                });
+                html += `</optgroup>`;
+            });
+
+            html += `<option value="other">➕ Other (Manual Entry)</option>`;
+            document.getElementById('medicineSelect').innerHTML = html;
         }
 
         function selectMedicine(id) {
@@ -693,7 +781,7 @@
             const conditions = selectedMedicine.animals[selectedAnimal].conditions;
             document.getElementById('conditionList').innerHTML = conditions.map((cond, idx) => `
                 <div class="condition-card" onclick="selectCondition(${idx})">
-                    <div class="condition-name">${cond.name}</div>
+                    <div class="condition-name"><strong>${cond.name}</strong> <span style="font-size:0.8em; color:var(--text-light); border:1px solid #ccc; border-radius:4px; padding:0 4px;">${cond.category || 'General'}</span></div>
                     <div class="condition-details">${cond.dosage.value} ${cond.dosage.unit}/${cond.dosage.per} • ${cond.frequency}</div>
                 </div>
             `).join('') + `<div class="condition-card other-card" onclick="selectCustomCondition()">➕ Custom Dosage</div>`;
@@ -729,6 +817,82 @@
             `;
             document.getElementById('customDosageForm').classList.remove('hidden');
             document.getElementById('weightSection').classList.remove('hidden');
+        }
+
+        // --- FIND A MEDICINE TAB LOGIC ---
+        function renderFindTab() {
+             document.getElementById('findAnimalGrid').innerHTML = database.animals.map(animal => `
+                <div class="animal-btn" data-find-id="${animal.id}" onclick="selectFindAnimal('${animal.id}')">
+                    <span class="icon">${animal.icon}</span><span class="name">${animal.name}</span>
+                </div>
+            `).join('');
+        }
+
+        function selectFindAnimal(id) {
+            findAnimal = id;
+            document.querySelectorAll('#findAnimalGrid .animal-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.findId === id));
+            
+            // Get all conditions categories for this animal
+            const categories = new Set();
+            database.medicines.forEach(med => {
+                if(med.animals && med.animals[id]) {
+                    med.animals[id].conditions.forEach(c => {
+                        if(c.category) categories.add(c.category);
+                    });
+                }
+            });
+
+            const sortedCats = Array.from(categories).sort();
+            document.getElementById('findCategoryList').innerHTML = sortedCats.map(cat => 
+                `<button class="finder-cat-btn" onclick="selectFindCategory('${cat}')">${cat}</button>`
+            ).join('');
+            
+            document.getElementById('findCategoryCard').classList.remove('hidden');
+            document.getElementById('findResultsCard').classList.add('hidden');
+        }
+
+        function selectFindCategory(category) {
+            findCategory = category;
+            document.querySelectorAll('.finder-cat-btn').forEach(btn => btn.classList.toggle('selected', btn.innerText === category));
+
+            // Filter Meds
+            const matchingMeds = [];
+            database.medicines.forEach(med => {
+                if(med.animals && med.animals[findAnimal]) {
+                    const matchedConditions = med.animals[findAnimal].conditions.filter(c => c.category === category);
+                    if(matchedConditions.length > 0) {
+                        matchingMeds.push({ med, conditions: matchedConditions });
+                    }
+                }
+            });
+
+            document.getElementById('findResultsList').innerHTML = matchingMeds.map(item => `
+                <div class="finder-result" onclick="loadFoundMedicine('${item.med.id}', '${item.conditions[0].name}')" style="cursor:pointer">
+                    <div>
+                        <h3 style="color:var(--primary);">${item.med.name}</h3>
+                        <small>${item.med.type}</small>
+                        <ul style="margin-top:5px; padding-left:20px; color:var(--text-light); font-size:0.9em;">
+                            ${item.conditions.map(c => `<li>${c.name} (${c.dosage.value} ${c.dosage.unit}/${c.dosage.per})</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div>➡️</div>
+                </div>
+            `).join('');
+
+            document.getElementById('findResultsCard').classList.remove('hidden');
+        }
+
+        function loadFoundMedicine(medId, conditionName) {
+            // Switch tab
+            document.querySelector('[data-tab="calculator"]').click();
+            // Select Animal
+            selectAnimal(findAnimal);
+            // Select Med
+            document.getElementById('medicineSelect').value = medId;
+            selectMedicine(medId);
+            // Try to auto-select condition if possible, or just scroll to conditions
+            // We scroll to conditions to be safe
+            document.getElementById('conditionSection').scrollIntoView({ behavior: 'smooth' });
         }
 
         // --- CALCULATION LOGIC ---
@@ -1024,6 +1188,7 @@
             localMeds.push(newMed);
             localStorage.setItem('customMedicines', JSON.stringify(localMeds));
             
+            // Fix: Update database.medicines, handling the potential array structure
             const existingIdx = database.medicines.findIndex(m => m.id === id);
             if(existingIdx >= 0) database.medicines[existingIdx] = newMed;
             else database.medicines.push(newMed);
@@ -1038,24 +1203,37 @@
                     const key = reconstructKey(pw);
                     const r1 = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`, {headers:{'Authorization':`token ${key}`}});
                     const d1 = await r1.json();
-                    const content = JSON.parse(atob(d1.content));
-                    if(!content.customMedicines) content.customMedicines = [];
-                    const cIdx = content.customMedicines.findIndex(m => m.id === id);
-                    if(cIdx >= 0) content.customMedicines[cIdx] = newMed;
-                    else content.customMedicines.push(newMed);
+                    
+                    // Decode current content
+                    let currentData = JSON.parse(atob(d1.content));
+                    
+                    // Logic to update the content based on its structure (array vs object)
+                    if (Array.isArray(currentData)) {
+                        // It's the new array format
+                        const cIdx = currentData.findIndex(m => m.id === id);
+                        if(cIdx >= 0) currentData[cIdx] = newMed;
+                        else currentData.push(newMed);
+                    } else {
+                        // It's the old object format
+                        if(!currentData.customMedicines) currentData.customMedicines = [];
+                        const cIdx = currentData.customMedicines.findIndex(m => m.id === id);
+                        if(cIdx >= 0) currentData.customMedicines[cIdx] = newMed;
+                        else currentData.customMedicines.push(newMed);
+                    }
 
                     const r2 = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`, {
                         method:'PUT',
                         headers:{'Authorization':`token ${key}`},
                         body: JSON.stringify({
                             message: `Update ${name}`,
-                            content: btoa(JSON.stringify(content, null, 2)),
+                            content: btoa(JSON.stringify(currentData, null, 2)),
                             sha: d1.sha
                         })
                     });
                     if(!r2.ok) throw new Error('Failed');
                     document.getElementById('saveStatus').innerHTML = '<div class="info-box" style="background:#d4edda; color:#155724">Saved to GitHub!</div>';
                 } catch(e) {
+                    console.error(e);
                     document.getElementById('saveStatus').innerHTML = '<div class="warning-box">GitHub save failed. Saved locally only.</div>';
                 }
             } else {
