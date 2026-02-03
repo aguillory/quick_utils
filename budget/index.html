@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finance Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../style.css">
     <style>
+        /* Custom CSS specific to this page */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
@@ -49,13 +50,11 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
                     Savings
                 </button>
-
             </div>
         </div>
     </nav>
 
     <main class="flex-1 relative bg-slate-50">
-        
         <iframe id="frame-accounts" src="accounts.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
 
@@ -70,28 +69,32 @@
 
         <iframe id="frame-savings" src="savings.html" 
             class="w-full h-full border-none absolute inset-0 bg-white hidden"></iframe>
-
     </main>
 
     <script>
+        /**
+         * Standard JavaScript to handle tab switching.
+         * This does not require any build tools or pre-processors.
+         */
         function switchTab(tabName) {
             // Hide all frames
             document.querySelectorAll('iframe').forEach(frame => {
                 frame.classList.add('hidden');
             });
-            // Reset all buttons
+            
+            // Reset all buttons to default state
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.remove('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
                 btn.classList.add('text-slate-400', 'border-transparent');
             });
 
-            // Show selected frame
+            // Show the selected iframe
             const selectedFrame = document.getElementById(`frame-${tabName}`);
             if (selectedFrame) {
                 selectedFrame.classList.remove('hidden');
             }
 
-            // Highlight selected button
+            // Apply active styles to the selected button
             const activeBtn = document.getElementById(`btn-${tabName}`);
             if (activeBtn) {
                 activeBtn.classList.remove('text-slate-400', 'border-transparent');
@@ -99,7 +102,7 @@
             }
         }
 
-        // Set Default Tab (Planner is usually the main dashboard view)
+        // Initialize view with the Planner tab
         switchTab('planner');
     </script>
 </body>

@@ -4,284 +4,321 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stefani's Ledgers</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        :root {
-            --primary: #2563eb;
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
-            --danger: #ef4444;
-            --success: #10b981;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 20px;
-        }
-
-        .container { max-width: 1200px; margin: 0 auto; display: none; /* Hidden until login */ }
-        
-        /* Login Styles */
-        #login-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: var(--bg);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 1000;
-        }
-        .login-card {
-            background: white; padding: 2rem; border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            text-align: center; width: 300px;
-        }
-        .login-card input {
-            width: 100%; padding: 10px; margin-bottom: 10px;
-            border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;
-        }
-        .btn-primary {
-            background-color: var(--primary); color: white; border: none;
-            padding: 10px 20px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold;
-        }
-        #auth-error { color: var(--danger); font-size: 0.9rem; margin-top: 10px; min-height: 1.2em;}
-
-        /* App Styles */
-        header { margin-bottom: 2rem; text-align: center; display: flex; justify-content: space-between; align-items: center;}
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; }
-        .card { background: var(--card-bg); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
-        .card-header { display: flex; justify-content: space-between; margin-bottom: 1rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; font-weight: bold; font-size: 1.25rem;}
-        
-        .balance-display { text-align: center; margin: 1rem 0; padding: 1rem; background: #f1f5f9; border-radius: 8px; }
-        .balance-amount { font-size: 2rem; font-weight: 700; color: var(--primary); }
-        .input-group { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-        input, select { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; }
-        button { cursor: pointer; padding: 0.5rem 1rem; border: none; border-radius: 6px; font-weight: 600; }
-        .btn-pay { background-color: var(--success); color: white; }
-        .btn-charge { background-color: var(--danger); color: white; }
-        .btn-add { background-color: var(--primary); color: white; width: 100%; margin-top: 0.5rem;}
-        
-        .history-list { margin-top: 1.5rem; max-height: 300px; overflow-y: auto; border-top: 1px solid #e2e8f0; }
-        .history-item { display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
-        .amount-pos { color: var(--danger); } .amount-neg { color: var(--success); }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
-<body>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
 
-<div id="login-overlay">
-    <div class="login-card">
-        <h2>🔒 Login Required</h2>
-        <p style="color:#64748b; font-size: 0.9rem; margin-bottom: 1rem;">Use your Budget App credentials</p>
-        <form id="login-form">
-            <input type="email" id="email" placeholder="Email" required>
-            <input type="password" id="password" placeholder="Password" required>
-            <button type="submit" class="btn-primary" id="login-btn">Sign In</button>
-        </form>
-        <div id="auth-error"></div>
+    <div id="app">
+        <div class="h-screen flex items-center justify-center text-slate-400">Loading Ledger...</div>
     </div>
-</div>
 
-<div class="container" id="app-container">
-    <header>
-        <h1>Stefani's Ledgers</h1>
-        <button onclick="handleLogout()" style="background:none; border:1px solid #ccc; color:#666;">Logout</button>
-    </header>
+    <script type="module">
+        import { db, auth } from './scripts/connection.js'; 
+        import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    <div class="grid">
-        <div class="card">
-            <div class="card-header"><span>📖 The Ledger</span></div>
-            <div class="balance-display">
-                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">She Owes You</div>
-                <div class="balance-amount" id="ledger-balance">$0.00</div>
-            </div>
-            <div class="input-group">
-                <input type="text" id="ledger-desc" placeholder="Item / Reason">
-                <input type="number" id="ledger-amount" placeholder="0.00" step="0.01">
-            </div>
-            <div class="input-group"><input type="date" id="ledger-date"></div>
-            <div class="input-group">
-                <button class="btn-charge" onclick="addTransaction('ledger', 'charge')">➕ Charge</button>
-                <button class="btn-pay" onclick="addTransaction('ledger', 'payment')">➖ Payment</button>
-            </div>
-            <div class="history-list" id="ledger-history"></div>
-        </div>
+        const USER_EMAIL = "default@user.com";
+        const COLLECTION_NAME = "friend_debt_tracker";
 
-        <div class="card">
-            <div class="card-header"><span>🏠 Mom's Rent</span></div>
-            <div class="balance-display">
-                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">Outstanding Rent</div>
-                <div class="balance-amount" id="rent-balance">$0.00</div>
-            </div>
-            <div class="input-group"><input type="text" id="rent-desc" placeholder="Month"></div>
-            <div class="input-group"><input type="number" id="rent-amount" placeholder="Amount" step="0.01"><input type="date" id="rent-date"></div>
-            <div class="input-group">
-                <button class="btn-charge" onclick="addTransaction('rent', 'charge')">➕ Charge</button>
-                <button class="btn-pay" onclick="addTransaction('rent', 'payment')">➖ Payment</button>
-            </div>
-            <div class="history-list" id="rent-history"></div>
-        </div>
+        // --- Icons ---
+        const Icons = {
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+            Minus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+            Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
+            Book: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`,
+            Home: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
+            CreditCard: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>`
+        };
 
-        <div class="card">
-            <div class="card-header"><span>💳 Credit Card</span></div>
-            <div class="balance-display">
-                <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b;">She Owes You</div>
-                <div class="balance-amount" id="cc-balance">$0.00</div>
-            </div>
-            <div style="text-align:center; font-size:0.8rem; color:#64748b; margin-bottom:1rem;">You paid bank: <strong id="cc-user-paid">$0.00</strong></div>
-            <div class="input-group">
-                <select id="cc-type">
-                    <option value="interest">📈 Interest/Fee (Increases Debt)</option>
-                    <option value="payment">💰 She Paid Me (Decreases Debt)</option>
-                    <option value="bank_payment">🏦 I Paid Bank (Tracking Only)</option>
-                </select>
-            </div>
-            <div class="input-group"><input type="text" id="cc-desc" placeholder="Note"><input type="number" id="cc-amount" placeholder="0.00" step="0.01"></div>
-            <div class="input-group"><input type="date" id="cc-date"><button class="btn-add" onclick="handleCCTransaction()">Add Entry</button></div>
-            <div class="history-list" id="cc-history"></div>
-        </div>
-    </div>
-</div>
+        // --- State ---
+        const state = {
+            user: null,
+            isLoading: true,
+            loginError: '',
+            data: { 
+                ledger: { b: 0, h: [] }, 
+                rent: { b: 0, h: [] }, 
+                cc: { b: 0, paid: 0, h: [] } 
+            }
+        };
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // --- Helpers ---
+        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
-    // BUDGET Project Configuration
-    const firebaseConfig = {
-        apiKey: "AIzaSyBUNb26WpRCPUJN3k51X_A9OndQFZwICjY",
-        authDomain: "budget-87a6d.firebaseapp.com",
-        projectId: "budget-87a6d",
-        storageBucket: "budget-87a6d.firebasestorage.app",
-        messagingSenderId: "1040095975333",
-        appId: "1:1040095975333:web:8401747beb9e7e5ebd7a4c"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    const COLLECTION_NAME = "friend_debt_tracker";
-
-    // Set dates to today
-    document.querySelectorAll('input[type="date"]').forEach(input => input.valueAsDate = new Date());
-
-    // ---------------- AUTH LOGIC ----------------
-    const loginOverlay = document.getElementById('login-overlay');
-    const appContainer = document.getElementById('app-container');
-    const authError = document.getElementById('auth-error');
-
-    // Monitor Auth State
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            loginOverlay.style.display = 'none';
-            appContainer.style.display = 'block';
-            startDataListener(); // Only load data if logged in
-        } else {
-            loginOverlay.style.display = 'flex';
-            appContainer.style.display = 'none';
-        }
-    });
-
-    // Handle Login Submit
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const btn = document.getElementById('login-btn');
-        
-        try {
-            btn.textContent = "Signing In...";
-            authError.textContent = "";
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (error) {
-            console.error(error);
-            authError.textContent = "Invalid Login. Please try again.";
-            btn.textContent = "Sign In";
-        }
-    });
-
-    window.handleLogout = () => signOut(auth);
-
-    // ---------------- DATA LOGIC ----------------
-    function startDataListener() {
-        const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
-        onSnapshot(q, (snapshot) => {
-            const data = { ledger: { b: 0, h: [] }, rent: { b: 0, h: [] }, cc: { b: 0, paid: 0, h: [] } };
-
-            snapshot.forEach(doc => {
-                const t = doc.data(); t.id = doc.id;
-                
-                if (t.category === 'ledger') {
-                    if (t.type === 'charge') data.ledger.b += t.amount;
-                    if (t.type === 'payment') data.ledger.b -= t.amount;
-                    data.ledger.h.push(t);
+        // --- Actions ---
+        const Actions = {
+            login: async (e) => {
+                e.preventDefault();
+                const pw = document.getElementById('login-password').value;
+                try { 
+                    await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+                } catch(err) { 
+                    state.loginError = "Access Denied";
+                    render();
                 }
-                if (t.category === 'rent') {
-                    if (t.type === 'charge') data.rent.b += t.amount;
-                    if (t.type === 'payment') data.rent.b -= t.amount;
-                    data.rent.h.push(t);
+            },
+            addTransaction: async (category, type, descInputId, amountInputId, dateInputId) => {
+                const descInput = document.getElementById(descInputId);
+                const amountInput = document.getElementById(amountInputId);
+                const dateInput = document.getElementById(dateInputId);
+
+                const desc = descInput.value || (type === 'charge' ? 'Charge' : 'Payment');
+                const amount = parseFloat(amountInput.value);
+                const date = dateInput.value;
+
+                if (!amount) return alert("Please enter an amount");
+
+                try {
+                    await addDoc(collection(db, COLLECTION_NAME), {
+                        category, 
+                        type, 
+                        description: desc, 
+                        amount: Math.abs(amount), 
+                        date, 
+                        createdAt: new Date().toISOString()
+                    });
+                    
+                    // Clear inputs
+                    descInput.value = "";
+                    amountInput.value = "";
+                    // Keep date as today
+                    dateInput.valueAsDate = new Date();
+                } catch (e) {
+                    console.error("Error adding doc: ", e);
+                    alert("Error saving transaction.");
                 }
-                if (t.category === 'cc') {
-                    if (t.type === 'interest' || t.type === 'charge') data.cc.b += t.amount;
-                    else if (t.type === 'payment') data.cc.b -= t.amount;
-                    else if (t.type === 'bank_payment') data.cc.paid += t.amount;
-                    data.cc.h.push(t);
+            },
+            handleCCTransaction: () => {
+                const type = document.getElementById('cc-type').value;
+                Actions.addTransaction('cc', type, 'cc-desc', 'cc-amount', 'cc-date');
+            },
+            deleteTransaction: async (id) => {
+                if(confirm("Delete this entry?")) {
+                    await deleteDoc(doc(db, COLLECTION_NAME, id));
                 }
-            });
+            }
+        };
 
-            renderSection('ledger', data.ledger);
-            renderSection('rent', data.rent);
-            renderSection('cc', data.cc);
-        }, (error) => {
-            console.error("Data error:", error);
-            // If permission denied happens here, it usually means the rules blocked it
-            if(error.code === 'permission-denied') alert("Access Denied: You must be logged in.");
-        });
-    }
+        window.Ledger = Actions;
 
-    // Shared Add Function
-    window.addTransaction = async (category, type) => {
-        const desc = document.getElementById(`${category}-desc`).value || (type === 'charge' ? 'Charge' : 'Payment');
-        const amount = parseFloat(document.getElementById(`${category}-amount`).value);
-        const date = document.getElementById(`${category}-date`).value;
-
-        if (!amount) return alert("Enter an amount");
-
-        await addDoc(collection(db, COLLECTION_NAME), {
-            category, type, description: desc, amount: Math.abs(amount), date, createdAt: new Date().toISOString()
-        });
-        
-        document.getElementById(`${category}-desc`).value = "";
-        document.getElementById(`${category}-amount`).value = "";
-    };
-
-    window.handleCCTransaction = () => window.addTransaction('cc', document.getElementById('cc-type').value);
-
-    window.deleteTransaction = async (id) => {
-        if(confirm("Delete entry?")) await deleteDoc(doc(db, COLLECTION_NAME, id));
-    };
-
-    function renderSection(cat, data) {
-        document.getElementById(`${cat}-balance`).textContent = `$${data.b.toFixed(2)}`;
-        if(cat === 'cc') document.getElementById('cc-user-paid').textContent = `$${data.paid.toFixed(2)}`;
-        
-        const list = document.getElementById(`${cat}-history`);
-        list.innerHTML = data.h.map(t => {
-            let colorClass = (t.type === 'payment') ? 'amount-neg' : 'amount-pos';
-            let symbol = (t.type === 'payment') ? '-' : '+';
-            if(t.type === 'bank_payment') { colorClass = ''; symbol = ''; }
-            
-            return `<div class="history-item">
-                <div><strong>${t.description}</strong><br><span style="font-size:0.75rem;color:#aaa">${t.date}</span></div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span class="${colorClass}">${symbol}$${t.amount.toFixed(2)}</span>
-                    <button onclick="deleteTransaction('${t.id}')" style="color:#ccc;background:none;font-size:1.2rem;">×</button>
+        // --- Components ---
+        const renderLogin = () => `
+            <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Stefani's Ledgers</h2>
+                    <form onsubmit="Ledger.login(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Password</label>
+                            <input id="login-password" type="password" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500"/>
+                        </div>
+                        ${state.loginError ? `<p class="text-red-500 text-sm">${state.loginError}</p>` : ''}
+                        <button type="submit" class="w-full py-2 px-4 bg-pink-600 text-white rounded-md hover:bg-pink-700 font-medium">Access Ledger</button>
+                    </form>
                 </div>
-            </div>`;
-        }).join('');
-    }
-</script>
+            </div>
+        `;
+
+        const renderHistory = (items) => {
+            if (items.length === 0) return `<div class="text-center text-slate-400 text-sm py-4 italic">No history yet</div>`;
+            
+            return items.map(t => {
+                let colorClass = (t.type === 'payment') ? 'text-emerald-600' : 'text-red-600';
+                let symbol = (t.type === 'payment') ? '-' : '+';
+                if(t.type === 'bank_payment') { colorClass = 'text-slate-500'; symbol = ''; }
+                
+                return `
+                <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition px-2">
+                    <div>
+                        <div class="font-medium text-slate-800 text-sm">${t.description}</div>
+                        <div class="text-xs text-slate-400">${t.date}</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-sm ${colorClass}">${symbol}${formatCurrency(t.amount)}</span>
+                        <button onclick="Ledger.deleteTransaction('${t.id}')" class="text-slate-300 hover:text-red-500 transition">
+                            ${Icons.Trash}
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        };
+
+        const renderCard = (title, icon, balanceLabel, balance, children) => `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                <div class="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                    <span class="text-slate-500">${icon}</span>
+                    <h2 class="font-bold text-slate-700">${title}</h2>
+                </div>
+                
+                <div class="p-6 bg-slate-50 border-b border-slate-200 text-center">
+                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">${balanceLabel}</div>
+                    <div class="text-3xl font-bold ${balance > 0 ? 'text-red-600' : 'text-emerald-600'}">${formatCurrency(balance)}</div>
+                </div>
+
+                <div class="p-4 flex-grow flex flex-col gap-4">
+                    ${children}
+                </div>
+            </div>
+        `;
+
+        const renderApp = () => `
+            <div class="bg-pink-900 text-white pb-24 pt-8 px-4 shadow-xl">
+                <div class="max-w-6xl mx-auto">
+                    <h1 class="text-2xl font-bold flex items-center gap-2 mb-2">
+                        Stefani's Ledgers
+                    </h1>
+                    <p class="text-pink-200 text-sm">Track shared expenses, rent, and credit cards.</p>
+                </div>
+            </div>
+
+            <div class="max-w-6xl mx-auto px-4 -mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                ${renderCard('The Ledger', Icons.Book, 'She Owes You', state.data.ledger.b, `
+                    <div class="flex gap-2">
+                        <input type="text" id="ledger-desc" placeholder="Item / Reason" class="flex-grow px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <input type="number" id="ledger-amount" placeholder="0.00" step="0.01" class="w-24 px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    </div>
+                    <input type="date" id="ledger-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-600">
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="Ledger.addTransaction('ledger', 'charge', 'ledger-desc', 'ledger-amount', 'ledger-date')" class="flex items-center justify-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 py-2 rounded-md font-bold text-sm transition">
+                            ${Icons.Plus} Charge
+                        </button>
+                        <button onclick="Ledger.addTransaction('ledger', 'payment', 'ledger-desc', 'ledger-amount', 'ledger-date')" class="flex items-center justify-center gap-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-md font-bold text-sm transition">
+                            ${Icons.Minus} Payment
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 border-t border-slate-100 pt-2 flex-grow overflow-y-auto max-h-60 custom-scrollbar">
+                        ${renderHistory(state.data.ledger.h)}
+                    </div>
+                `)}
+
+                ${renderCard("Mom's Rent", Icons.Home, 'Outstanding Rent', state.data.rent.b, `
+                    <input type="text" id="rent-desc" placeholder="Month (e.g. October Rent)" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    <div class="flex gap-2">
+                        <input type="number" id="rent-amount" placeholder="Amount" step="0.01" class="flex-grow px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <input type="date" id="rent-date" class="w-32 px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-600">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="Ledger.addTransaction('rent', 'charge', 'rent-desc', 'rent-amount', 'rent-date')" class="flex items-center justify-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 py-2 rounded-md font-bold text-sm transition">
+                            ${Icons.Plus} Charge
+                        </button>
+                        <button onclick="Ledger.addTransaction('rent', 'payment', 'rent-desc', 'rent-amount', 'rent-date')" class="flex items-center justify-center gap-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-md font-bold text-sm transition">
+                            ${Icons.Minus} Payment
+                        </button>
+                    </div>
+
+                    <div class="mt-4 border-t border-slate-100 pt-2 flex-grow overflow-y-auto max-h-60 custom-scrollbar">
+                        ${renderHistory(state.data.rent.h)}
+                    </div>
+                `)}
+
+                ${renderCard('Credit Card', Icons.CreditCard, 'She Owes You', state.data.cc.b, `
+                    <div class="text-center text-xs text-slate-400 mb-2">You paid bank: <strong class="text-slate-700">${formatCurrency(state.data.cc.paid)}</strong></div>
+                    
+                    <select id="cc-type" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <option value="interest">📈 Interest/Fee (Increases Debt)</option>
+                        <option value="payment">💰 She Paid Me (Decreases Debt)</option>
+                        <option value="bank_payment">🏦 I Paid Bank (Tracking Only)</option>
+                    </select>
+
+                    <div class="flex gap-2">
+                        <input type="text" id="cc-desc" placeholder="Note" class="flex-grow px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <input type="number" id="cc-amount" placeholder="0.00" step="0.01" class="w-24 px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <input type="date" id="cc-date" class="flex-grow px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-600">
+                        <button onclick="Ledger.handleCCTransaction()" class="bg-pink-600 text-white px-4 py-2 rounded-md font-bold text-sm hover:bg-pink-700 transition">Add</button>
+                    </div>
+
+                    <div class="mt-4 border-t border-slate-100 pt-2 flex-grow overflow-y-auto max-h-60 custom-scrollbar">
+                        ${renderHistory(state.data.cc.h)}
+                    </div>
+                `)}
+
+            </div>
+        `;
+
+        const render = () => {
+            const app = document.getElementById('app');
+            if (state.isLoading) {
+                app.innerHTML = '<div class="h-screen flex items-center justify-center text-slate-400">Loading...</div>';
+                return;
+            }
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+                return;
+            }
+            app.innerHTML = renderApp();
+            
+            // Set default dates to today after render
+            setTimeout(() => {
+                document.querySelectorAll('input[type="date"]').forEach(input => {
+                    if(!input.value) input.valueAsDate = new Date();
+                });
+            }, 0);
+        };
+
+        // --- Init ---
+        onAuthStateChanged(auth, (u) => {
+            state.user = u;
+            state.isLoading = false;
+            if (u) {
+                // Real-time listener
+                const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
+                onSnapshot(q, (snapshot) => {
+                    const d = { ledger: { b: 0, h: [] }, rent: { b: 0, h: [] }, cc: { b: 0, paid: 0, h: [] } };
+                    
+                    snapshot.forEach(doc => {
+                        const t = doc.data(); t.id = doc.id;
+                        if (t.category === 'ledger') {
+                            if (t.type === 'charge') d.ledger.b += t.amount;
+                            if (t.type === 'payment') d.ledger.b -= t.amount;
+                            d.ledger.h.push(t);
+                        }
+                        if (t.category === 'rent') {
+                            if (t.type === 'charge') d.rent.b += t.amount;
+                            if (t.type === 'payment') d.rent.b -= t.amount;
+                            d.rent.h.push(t);
+                        }
+                        if (t.category === 'cc') {
+                            if (t.type === 'interest' || t.type === 'charge') d.cc.b += t.amount;
+                            else if (t.type === 'payment') d.cc.b -= t.amount;
+                            else if (t.type === 'bank_payment') d.cc.paid += t.amount;
+                            d.cc.h.push(t);
+                        }
+                    });
+                    
+                    state.data = d;
+                    render();
+                }, (error) => {
+                    console.error("Firebase Error:", error);
+                    // If permissions fail, we might need to handle logout or error display
+                });
+            } else {
+                render();
+            }
+        });
+
+    </script>
 </body>
 </html>

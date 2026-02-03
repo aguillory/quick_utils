@@ -4,404 +4,390 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Paycheck Manager</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #4c1d95; } /* violet-900 */
+        ::-webkit-scrollbar-thumb { background: #a78bfa; border-radius: 4px; } /* violet-400 */
+        ::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+    </style>
 </head>
-<body class="bg-slate-50">
-    
-    <div id="root"></div>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
 
-    <script type="text/babel" data-type="module">
-        const { useState, useEffect, useMemo, useRef, useCallback } = React;
-        const { createRoot } = ReactDOM;
-        import { db, auth } from './scripts/connection.js';
-        
+    <div id="app">
+        <div class="h-screen w-full flex items-center justify-center text-slate-400">Loading Paycheck Data...</div>
+    </div>
+
+    <script type="module">
+        import { db, auth } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // --- Configuration ---
         const USER_EMAIL = "default@user.com";
-        
+
+        // --- Icons ---
+        const Icons = {
+            Wallet: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>`,
+            Calculator: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>`,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+        };
+
+        // --- State ---
+        const state = {
+            user: null,
+            isLoading: true,
+            loginError: '',
+            isSaving: false,
+            hasUnsavedChanges: false,
+            saveTimer: null,
+            
+            // Data
+            grossPay: 0,
+            preTaxDeductions: [],
+            taxes: [],
+            postTaxDeductions: [],
+            isHoliday: false
+        };
+
+        // --- Helpers ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
-        // --- DEEP COMPARISON UTILITY ---
-        const deepEqual = (a, b) => {
-            if (a === b) return true;
-            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-            const keysA = Object.keys(a);
-            const keysB = Object.keys(b);
-            if (keysA.length !== keysB.length) return false;
-            for (let key of keysA) {
-                if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
+        // --- Logic ---
+        const Logic = {
+            calculateTotals: () => {
+                const totalPreTax = state.preTaxDeductions.reduce((sum, item) => sum + item.amount, 0);
+                const totalTaxes = state.taxes.reduce((sum, item) => sum + item.amount, 0);
+                const totalPostTax = state.postTaxDeductions.reduce((sum, item) => sum + item.amount, 0);
+
+                let netPay = 0;
+                if (state.isHoliday) {
+                    netPay = state.grossPay - totalTaxes;
+                } else {
+                    netPay = state.grossPay - totalPreTax - totalTaxes - totalPostTax;
+                }
+
+                return { totalPreTax, totalTaxes, totalPostTax, netPay };
             }
-            return true;
         };
 
-        const Icons = {
-            Wallet: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>,
-            Calculator: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-        };
+        // --- Actions ---
+        const Actions = {
+            login: async (e) => {
+                e.preventDefault();
+                const pw = document.getElementById('login-password').value;
+                try { 
+                    await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+                } catch(err) { 
+                    state.loginError = "Incorrect password";
+                    render();
+                }
+            },
+            scheduleSave: () => {
+                state.hasUnsavedChanges = true;
+                render(); 
 
-        // --- COMPONENTS ---
+                if (state.saveTimer) clearTimeout(state.saveTimer);
+                
+                state.saveTimer = setTimeout(async () => {
+                    if (!state.user) return;
+                    state.isSaving = true;
+                    render();
 
-        const SectionEditor = ({ title, items, setItems, colorClass, total }) => {
-            const addItem = () => {
+                    const currentData = { 
+                        grossPay: state.grossPay,
+                        preTaxDeductions: state.preTaxDeductions,
+                        taxes: state.taxes,
+                        postTaxDeductions: state.postTaxDeductions
+                    };
+                    
+                    try {
+                        await setDoc(doc(db, 'users', state.user.uid, 'paycheck_data', 'current_config'), {
+                            ...currentData,
+                            updatedAt: new Date()
+                        }, { merge: true });
+                        state.hasUnsavedChanges = false;
+                    } catch(e) {
+                        console.error("Save failed", e);
+                    } finally {
+                        state.isSaving = false;
+                        render();
+                    }
+                }, 2000);
+            },
+            updateGrossPay: (val) => {
+                state.grossPay = parseFloat(val) || 0;
+                Actions.scheduleSave();
+                render();
+                // Restore focus to gross pay input
+                setTimeout(() => {
+                    const el = document.getElementById('gross-pay-input');
+                    if(el) { el.focus(); }
+                }, 0);
+            },
+            toggleHoliday: () => {
+                state.isHoliday = !state.isHoliday;
+                render();
+            },
+            addItem: (listName) => {
                 const newItem = { id: Date.now().toString(), name: 'New Item', amount: 0 };
-                setItems([...items, newItem]);
-            };
+                state[listName] = [...state[listName], newItem];
+                Actions.scheduleSave();
+                render();
+            },
+            updateItem: (listName, id, field, value) => {
+                if (field === 'amount') value = parseFloat(value) || 0;
+                state[listName] = state[listName].map(item => item.id === id ? { ...item, [field]: value } : item);
+                Actions.scheduleSave();
+                render();
+                // Restore focus logic
+                setTimeout(() => {
+                    const el = document.getElementById(`${listName}-${field}-${id}`);
+                    if(el) { el.focus(); }
+                }, 0);
+            },
+            deleteItem: (listName, id) => {
+                if(!confirm("Remove this item?")) return;
+                state[listName] = state[listName].filter(item => item.id !== id);
+                Actions.scheduleSave();
+                render();
+            }
+        };
 
-            const updateItem = (id, field, value) => {
-                setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
-            };
+        window.Paycheck = Actions;
 
-            const deleteItem = (id) => {
-                setItems(items.filter(item => item.id !== id));
-            };
+        // --- Components ---
 
-            return (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className={`px-4 py-3 ${colorClass} flex justify-between items-center`}>
-                        <h3 className="font-semibold text-white">{title}</h3>
-                        <span className="font-bold text-white bg-white/20 px-2 py-0.5 rounded text-sm">
-                            {formatCurrency(total)}
-                        </span>
-                    </div>
-                    <div className="p-4 space-y-3">
-                        {items.length === 0 && (
-                            <p className="text-sm text-slate-400 text-center py-2">No items yet</p>
-                        )}
-                        {items.map((item) => (
-                            <div key={item.id} className="flex gap-2 items-center">
+        const renderLogin = () => `
+            <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Paycheck Manager</h2>
+                    <form onsubmit="Paycheck.login(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Password</label>
+                            <input id="login-password" type="password" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-violet-500 focus:border-violet-500"/>
+                        </div>
+                        ${state.loginError ? `<p class="text-red-500 text-sm">${state.loginError}</p>` : ''}
+                        <button type="submit" class="w-full py-2 px-4 bg-violet-600 text-white rounded-md hover:bg-violet-700 font-medium">Access Paycheck</button>
+                    </form>
+                </div>
+            </div>
+        `;
+
+        const renderSectionEditor = (title, items, listName, colorClass, total, disabled) => `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${disabled ? 'opacity-40 grayscale pointer-events-none transition-opacity duration-300' : ''}">
+                <div class="px-4 py-3 ${colorClass} flex justify-between items-center">
+                    <h3 class="font-semibold text-white">${title}</h3>
+                    <span class="font-bold text-white bg-white/20 px-2 py-0.5 rounded text-sm">
+                        ${formatCurrency(total)}
+                    </span>
+                </div>
+                <div class="p-4 space-y-3">
+                    ${items.length === 0 ? '<p class="text-sm text-slate-400 text-center py-2">No items yet</p>' : ''}
+                    ${items.map(item => `
+                        <div class="flex gap-2 items-center">
+                            <input
+                                id="${listName}-name-${item.id}"
+                                type="text"
+                                value="${item.name}"
+                                oninput="Paycheck.updateItem('${listName}', '${item.id}', 'name', this.value)"
+                                class="block w-1/2 rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-violet-600 sm:text-sm sm:leading-6 px-2"
+                                placeholder="Name"
+                            />
+                            <div class="relative w-1/3">
+                                <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-slate-400 text-xs">$</span>
                                 <input
-                                    type="text"
-                                    value={item.name}
-                                    onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                                    className="block w-1/2 rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-violet-600 sm:text-sm sm:leading-6 px-2"
-                                    placeholder="Name"
+                                    id="${listName}-amount-${item.id}"
+                                    type="number"
+                                    value="${item.amount}"
+                                    onchange="Paycheck.updateItem('${listName}', '${item.id}', 'amount', this.value)"
+                                    class="block w-full rounded-md border-0 py-1.5 pl-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-violet-600 sm:text-sm sm:leading-6"
                                 />
-                                <div className="relative w-1/3">
-                                    <span className="absolute inset-y-0 left-0 pl-2 flex items-center text-slate-400 text-xs">$</span>
-                                    <input
-                                        type="number"
-                                        value={item.amount}
-                                        onChange={(e) => updateItem(item.id, 'amount', parseFloat(e.target.value) || 0)}
-                                        className="block w-full rounded-md border-0 py-1.5 pl-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-violet-600 sm:text-sm sm:leading-6"
-                                    />
-                                </div>
-                                <button 
-                                    onClick={() => deleteItem(item.id)}
-                                    className="text-slate-400 hover:text-red-500 transition-colors"
+                            </div>
+                            <button 
+                                onclick="Paycheck.deleteItem('${listName}', '${item.id}')"
+                                class="text-slate-400 hover:text-red-500 transition-colors"
+                            >${Icons.Trash}</button>
+                        </div>
+                    `).join('')}
+                    <button
+                        onclick="Paycheck.addItem('${listName}')"
+                        class="w-full mt-2 py-2 flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg border border-dashed border-slate-300 hover:border-violet-300 transition-all"
+                    >${Icons.Plus} Add Item</button>
+                </div>
+            </div>
+        `;
+
+        const renderApp = () => {
+            const { totalPreTax, totalTaxes, totalPostTax, netPay } = Logic.calculateTotals();
+            const totalDeductions = state.isHoliday ? totalTaxes : (totalPreTax + totalTaxes + totalPostTax);
+
+            return `
+            <div class="bg-violet-900 text-white pb-24 pt-8 px-4 shadow-xl">
+                <div class="max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-2xl font-bold flex items-center gap-2">
+                            ${Icons.Wallet} Paycheck Manager
+                        </h1>
+                        <div class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${state.isSaving ? 'bg-violet-700 text-violet-200' : state.hasUnsavedChanges ? 'bg-yellow-600 text-yellow-100' : 'bg-violet-800 text-violet-200'}">
+                            ${state.isSaving ? 'Saving...' : state.hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
+                            <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Gross Pay</div>
+                            <div class="text-3xl font-bold text-white">${formatCurrency(state.grossPay)}</div>
+                            <div class="text-xs text-violet-400 mt-1">Bi-weekly</div>
+                        </div>
+                        <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
+                            <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Total Deductions</div>
+                            <div class="text-3xl font-bold text-white">${formatCurrency(totalDeductions)}</div>
+                            <div class="text-xs text-violet-400 mt-1">${state.isHoliday ? 'Taxes only (Holiday)' : 'Pre-tax + Taxes + Post-tax'}</div>
+                        </div>
+                        <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
+                            <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Net Pay</div>
+                            <div class="text-3xl font-bold text-white">${formatCurrency(netPay)}</div>
+                            <div class="text-xs text-violet-400 mt-1">Take-home amount</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-5xl mx-auto px-4 -mt-16 space-y-6">
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 class="text-lg font-bold text-white mb-4 sr-only">Gross Pay</h2>
+                        <label class="text-xs text-slate-400 font-bold uppercase">Gross Bi-Weekly Pay</label>
+                        <div class="relative mt-1">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">$</span>
+                            <input
+                                id="gross-pay-input"
+                                type="number"
+                                step="0.01"
+                                value="${state.grossPay}"
+                                oninput="Paycheck.updateGrossPay(this.value)"
+                                class="block w-full pl-7 pr-3 py-2 text-lg font-semibold border border-slate-300 rounded-lg focus:ring-violet-500 focus:border-violet-500"
+                            />
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <div class="bg-violet-50 rounded-lg px-4 border border-violet-100">
+                             <div class="flex items-center justify-between py-3">
+                                <span class="flex-grow flex flex-col">
+                                    <span class="text-sm font-medium text-slate-900">Simulate Deduction Holiday</span>
+                                    <span class="text-xs text-slate-500">Skip pre/post tax deductions</span>
+                                </span>
+                                <button
+                                    type="button"
+                                    onclick="Paycheck.toggleHoliday()"
+                                    class="${state.isHoliday ? 'bg-violet-600' : 'bg-slate-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-violet-600 focus:ring-offset-2"
                                 >
-                                    <Icons.Trash />
+                                    <span class="${state.isHoliday ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
                                 </button>
                             </div>
-                        ))}
-                        <button
-                            onClick={addItem}
-                            className="w-full mt-2 py-2 flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg border border-dashed border-slate-300 hover:border-violet-300 transition-all"
-                        >
-                            <Icons.Plus /> Add Item
-                        </button>
+                        </div>
                     </div>
                 </div>
-            );
-        };
 
-        const Toggle = ({ enabled, onChange, label }) => (
-            <div className="flex items-center justify-between py-3">
-                <span className="flex-grow flex flex-col">
-                    <span className="text-sm font-medium text-slate-900">{label}</span>
-                    <span className="text-xs text-slate-500">Skip pre/post tax deductions</span>
-                </span>
-                <button
-                    type="button"
-                    onClick={() => onChange(!enabled)}
-                    className={`${
-                        enabled ? 'bg-violet-600' : 'bg-slate-200'
-                    } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-violet-600 focus:ring-offset-2`}
-                >
-                    <span
-                        aria-hidden="true"
-                        className={`${
-                            enabled ? 'translate-x-5' : 'translate-x-0'
-                        } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-                    />
-                </button>
-            </div>
-        );
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    ${renderSectionEditor('Pre-Tax Deductions', state.preTaxDeductions, 'preTaxDeductions', 'bg-amber-500', totalPreTax, state.isHoliday)}
+                    ${renderSectionEditor('Taxes', state.taxes, 'taxes', 'bg-red-500', totalTaxes, false)}
+                    ${renderSectionEditor('Post-Tax Deductions', state.postTaxDeductions, 'postTaxDeductions', 'bg-blue-500', totalPostTax, state.isHoliday)}
+                </div>
 
-        const LoginScreen = ({ onLogin, loginError }) => {
-            const [password, setPassword] = useState('');
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-                        <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Paycheck Manager</h2>
-                        <form onSubmit={(e) => { e.preventDefault(); onLogin(password); }} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700">Password</label>
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-violet-500 focus:border-violet-500"/>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">${Icons.Calculator} Calculation Summary</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                            <span class="text-slate-600">Gross Pay</span>
+                            <span class="font-semibold text-slate-900">${formatCurrency(state.grossPay)}</span>
+                        </div>
+                        ${!state.isHoliday ? `
+                            <div class="flex justify-between items-center py-2 border-b border-slate-100 text-amber-700">
+                                <span>Pre-Tax Deductions</span>
+                                <span>- ${formatCurrency(totalPreTax)}</span>
                             </div>
-                            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
-                            <button type="submit" className="w-full py-2 px-4 bg-violet-600 text-white rounded-md hover:bg-violet-700 font-medium">Access Paycheck</button>
-                        </form>
+                        ` : ''}
+                        <div class="flex justify-between items-center py-2 border-b border-slate-100 text-red-700">
+                            <span>Taxes</span>
+                            <span>- ${formatCurrency(totalTaxes)}</span>
+                        </div>
+                        ${!state.isHoliday ? `
+                            <div class="flex justify-between items-center py-2 border-b border-slate-100 text-blue-700">
+                                <span>Post-Tax Deductions</span>
+                                <span>- ${formatCurrency(totalPostTax)}</span>
+                            </div>
+                        ` : ''}
+                        <div class="flex justify-between items-center py-3 mt-2 font-bold text-lg text-violet-700">
+                            <span>Net Pay</span>
+                            <span>${formatCurrency(netPay)}</span>
+                        </div>
                     </div>
                 </div>
-            );
+
+            </div>`;
         };
 
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [isLoading, setIsLoading] = useState(true);
-            const [loginError, setLoginError] = useState('');
-            const [isSaving, setIsSaving] = useState(false);
-            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+        const render = () => {
+            const app = document.getElementById('app');
+            if (state.isLoading) {
+                app.innerHTML = '<div class="h-screen w-full flex items-center justify-center text-slate-500">Loading Paycheck Data...</div>';
+                return;
+            }
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+                return;
+            }
+            app.innerHTML = renderApp();
+        };
 
-            // Data State - Initialize with empty/zero values
-            const [grossPay, setGrossPay] = useState(0);
-            const [preTaxDeductions, setPreTaxDeductions] = useState([]);
-            const [taxes, setTaxes] = useState([]);
-            const [postTaxDeductions, setPostTaxDeductions] = useState([]);
-            const [isHoliday, setIsHoliday] = useState(false);
+        // --- Init ---
+        onAuthStateChanged(auth, (u) => {
+            state.user = u;
+            state.isLoading = false;
             
-            const lastSavedData = useRef(null);
-            const isInitialLoad = useRef(true);
-
-            useEffect(() => {
-                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser);
-                    setIsLoading(false);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            const handleLogin = async (password) => {
-                setLoginError('');
-                try {
-                    await signInWithEmailAndPassword(auth, USER_EMAIL, password);
-                } catch (error) {
-                    setLoginError("Incorrect password or user not found.");
-                }
-            };
-
-            // Data Loading
-            useEffect(() => {
-                if (!user) return;
-                
-                const docRef = doc(db, 'users', user.uid, 'paycheck_data', 'current_config');
-
-                const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        const loadedGrossPay = data.grossPay || 0;
-                        const loadedPreTax = data.preTaxDeductions || [];
-                        const loadedTaxes = data.taxes || [];
-                        const loadedPostTax = data.postTaxDeductions || [];
+            if (u) {
+                onSnapshot(doc(db, 'users', u.uid, 'paycheck_data', 'current_config'), (snap) => {
+                    if (snap.exists()) {
+                        const d = snap.data();
                         
-                        setGrossPay(loadedGrossPay);
-                        setPreTaxDeductions(loadedPreTax);
-                        setTaxes(loadedTaxes);
-                        setPostTaxDeductions(loadedPostTax);
-                        
-                        lastSavedData.current = { 
-                            grossPay: loadedGrossPay, 
-                            preTaxDeductions: loadedPreTax, 
-                            taxes: loadedTaxes, 
-                            postTaxDeductions: loadedPostTax 
-                        };
-                        isInitialLoad.current = false;
-                        setHasUnsavedChanges(false);
+                        // Only load if not unsaved to prevent overwrite race condition
+                        if (!state.hasUnsavedChanges) {
+                            state.grossPay = d.grossPay || 0;
+                            state.preTaxDeductions = d.preTaxDeductions || [];
+                            state.taxes = d.taxes || [];
+                            state.postTaxDeductions = d.postTaxDeductions || [];
+                            render();
+                        }
                     } else {
-                        // No document exists - start fresh
-                        lastSavedData.current = { grossPay: 0, preTaxDeductions: [], taxes: [], postTaxDeductions: [] };
-                        isInitialLoad.current = false;
+                        // Init empty if doesn't exist
+                        state.grossPay = 0;
+                        state.preTaxDeductions = [];
+                        state.taxes = [];
+                        state.postTaxDeductions = [];
+                        render();
                     }
-                }, (error) => {
-                    console.error("Error fetching data:", error);
                 });
+            } else {
+                render();
+            }
+        });
 
-                return () => unsubscribeSnapshot();
-            }, [user]);
-
-            // Save Data
-            const saveData = useCallback(async () => {
-                if (!user) return;
-                
-                const currentData = { grossPay, preTaxDeductions, taxes, postTaxDeductions };
-                
-                if (lastSavedData.current && deepEqual(currentData, lastSavedData.current)) {
-                    return;
-                }
-                
-                setIsSaving(true);
-                try {
-                    const docRef = doc(db, 'users', user.uid, 'paycheck_data', 'current_config');
-                    await setDoc(docRef, {
-                        grossPay,
-                        preTaxDeductions,
-                        taxes,
-                        postTaxDeductions,
-                        updatedAt: new Date()
-                    }, {merge: true });
-                    lastSavedData.current = currentData;
-                    setHasUnsavedChanges(false);
-                } catch (e) {
-                    console.error("Error saving", e);
-                } finally {
-                    setIsSaving(false);
-                }
-            }, [user, grossPay, preTaxDeductions, taxes, postTaxDeductions]);
-
-            // Check for changes and trigger save
-            useEffect(() => {
-                if (isInitialLoad.current || !user) return;
-                
-                const currentData = { grossPay, preTaxDeductions, taxes, postTaxDeductions };
-                if (lastSavedData.current && !deepEqual(currentData, lastSavedData.current)) {
-                    setHasUnsavedChanges(true);
-                    const t = setTimeout(() => saveData(), 2000);
-                    return () => clearTimeout(t);
-                }
-            }, [grossPay, preTaxDeductions, taxes, postTaxDeductions, user, saveData]);
-
-            // Calculations
-            const totalPreTax = useMemo(() => preTaxDeductions.reduce((sum, item) => sum + item.amount, 0), [preTaxDeductions]);
-            const totalTaxes = useMemo(() => taxes.reduce((sum, item) => sum + item.amount, 0), [taxes]);
-            const totalPostTax = useMemo(() => postTaxDeductions.reduce((sum, item) => sum + item.amount, 0), [postTaxDeductions]);
-
-            const netPay = useMemo(() => {
-                if (isHoliday) return grossPay - totalTaxes;
-                return grossPay - totalPreTax - totalTaxes - totalPostTax;
-            }, [grossPay, totalPreTax, totalTaxes, totalPostTax, isHoliday]);
-
-            if (isLoading) return <div className="h-screen w-full flex items-center justify-center text-slate-500">Loading...</div>;
-            
-            if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
-
-            return (
-                <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900">
-                    
-                    {/* Header Dashboard */}
-                    <div className="bg-violet-900 text-white pb-24 pt-8 px-4 shadow-xl">
-                        <div className="max-w-5xl mx-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <h1 className="text-2xl font-bold flex items-center gap-2">
-                                    <Icons.Wallet /> Paycheck Manager
-                                </h1>
-                                <div className={`flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
-                                    isSaving 
-                                        ? 'bg-violet-700 text-violet-200' 
-                                        : hasUnsavedChanges 
-                                            ? 'bg-yellow-600 text-yellow-100' 
-                                            : 'bg-violet-800 text-violet-200'
-                                }`}>
-                                    {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
-                                    <div className="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Gross Pay</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(grossPay)}</div>
-                                    <div className="text-xs text-violet-400 mt-1">Bi-weekly</div>
-                                </div>
-                                <div className="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
-                                    <div className="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Total Deductions</div>
-                                    <div className="text-3xl font-bold text-white">
-                                        {formatCurrency(isHoliday ? totalTaxes : (totalPreTax + totalTaxes + totalPostTax))}
-                                    </div>
-                                    <div className="text-xs text-violet-400 mt-1">
-                                        {isHoliday ? 'Taxes only (Holiday)' : 'Pre-tax + Taxes + Post-tax'}
-                                    </div>
-                                </div>
-                                <div className="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
-                                    <div className="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Net Pay</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(netPay)}</div>
-                                    <div className="text-xs text-violet-400 mt-1">Take-home amount</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="max-w-5xl mx-auto px-4 -mt-16 space-y-6">
-                        
-                        {/* Gross Pay & Holiday Toggle */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <h2 className="text-lg font-bold text-white mb-4 sr-only">Gross Pay</h2>
-                                <label className="text-xs text-slate-400 font-bold uppercase">Gross Bi-Weekly Pay</label>
-                                <div className="relative mt-1">
-                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">$</span>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={grossPay}
-                                        onChange={(e) => setGrossPay(parseFloat(e.target.value) || 0)}
-                                        className="block w-full pl-7 pr-3 py-2 text-lg font-semibold border border-slate-300 rounded-lg focus:ring-violet-500 focus:border-violet-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="bg-violet-50 rounded-lg px-4 border border-violet-100">
-                                    <Toggle label="Simulate Deduction Holiday" enabled={isHoliday} onChange={setIsHoliday} />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Deduction Sections */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className={`transition-opacity duration-300 ${isHoliday ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
-                                <SectionEditor title="Pre-Tax Deductions" items={preTaxDeductions} setItems={setPreTaxDeductions} total={totalPreTax} colorClass="bg-amber-500" />
-                            </div>
-                            <SectionEditor title="Taxes" items={taxes} setItems={setTaxes} total={totalTaxes} colorClass="bg-red-500" />
-                            <div className={`transition-opacity duration-300 ${isHoliday ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
-                                <SectionEditor title="Post-Tax Deductions" items={postTaxDeductions} setItems={setPostTaxDeductions} total={totalPostTax} colorClass="bg-blue-500" />
-                            </div>
-                        </div>
-
-                        {/* Calculation Summary */}
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Calculator /> Calculation Summary</h3>
-                            <div className="space-y-3 text-sm">
-                                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                                    <span className="text-slate-600">Gross Pay</span>
-                                    <span className="font-semibold text-slate-900">{formatCurrency(grossPay)}</span>
-                                </div>
-                                {!isHoliday && (
-                                    <div className="flex justify-between items-center py-2 border-b border-slate-100 text-amber-700">
-                                        <span>Pre-Tax Deductions</span>
-                                        <span>- {formatCurrency(totalPreTax)}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-center py-2 border-b border-slate-100 text-red-700">
-                                    <span>Taxes</span>
-                                    <span>- {formatCurrency(totalTaxes)}</span>
-                                </div>
-                                {!isHoliday && (
-                                    <div className="flex justify-between items-center py-2 border-b border-slate-100 text-blue-700">
-                                        <span>Post-Tax Deductions</span>
-                                        <span>- {formatCurrency(totalPostTax)}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-center py-3 mt-2 font-bold text-lg text-violet-700">
-                                    <span>Net Pay</span>
-                                    <span>{formatCurrency(netPay)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            );
-        };
-
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
     </script>
 </body>
 </html>

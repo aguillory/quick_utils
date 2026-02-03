@@ -3,711 +3,347 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Budget Items</title>
-    
+    <title>Budget Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
 </head>
-<body class="bg-slate-50">
-    
-    <div id="root"></div>
+<body class="bg-slate-100 h-screen overflow-hidden text-slate-900 font-sans">
 
-    <script type="text/babel" data-type="module">
-        const { useState, useEffect, useMemo, useRef, useCallback } = React;
-        const { createRoot } = ReactDOM;
-        
+    <div id="app" class="h-full">
+        <div class="h-screen flex items-center justify-center text-slate-500">Loading Budget...</div>
+    </div>
+
+    <script type="module">
         import { db, auth } from './scripts/connection.js'; 
-        
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const USER_EMAIL = "default@user.com";
+        // --- Configuration ---
+        const USER_EMAIL = "default@user.com"; // Matches planner.html
 
-        // --- FREQUENCY OPTIONS ---
-        const FREQUENCY_OPTIONS = [
-            { label: 'Weekly', value: 52 },
-            { label: 'Every 2 Weeks', value: 26 },
-            { label: 'Twice a Month', value: 24 },
-            { label: 'Monthly', value: 12 },
-            { label: 'Every 2 Months', value: 6 },
-            { label: 'Quarterly (4x/year)', value: 4 },
-            { label: 'Every 4 Months (3x/year)', value: 3 },
-            { label: 'Twice a Year', value: 2 },
-            { label: 'Yearly', value: 1 },
-        ];
-        
-        const PAY_PERIODS_PER_YEAR = 26;
-
-        // --- ICONS ---
+        // --- Icons ---
         const Icons = {
-            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-            Tag: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>,
-            ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-            ChevronUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>,
-            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>,
-            GripVertical: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>,
-            SortAsc: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M11 12h4"/><path d="M11 16h7"/><path d="M11 20h10"/></svg>,
-            ArrowUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>,
-            ArrowDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+            Edit: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
+            Dollar: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="1" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+            X: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
         };
 
+        // --- State ---
+        const state = {
+            user: null,
+            isLoading: true,
+            loginError: '',
+            items: [],
+            isModalOpen: false,
+            editingId: null, // null if adding new
+            modalForm: { name: '', cost: '', frequency: '12' }
+        };
+
+        // --- Helpers ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-
-        // --- DEEP COMPARISON UTILITY ---
-        const deepEqual = (a, b) => {
-            if (a === b) return true;
-            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-            const keysA = Object.keys(a);
-            const keysB = Object.keys(b);
-            if (keysA.length !== keysB.length) return false;
-            for (let key of keysA) {
-                if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
-            }
-            return true;
+        
+        const Frequencies = {
+            52: 'Weekly',
+            26: 'Bi-Weekly',
+            12: 'Monthly',
+            1: 'Yearly'
         };
 
-        // --- PIE CHART COMPONENT ---
-        const PieChart = ({ data }) => {
-            const total = data.reduce((sum, d) => sum + d.value, 0);
-            if (total === 0) {
-                return <div className="w-48 h-48 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">No Data</div>;
-            }
-
-            let cumulativePercent = 0;
-            const slices = data.map((slice) => {
-                const percent = (slice.value / total) * 100;
-                const startAngle = cumulativePercent * 3.6;
-                cumulativePercent += percent;
-                const endAngle = cumulativePercent * 3.6;
+        // --- Actions ---
+        const Actions = {
+            login: async (e) => {
+                e.preventDefault();
+                const pw = document.getElementById('login-password').value;
+                try { 
+                    await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+                } catch(err) { 
+                    state.loginError = "Invalid Password";
+                    render();
+                }
+            },
+            openModal: (itemId = null) => {
+                state.isModalOpen = true;
+                state.editingId = itemId;
+                if (itemId) {
+                    const item = state.items.find(i => i.id === itemId);
+                    state.modalForm = { 
+                        name: item.name, 
+                        cost: item.cost, 
+                        frequency: item.frequencyPerYear.toString() 
+                    };
+                } else {
+                    state.modalForm = { name: '', cost: '', frequency: '12' };
+                }
+                render();
+            },
+            closeModal: () => {
+                state.isModalOpen = false;
+                state.editingId = null;
+                render();
+            },
+            updateForm: (field, value) => {
+                state.modalForm[field] = value;
+            },
+            saveItem: async (e) => {
+                e.preventDefault();
+                const cost = parseFloat(state.modalForm.cost);
+                const freq = parseInt(state.modalForm.frequency);
                 
-                const largeArcFlag = percent > 50 ? 1 : 0;
-
-                const startX = 50 + 50 * Math.cos((Math.PI * (startAngle - 90)) / 180);
-                const startY = 50 + 50 * Math.sin((Math.PI * (startAngle - 90)) / 180);
-                const endX = 50 + 50 * Math.cos((Math.PI * (endAngle - 90)) / 180);
-                const endY = 50 + 50 * Math.sin((Math.PI * (endAngle - 90)) / 180);
-                
-                const pathData = `M 50 50 L ${startX} ${startY} A 50 50 0 ${largeArcFlag} 1 ${endX} ${endY} Z`;
-
-                return <path key={slice.name} d={pathData} fill={slice.color} className="hover:opacity-80 transition-opacity"><title>{slice.name}: {formatCurrency(slice.value)}</title></path>;
-            });
-
-            return (
-                <svg viewBox="0 0 100 100" className="w-48 h-48 transform -rotate-0">
-                    {slices}
-                </svg>
-            );
-        };
-
-        // --- ITEM ROW COMPONENT ---
-        const ItemRow = ({ item, categories, onChange, onDelete, onMoveUp, onMoveDown, isFirst, isLast, isDragging, onDragStart, onDragEnd, onDragOver, onDrop }) => {
-            const category = categories.find(c => c.id === item.categoryId);
-            const yearlyTotal = item.cost * item.frequencyPerYear;
-            const perPayPeriod = yearlyTotal / PAY_PERIODS_PER_YEAR;
-
-            return (
-                <div 
-                    className={`flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-white border-b border-slate-100 last:border-0 hover:bg-amber-50/50 transition-colors ${isDragging ? 'opacity-50 bg-amber-100' : ''}`}
-                    draggable
-                    onDragStart={(e) => onDragStart(e, item.id)}
-                    onDragEnd={onDragEnd}
-                    onDragOver={onDragOver}
-                    onDrop={(e) => onDrop(e, item.id)}
-                >
-                    {/* Drag Handle & Reorder Buttons */}
-                    <div className="flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500">
-                        <Icons.GripVertical />
-                        <div className="flex gap-0.5">
-                            <button 
-                                onClick={onMoveUp} 
-                                disabled={isFirst}
-                                className={`p-0.5 rounded ${isFirst ? 'text-slate-200 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-600'}`}
-                            >
-                                <Icons.ArrowUp />
-                            </button>
-                            <button 
-                                onClick={onMoveDown} 
-                                disabled={isLast}
-                                className={`p-0.5 rounded ${isLast ? 'text-slate-200 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-600'}`}
-                            >
-                                <Icons.ArrowDown />
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="flex-grow w-full sm:w-auto">
-                        <input 
-                            type="text" 
-                            value={item.name} 
-                            onChange={(e) => onChange({...item, name: e.target.value})}
-                            className="w-full font-medium text-slate-800 bg-transparent focus:outline-none"
-                            placeholder="Item Name"
-                        />
-                        <div className="flex items-center gap-2 mt-1">
-                            <select
-                                value={item.categoryId}
-                                onChange={(e) => onChange({...item, categoryId: e.target.value})}
-                                className="text-xs px-2 py-0.5 rounded-full border-0 focus:ring-0 bg-slate-100"
-                                style={{ backgroundColor: category?.color + '30', color: category?.color }}
-                            >
-                                {categories.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="w-24">
-                            <label className="text-[10px] text-slate-400 uppercase font-bold">Cost</label>
-                            <div className="relative">
-                                <span className="absolute left-0 top-0 text-slate-400 text-sm">$</span>
-                                <input 
-                                    type="number" 
-                                    step="0.01"
-                                    value={item.cost} 
-                                    onChange={(e) => onChange({...item, cost: parseFloat(e.target.value) || 0})}
-                                    className="w-full pl-3 font-semibold text-slate-700 bg-transparent focus:outline-none"
-                                />
-                            </div>
-                        </div>
-                        <div className="w-44">
-                            <label className="text-[10px] text-slate-400 uppercase font-bold">Frequency</label>
-                            <select
-                                value={item.frequencyPerYear}
-                                onChange={(e) => onChange({...item, frequencyPerYear: parseInt(e.target.value)})}
-                                className="w-full text-sm text-slate-600 bg-transparent focus:outline-none border-b border-transparent focus:border-amber-500"
-                            >
-                                {FREQUENCY_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="text-right w-full sm:w-28 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100 mt-2 sm:mt-0">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">Per Pay Period</div>
-                        <div className="font-bold text-amber-700">{formatCurrency(perPayPeriod)}</div>
-                    </div>
-
-                    <button onClick={onDelete} className="text-slate-300 hover:text-red-500 self-start sm:self-center pt-1 sm:pt-0"><Icons.Trash /></button>
-                </div>
-            );
-        };
-
-        // --- CATEGORY MANAGER COMPONENT ---
-        const CategoryManager = ({ categories, setCategories, items }) => {
-            const [isOpen, setIsOpen] = useState(false);
-            const [newCatName, setNewCatName] = useState('');
-            const [newCatColor, setNewCatColor] = useState('#f59e0b');
-            const [editingId, setEditingId] = useState(null);
-
-            const addCategory = () => {
-                if (!newCatName.trim()) return;
-                const newCat = { id: `cat-${Date.now()}`, name: newCatName, color: newCatColor, order: categories.length };
-                setCategories([...categories, newCat]);
-                setNewCatName('');
-            };
-
-            const deleteCategory = (id) => {
-                if (items.some(item => item.categoryId === id)) {
-                    alert("Cannot delete a category that has items assigned to it. Please reassign or delete those items first.");
+                if (!state.modalForm.name || isNaN(cost)) {
+                    alert("Please fill in all fields validly.");
                     return;
                 }
-                setCategories(categories.filter(c => c.id !== id));
-            };
 
-            const updateCategoryColor = (id, newColor) => {
-                setCategories(categories.map(c => c.id === id ? {...c, color: newColor} : c));
-            };
+                let newItems = [...state.items];
 
-            const updateCategoryName = (id, newName) => {
-                setCategories(categories.map(c => c.id === id ? {...c, name: newName} : c));
-            };
+                if (state.editingId) {
+                    // Update existing
+                    newItems = newItems.map(i => i.id === state.editingId ? {
+                        ...i,
+                        name: state.modalForm.name,
+                        cost: cost,
+                        frequencyPerYear: freq
+                    } : i);
+                } else {
+                    // Add new
+                    newItems.push({
+                        id: Date.now().toString(),
+                        name: state.modalForm.name,
+                        cost: cost,
+                        frequencyPerYear: freq
+                    });
+                }
 
-            const moveCategoryUp = (index) => {
-                if (index === 0) return;
-                const newCategories = [...categories];
-                [newCategories[index - 1], newCategories[index]] = [newCategories[index], newCategories[index - 1]];
-                setCategories(newCategories);
-            };
+                // Optimistic update
+                state.items = newItems;
+                state.isModalOpen = false;
+                render();
 
-            const moveCategoryDown = (index) => {
-                if (index === categories.length - 1) return;
-                const newCategories = [...categories];
-                [newCategories[index], newCategories[index + 1]] = [newCategories[index + 1], newCategories[index]];
-                setCategories(newCategories);
-            };
-
-            return (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <button onClick={() => setIsOpen(!isOpen)} className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50">
-                        <span className="font-bold text-slate-700 flex items-center gap-2"><Icons.Tag /> Manage Categories</span>
-                        {isOpen ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-                    </button>
-                    {isOpen && (
-                        <div className="p-4 border-t border-slate-200 space-y-3">
-                            <p className="text-xs text-slate-500">Drag or use arrows to reorder categories. This order is used when sorting items by category.</p>
-                            <div className="space-y-2">
-                                {categories.map((cat, index) => (
-                                    <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50">
-                                        <div className="flex flex-col gap-0.5">
-                                            <button 
-                                                onClick={() => moveCategoryUp(index)} 
-                                                disabled={index === 0}
-                                                className={`p-0.5 rounded ${index === 0 ? 'text-slate-200 cursor-not-allowed' : 'hover:bg-slate-200 text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                <Icons.ArrowUp />
-                                            </button>
-                                            <button 
-                                                onClick={() => moveCategoryDown(index)} 
-                                                disabled={index === categories.length - 1}
-                                                className={`p-0.5 rounded ${index === categories.length - 1 ? 'text-slate-200 cursor-not-allowed' : 'hover:bg-slate-200 text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                <Icons.ArrowDown />
-                                            </button>
-                                        </div>
-                                        <input 
-                                            type="color" 
-                                            value={cat.color} 
-                                            onChange={(e) => updateCategoryColor(cat.id, e.target.value)}
-                                            className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-                                            title="Click to change color"
-                                        />
-                                        {editingId === cat.id ? (
-                                            <input
-                                                type="text"
-                                                value={cat.name}
-                                                onChange={(e) => updateCategoryName(cat.id, e.target.value)}
-                                                onBlur={() => setEditingId(null)}
-                                                onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)}
-                                                className="flex-grow px-2 py-1 text-sm border border-amber-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                                autoFocus
-                                            />
-                                        ) : (
-                                            <span 
-                                                className="flex-grow text-sm font-medium cursor-pointer hover:text-amber-600"
-                                                style={{ color: cat.color }}
-                                                onClick={() => setEditingId(cat.id)}
-                                                title="Click to edit name"
-                                            >
-                                                {cat.name}
-                                            </span>
-                                        )}
-                                        <button 
-                                            onClick={() => setEditingId(cat.id)} 
-                                            className="text-slate-400 hover:text-amber-600 p-1"
-                                            title="Edit name"
-                                        >
-                                            <Icons.Edit />
-                                        </button>
-                                        <button 
-                                            onClick={() => deleteCategory(cat.id)} 
-                                            className="text-slate-400 hover:text-red-500 p-1"
-                                            title="Delete category"
-                                        >
-                                            <Icons.Trash />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                                <input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0"/>
-                                <input 
-                                    type="text" 
-                                    value={newCatName} 
-                                    onChange={e => setNewCatName(e.target.value)}
-                                    placeholder="New category name..."
-                                    className="flex-grow px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                    onKeyDown={(e) => e.key === 'Enter' && addCategory()}
-                                />
-                                <button onClick={addCategory} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">Add</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
+                // Save to Firebase
+                await setDoc(doc(db, 'users', state.user.uid, 'budget_items_data', 'current_config'), { items: newItems });
+            },
+            deleteItem: async (id) => {
+                if(!confirm("Are you sure you want to delete this budget item?")) return;
+                
+                const newItems = state.items.filter(i => i.id !== id);
+                state.items = newItems;
+                render();
+                await setDoc(doc(db, 'users', state.user.uid, 'budget_items_data', 'current_config'), { items: newItems });
+            }
         };
 
+        window.Budget = Actions;
 
-        // --- LOGIN SCREEN ---
-        const LoginScreen = ({ onLogin, loginError }) => {
-            const [password, setPassword] = useState('');
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-                        <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Budget Items</h2>
-                        <form onSubmit={(e) => { e.preventDefault(); onLogin(password); }} className="space-y-4">
+        // --- Logic ---
+        const Logic = {
+            calculateTotalMonthly: () => {
+                let total = 0;
+                state.items.forEach(item => {
+                    // (Cost * Freq) / 12 months
+                    total += (item.cost * item.frequencyPerYear) / 12;
+                });
+                return total;
+            }
+        };
+
+        // --- Components ---
+
+        const renderLogin = () => `
+            <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Budget Manager</h2>
+                    <form onsubmit="Budget.login(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Password</label>
+                            <input id="login-password" type="password" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                        </div>
+                        ${state.loginError ? `<p class="text-red-500 text-sm">${state.loginError}</p>` : ''}
+                        <button type="submit" class="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium">Login</button>
+                    </form>
+                </div>
+            </div>
+        `;
+
+        const renderModal = () => {
+            if (!state.isModalOpen) return '';
+            return `
+            <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                    <div class="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                        <h3 class="text-lg font-bold text-white">${state.editingId ? 'Edit Item' : 'Add New Item'}</h3>
+                        <button onclick="Budget.closeModal()" class="text-slate-400 hover:text-white transition">${Icons.X}</button>
+                    </div>
+                    <form onsubmit="Budget.saveItem(event)" class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Item Name</label>
+                            <input 
+                                type="text" 
+                                value="${state.modalForm.name}" 
+                                oninput="Budget.updateForm('name', this.value)"
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                                placeholder="e.g., Netflix, Gym, Car Insurance"
+                                required
+                            />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700">Password</label>
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500"/>
-                            </div>
-                            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
-                            <button type="submit" className="w-full py-2 px-4 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium">Access Budget</button>
-                        </form>
-                    </div>
-                </div>
-            );
-        };
-
-
-        // --- MAIN APP ---
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [isLoading, setIsLoading] = useState(true);
-            const [loginError, setLoginError] = useState('');
-            const [isSaving, setIsSaving] = useState(false);
-            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-            const [dataLoaded, setDataLoaded] = useState(false);
-
-            const [categories, setCategories] = useState([]);
-            const [items, setItems] = useState([]);
-            
-            // Drag state
-            const [draggedItemId, setDraggedItemId] = useState(null);
-            
-            // View toggle for summary
-            const [summaryView, setSummaryView] = useState('payPeriod'); // 'payPeriod' or 'monthly'
-            
-            const lastSavedData = useRef(null);
-            const isInitialLoad = useRef(true);
-
-            // Auth
-            useEffect(() => {
-                const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    setIsLoading(false);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            const handleLogin = async (password) => {
-                try {
-                    setLoginError('');
-                    await signInWithEmailAndPassword(auth, USER_EMAIL, password);
-                } catch (e) {
-                    setLoginError('Access Denied');
-                }
-            };
-
-            // Load Data
-            useEffect(() => {
-                if (!user) return;
-                const docRef = doc(db, 'users', user.uid, 'budget_items_data', 'current_config');
-                const unsub = onSnapshot(docRef, (snap) => {
-                    if (snap.exists()) {
-                        const d = snap.data();
-                        const loadedCategories = d.categories || [];
-                        const loadedItems = d.items || [];
-                        
-                        setCategories(loadedCategories);
-                        setItems(loadedItems);
-                        
-                        lastSavedData.current = { categories: loadedCategories, items: loadedItems };
-                        isInitialLoad.current = false;
-                        setHasUnsavedChanges(false);
-                        setDataLoaded(true);
-                    } else {
-                        // No data exists yet - start with empty arrays
-                        setCategories([]);
-                        setItems([]);
-                        lastSavedData.current = { categories: [], items: [] };
-                        isInitialLoad.current = false;
-                        setDataLoaded(true);
-                    }
-                });
-                return () => unsub();
-            }, [user]);
-
-            // Save Data
-            const saveData = useCallback(async (force = false) => {
-                if (!user) return;
-                
-                const currentData = { categories, items };
-                
-                if (!force && lastSavedData.current && deepEqual(currentData, lastSavedData.current)) {
-                    return;
-                }
-                
-                setIsSaving(true);
-                try {
-                    await setDoc(doc(db, 'users', user.uid, 'budget_items_data', 'current_config'), {
-                        categories, items, updatedAt: new Date()
-                    }, { merge: true });
-                    lastSavedData.current = currentData;
-                    setHasUnsavedChanges(false);
-                } catch(e) { console.error(e); }
-                finally { setIsSaving(false); }
-            }, [user, categories, items]);
-
-            // Check for changes and trigger save
-            useEffect(() => {
-                if (isInitialLoad.current || !user || !dataLoaded) return;
-                
-                const currentData = { categories, items };
-                if (lastSavedData.current && !deepEqual(currentData, lastSavedData.current)) {
-                    setHasUnsavedChanges(true);
-                    const t = setTimeout(() => saveData(), 2000);
-                    return () => clearTimeout(t);
-                }
-            }, [categories, items, user, saveData, dataLoaded]);
-
-            // CRUD
-            const addItem = () => {
-                const defaultCatId = categories.length > 0 ? categories[0].id : null;
-                if (!defaultCatId) {
-                    alert("Please create a category first!");
-                    return;
-                }
-                setItems([{ id: `item-${Date.now()}`, name: 'New Item', categoryId: defaultCatId, cost: 0, frequencyPerYear: 12 }, ...items]);
-            };
-            const updateItem = (updated) => setItems(items.map(i => i.id === updated.id ? updated : i));
-            const deleteItem = (id) => setItems(items.filter(i => i.id !== id));
-
-            // Sorting functions
-            const moveItemUp = (index) => {
-                if (index === 0) return;
-                const newItems = [...items];
-                [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-                setItems(newItems);
-            };
-
-            const moveItemDown = (index) => {
-                if (index === items.length - 1) return;
-                const newItems = [...items];
-                [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-                setItems(newItems);
-            };
-
-            const sortByCategory = () => {
-                const categoryOrder = {};
-                categories.forEach((cat, index) => {
-                    categoryOrder[cat.id] = index;
-                });
-                
-                const sortedItems = [...items].sort((a, b) => {
-                    const orderA = categoryOrder[a.categoryId] ?? 999;
-                    const orderB = categoryOrder[b.categoryId] ?? 999;
-                    return orderA - orderB;
-                });
-                
-                setItems(sortedItems);
-            };
-
-            // Drag and drop handlers
-            const handleDragStart = (e, itemId) => {
-                setDraggedItemId(itemId);
-                e.dataTransfer.effectAllowed = 'move';
-            };
-
-            const handleDragEnd = () => {
-                setDraggedItemId(null);
-            };
-
-            const handleDragOver = (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-            };
-
-            const handleDrop = (e, targetItemId) => {
-                e.preventDefault();
-                if (!draggedItemId || draggedItemId === targetItemId) return;
-
-                const draggedIndex = items.findIndex(i => i.id === draggedItemId);
-                const targetIndex = items.findIndex(i => i.id === targetItemId);
-
-                const newItems = [...items];
-                const [draggedItem] = newItems.splice(draggedIndex, 1);
-                newItems.splice(targetIndex, 0, draggedItem);
-
-                setItems(newItems);
-                setDraggedItemId(null);
-            };
-
-            // --- CALCULATIONS ---
-            const summaryData = useMemo(() => {
-                let totalYearly = 0;
-                const byCategory = {};
-
-                categories.forEach(cat => {
-                    byCategory[cat.id] = { name: cat.name, color: cat.color, yearly: 0 };
-                });
-
-                items.forEach(item => {
-                    const yearly = item.cost * item.frequencyPerYear;
-                    totalYearly += yearly;
-                    if (byCategory[item.categoryId]) {
-                        byCategory[item.categoryId].yearly += yearly;
-                    }
-                });
-
-                const pieData = Object.values(byCategory).map(c => ({ name: c.name, value: c.yearly, color: c.color })).filter(c => c.value > 0);
-                const perPayPeriod = totalYearly / PAY_PERIODS_PER_YEAR;
-                const perMonth = totalYearly / 12;
-                
-                return { totalYearly, perPayPeriod, perMonth, byCategory, pieData };
-            }, [items, categories]);
-
-
-            if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-400">Loading...</div>;
-            if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
-
-            return (
-                <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
-                    
-                    {/* Header Dashboard */}
-                    <div className="bg-amber-900 text-white pb-24 pt-8 px-4 shadow-xl">
-                        <div className="max-w-5xl mx-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <h1 className="text-2xl font-bold flex items-center gap-2">
-                                    <Icons.List /> Budget Item Tracker
-                                </h1>
-                                <div className={`flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
-                                    isSaving 
-                                        ? 'bg-amber-700 text-amber-200' 
-                                        : hasUnsavedChanges 
-                                            ? 'bg-yellow-600 text-yellow-100' 
-                                            : 'bg-amber-800 text-amber-200'
-                                }`}>
-                                    {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-amber-800/50 p-4 rounded-xl border border-amber-700/50">
-                                    <div className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">Total Yearly Spend</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(summaryData.totalYearly)}</div>
-                                </div>
-                                <div className="bg-amber-800/50 p-4 rounded-xl border border-amber-700/50">
-                                    <div className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">Per Pay Period</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(summaryData.perPayPeriod)}</div>
-                                    <div className="text-xs text-amber-400 mt-1">Based on {PAY_PERIODS_PER_YEAR} pay periods/year</div>
-                                </div>
-                                <div className="bg-amber-800/50 p-4 rounded-xl border border-amber-700/50">
-                                    <div className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">Monthly Spend</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(summaryData.perMonth)}</div>
-                                    <div className="text-xs text-amber-400 mt-1">Average per month</div>
-                                </div>
-                                <div className="bg-amber-800/50 p-4 rounded-xl border border-amber-700/50">
-                                    <div className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">Items Tracked</div>
-                                    <div className="text-3xl font-bold text-white">{items.length}</div>
-                                    <div className="text-xs text-amber-400 mt-1">Across {categories.length} categories</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="max-w-5xl mx-auto px-4 -mt-16 grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        
-                        {/* LEFT: Items List */}
-                        <div className="lg:col-span-8 space-y-6">
-                            <div className="flex justify-between items-center flex-wrap gap-2">
-                                <h2 className="text-lg font-bold text-white">All Budget Items</h2>
-                                <div className="flex gap-2">
-                                    <button onClick={sortByCategory} className="flex items-center gap-1 text-sm bg-amber-700 text-white px-3 py-1.5 rounded-lg hover:bg-amber-800 transition">
-                                        <Icons.SortAsc /> Sort by Category
-                                    </button>
-                                    <button onClick={addItem} className="flex items-center gap-1 text-sm bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition">
-                                        <Icons.Plus /> Add Item
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                {items.length === 0 && (
-                                    <div className="p-8 text-center text-slate-400 text-sm">No items yet. Click "Add Item" to start!</div>
-                                )}
-                                {items.map((item, index) => (
-                                    <ItemRow 
-                                        key={item.id} 
-                                        item={item} 
-                                        categories={categories}
-                                        onChange={updateItem} 
-                                        onDelete={() => deleteItem(item.id)}
-                                        onMoveUp={() => moveItemUp(index)}
-                                        onMoveDown={() => moveItemDown(index)}
-                                        isFirst={index === 0}
-                                        isLast={index === items.length - 1}
-                                        isDragging={draggedItemId === item.id}
-                                        onDragStart={handleDragStart}
-                                        onDragEnd={handleDragEnd}
-                                        onDragOver={handleDragOver}
-                                        onDrop={handleDrop}
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cost</label>
+                                <div class="relative">
+                                    <span class="absolute left-3 top-2 text-slate-400">$</span>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        value="${state.modalForm.cost}" 
+                                        oninput="Budget.updateForm('cost', this.value)"
+                                        class="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        placeholder="0.00"
+                                        required
                                     />
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* RIGHT: Summary & Categories */}
-                        <div className="lg:col-span-4 space-y-6">
-                            <h2 className="text-lg font-bold text-white">Summary by Category</h2>
-                            
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col items-center">
-                                <PieChart data={summaryData.pieData} />
-                                
-                                {/* Toggle for Per Pay Period vs Monthly */}
-                                <div className="flex gap-2 mt-4 mb-2">
-                                    <button
-                                        onClick={() => setSummaryView('payPeriod')}
-                                        className={`px-3 py-1 text-xs rounded-full font-medium transition ${
-                                            summaryView === 'payPeriod' 
-                                                ? 'bg-amber-500 text-white' 
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        Per Pay Period
-                                    </button>
-                                    <button
-                                        onClick={() => setSummaryView('monthly')}
-                                        className={`px-3 py-1 text-xs rounded-full font-medium transition ${
-                                            summaryView === 'monthly' 
-                                                ? 'bg-amber-500 text-white' 
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        Monthly
-                                    </button>
-                                </div>
-                                
-                                <div className="w-full mt-2 space-y-2 pt-4 border-t border-slate-100">
-                                    {Object.values(summaryData.byCategory).filter(c => c.yearly > 0).map(cat => (
-                                        <div key={cat.name} className="flex justify-between items-center text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-3 h-3 rounded-full" style={{backgroundColor: cat.color}}></span>
-                                                <span className="text-slate-600">{cat.name}</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-bold text-slate-800">
-                                                    {formatCurrency(summaryView === 'payPeriod' 
-                                                        ? cat.yearly / PAY_PERIODS_PER_YEAR 
-                                                        : cat.yearly / 12
-                                                    )}
-                                                </span>
-                                                <span className="text-slate-400 text-xs">
-                                                    {summaryView === 'payPeriod' ? ' /pp' : ' /mo'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
-
-                            <CategoryManager categories={categories} setCategories={setCategories} items={items} />
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Frequency</label>
+                                <select 
+                                    onchange="Budget.updateForm('frequency', this.value)"
+                                    class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="52" ${state.modalForm.frequency === '52' ? 'selected' : ''}>Weekly</option>
+                                    <option value="26" ${state.modalForm.frequency === '26' ? 'selected' : ''}>Bi-Weekly</option>
+                                    <option value="12" ${state.modalForm.frequency === '12' ? 'selected' : ''}>Monthly</option>
+                                    <option value="1" ${state.modalForm.frequency === '1' ? 'selected' : ''}>Yearly</option>
+                                </select>
+                            </div>
                         </div>
-
-                    </div>
+                        <div class="pt-4 flex gap-3">
+                            <button type="button" onclick="Budget.closeModal()" class="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition">Cancel</button>
+                            <button type="submit" class="flex-1 px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition">Save Item</button>
+                        </div>
+                    </form>
                 </div>
-            );
+            </div>`;
         };
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
+        const renderItem = (item) => {
+            const freqLabel = Frequencies[item.frequencyPerYear] || 'Custom';
+            // Calculate monthly cost for display
+            const monthlyCost = (item.cost * item.frequencyPerYear) / 12;
+
+            return `
+            <div class="group bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        ${Icons.Dollar}
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-800">${item.name}</h4>
+                        <div class="text-xs text-slate-500 flex items-center gap-1">
+                            <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-semibold">${freqLabel}</span>
+                            <span>•</span>
+                            <span>${formatCurrency(item.cost)} / payment</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="text-right">
+                        <div class="text-sm font-bold text-slate-900">${formatCurrency(monthlyCost)}</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Per Month</div>
+                    </div>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="Budget.openModal('${item.id}')" class="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Edit">
+                            ${Icons.Edit}
+                        </button>
+                        <button onclick="Budget.deleteItem('${item.id}')" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
+                            ${Icons.Trash}
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        };
+
+        const renderApp = () => {
+            const totalMonthly = Logic.calculateTotalMonthly();
+
+            return `
+            <div class="max-w-4xl mx-auto h-full flex flex-col p-6">
+                <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-6 shadow-lg text-white mb-6 flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold">Budget Overview</h1>
+                        <p class="text-slate-400 text-sm mt-1">Manage your recurring expenses and subscriptions.</p>
+                    </div>
+                    <div class="text-right bg-white/10 px-6 py-3 rounded-xl border border-white/10 backdrop-blur-sm">
+                        <div class="text-xs text-slate-300 font-bold uppercase tracking-wider mb-1">Total Monthly Cost</div>
+                        <div class="text-3xl font-bold text-emerald-400">${formatCurrency(totalMonthly)}</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-slate-700">Expenses (${state.items.length})</h2>
+                    <button onclick="Budget.openModal()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition transform hover:scale-105 active:scale-95">
+                        ${Icons.Plus} Add Expense
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2 pb-10">
+                    ${state.items.length === 0 
+                        ? `<div class="text-center py-20 text-slate-400 italic">No expenses added yet. Click "Add Expense" to start.</div>` 
+                        : state.items.map(renderItem).join('')
+                    }
+                </div>
+                
+                ${renderModal()}
+            </div>`;
+        };
+
+        const render = () => {
+            const app = document.getElementById('app');
+            if (state.isLoading) {
+                app.innerHTML = '<div class="h-screen flex items-center justify-center text-slate-500">Loading...</div>';
+                return;
+            }
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+                return;
+            }
+            app.innerHTML = renderApp();
+        };
+
+        // --- Init ---
+        onAuthStateChanged(auth, (u) => {
+            state.user = u;
+            state.isLoading = false;
+            if (u) {
+                onSnapshot(doc(db, 'users', u.uid, 'budget_items_data', 'current_config'), (snap) => {
+                    if (snap.exists()) {
+                        state.items = snap.data().items || [];
+                    } else {
+                        state.items = [];
+                    }
+                    render();
+                });
+            } else {
+                render();
+            }
+        });
+
     </script>
 </body>
 </html>

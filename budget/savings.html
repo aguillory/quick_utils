@@ -4,46 +4,78 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Savings Goals</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e3a8a; } /* blue-900 */
+        ::-webkit-scrollbar-thumb { background: #60a5fa; border-radius: 4px; } /* blue-400 */
+        ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+    </style>
 </head>
-<body class="bg-slate-50">
-    
-    <div id="root"></div>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
 
-    <script type="text/babel" data-type="module">
-        const { useState, useEffect, useMemo, useRef, useCallback } = React;
-        const { createRoot } = ReactDOM;
-        
+    <div id="app">
+        <div class="h-screen flex items-center justify-center text-slate-400">Loading Savings...</div>
+    </div>
+
+    <script type="module">
         import { db, auth } from './scripts/connection.js'; 
-        
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // --- Configuration ---
         const USER_EMAIL = "default@user.com";
 
-        // --- ICONS ---
+        // --- Icons ---
         const Icons = {
-            Target: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>,
-            Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
-            DollarSign: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
-            ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-            ChevronUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>,
-            Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-            TrendingUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
-            Archive: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>,
+            Target: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+            Edit: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+            Calendar: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+            Check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+            AlertCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+            ChevronDown: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
+            ChevronUp: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>`,
+            Clock: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
         };
 
+        // --- State ---
+        const state = {
+            user: null,
+            isLoading: true,
+            loginError: '',
+            isSaving: false,
+            hasUnsavedChanges: false,
+            saveTimer: null,
+            
+            goals: [],
+            payPeriods: [],
+            
+            // UI State
+            filterStatus: 'active', // active, completed, all
+            expandedGoalId: null,
+            editingGoalId: null,
+            isAddFormOpen: false,
+            
+            // Temporary form data
+            addForm: { name: '', targetAmount: '', dueDate: '', notes: '' },
+            editForm: { name: '', targetAmount: '', currentAmount: '', dueDate: '', notes: '' }
+        };
+
+        // --- Helpers ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
         const formatDate = (dateStr) => {
             if (!dateStr) return '';
@@ -51,561 +83,24 @@
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         };
 
-        // --- DEEP COMPARISON UTILITY ---
-        const deepEqual = (a, b) => {
-            if (a === b) return true;
-            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-            const keysA = Object.keys(a);
-            const keysB = Object.keys(b);
-            if (keysA.length !== keysB.length) return false;
-            for (let key of keysA) {
-                if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
-            }
-            return true;
-        };
-
-        // --- PROGRESS BAR COMPONENT ---
-        const ProgressBar = ({ current, total, color = 'blue' }) => {
-            const percentage = total > 0 ? Math.min((current / total) * 100, 100) : 0;
-            const colorClasses = {
-                blue: 'bg-blue-500',
-                green: 'bg-green-500',
-                yellow: 'bg-yellow-500',
-                red: 'bg-red-500',
-            };
-            
-            return (
-                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                    <div 
-                        className={`h-full rounded-full transition-all duration-500 ${colorClasses[color] || colorClasses.blue}`}
-                        style={{ width: `${percentage}%` }}
-                    />
-                </div>
-            );
-        };
-
-        // --- GOAL CARD COMPONENT ---
-        const GoalCard = ({ goal, payPeriods, onUpdate, onDelete, isExpanded, onToggleExpand }) => {
-            const [isEditing, setIsEditing] = useState(false);
-            const [editedGoal, setEditedGoal] = useState(goal);
-
-            const today = new Date().toISOString().split('T')[0];
-            
-            // Calculate remaining pay periods until due date
-            const remainingPayPeriods = useMemo(() => {
-                if (!goal.dueDate || !payPeriods || payPeriods.length === 0) return 0;
-                return payPeriods.filter(p => p.date >= today && p.date <= goal.dueDate).length;
-            }, [goal.dueDate, payPeriods, today]);
-
-            // Calculate amount needed per pay period
-            const amountRemaining = goal.targetAmount - (goal.currentAmount || 0);
-            const perPayPeriod = remainingPayPeriods > 0 ? amountRemaining / remainingPayPeriods : amountRemaining;
-            
-            // Determine status
-            const isOverdue = goal.dueDate && goal.dueDate < today && amountRemaining > 0;
-            const isComplete = amountRemaining <= 0;
-            const isUrgent = remainingPayPeriods <= 2 && remainingPayPeriods > 0 && !isComplete;
-
-            const progressColor = isComplete ? 'green' : isOverdue ? 'red' : isUrgent ? 'yellow' : 'blue';
-            const progressPercentage = goal.targetAmount > 0 ? ((goal.currentAmount || 0) / goal.targetAmount) * 100 : 0;
-
-            const handleSave = () => {
-                onUpdate(editedGoal);
-                setIsEditing(false);
-            };
-
-            const handleCancel = () => {
-                setEditedGoal(goal);
-                setIsEditing(false);
-            };
-
-            const handleQuickPay = (amount) => {
-                const newAmount = Math.min((goal.currentAmount || 0) + amount, goal.targetAmount);
-                onUpdate({ ...goal, currentAmount: newAmount });
-            };
-
-            return (
-                <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
-                    isComplete ? 'border-green-200 bg-green-50/30' : 
-                    isOverdue ? 'border-red-200 bg-red-50/30' : 
-                    isUrgent ? 'border-yellow-200 bg-yellow-50/30' : 
-                    'border-slate-200'
-                }`}>
-                    {/* Header - Always visible */}
-                    <div 
-                        className="p-4 cursor-pointer hover:bg-slate-50/50 transition"
-                        onClick={onToggleExpand}
-                    >
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex-grow">
-                                <div className="flex items-center gap-2 mb-1">
-                                    {isComplete && <span className="text-green-500"><Icons.Check /></span>}
-                                    {isOverdue && <span className="text-red-500"><Icons.AlertCircle /></span>}
-                                    {isUrgent && !isOverdue && <span className="text-yellow-500"><Icons.Clock /></span>}
-                                    <h3 className="font-bold text-slate-800">{goal.name}</h3>
-                                </div>
-                                
-                                <div className="flex items-center gap-4 text-sm text-slate-500 mb-3">
-                                    {goal.dueDate && (
-                                        <span className="flex items-center gap-1">
-                                            <Icons.Calendar />
-                                            Due: {formatDate(goal.dueDate)}
-                                        </span>
-                                    )}
-                                    {!isComplete && remainingPayPeriods > 0 && (
-                                        <span className="flex items-center gap-1">
-                                            <Icons.Clock />
-                                            {remainingPayPeriods} pay period{remainingPayPeriods !== 1 ? 's' : ''} left
-                                        </span>
-                                    )}
-                                </div>
-
-                                <ProgressBar current={goal.currentAmount || 0} total={goal.targetAmount} color={progressColor} />
-                                
-                                <div className="flex justify-between items-center mt-2 text-sm">
-                                    <span className="text-slate-500">
-                                        {formatCurrency(goal.currentAmount || 0)} of {formatCurrency(goal.targetAmount)}
-                                    </span>
-                                    <span className="font-medium text-slate-700">{progressPercentage.toFixed(0)}%</span>
-                                </div>
-                            </div>
-
-                            <div className="text-right flex-shrink-0">
-                                {!isComplete && remainingPayPeriods > 0 && (
-                                    <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg">
-                                        <div className="text-xs font-medium uppercase tracking-wide">Per Pay Period</div>
-                                        <div className="text-lg font-bold">{formatCurrency(perPayPeriod)}</div>
-                                    </div>
-                                )}
-                                {isComplete && (
-                                    <div className="bg-green-100 text-green-800 px-3 py-2 rounded-lg">
-                                        <div className="text-xs font-medium uppercase">Complete!</div>
-                                        <Icons.Check />
-                                    </div>
-                                )}
-                                {isOverdue && !isComplete && (
-                                    <div className="bg-red-100 text-red-800 px-3 py-2 rounded-lg">
-                                        <div className="text-xs font-medium uppercase">Overdue</div>
-                                        <div className="text-lg font-bold">{formatCurrency(amountRemaining)}</div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-center mt-2 text-slate-400">
-                            {isExpanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-                        </div>
-                    </div>
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                        <div className="border-t border-slate-100 p-4 bg-slate-50/50">
-                            {isEditing ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Name</label>
-                                        <input
-                                            type="text"
-                                            value={editedGoal.name}
-                                            onChange={(e) => setEditedGoal({...editedGoal, name: e.target.value})}
-                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Target Amount</label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={editedGoal.targetAmount}
-                                                onChange={(e) => setEditedGoal({...editedGoal, targetAmount: parseFloat(e.target.value) || 0})}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Current Amount</label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={editedGoal.currentAmount || 0}
-                                                onChange={(e) => setEditedGoal({...editedGoal, currentAmount: parseFloat(e.target.value) || 0})}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
-                                        <input
-                                            type="date"
-                                            value={editedGoal.dueDate || ''}
-                                            onChange={(e) => setEditedGoal({...editedGoal, dueDate: e.target.value})}
-                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notes</label>
-                                        <textarea
-                                            value={editedGoal.notes || ''}
-                                            onChange={(e) => setEditedGoal({...editedGoal, notes: e.target.value})}
-                                            rows="2"
-                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholder="Optional notes about this goal..."
-                                        />
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={handleSave}
-                                            className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
-                                        >
-                                            Save Changes
-                                        </button>
-                                        <button
-                                            onClick={handleCancel}
-                                            className="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-300"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {goal.notes && (
-                                        <div className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-100">
-                                            {goal.notes}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Quick Actions */}
-                                    {!isComplete && (
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Quick Add Payment</label>
-                                            <div className="flex gap-2 flex-wrap">
-                                                {[10, 25, 50, 100].map(amount => (
-                                                    <button
-                                                        key={amount}
-                                                        onClick={() => handleQuickPay(amount)}
-                                                        className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200"
-                                                    >
-                                                        +${amount}
-                                                    </button>
-                                                ))}
-                                                {perPayPeriod > 0 && perPayPeriod !== 10 && perPayPeriod !== 25 && perPayPeriod !== 50 && perPayPeriod !== 100 && (
-                                                    <button
-                                                        onClick={() => handleQuickPay(Math.round(perPayPeriod * 100) / 100)}
-                                                        className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200"
-                                                    >
-                                                        +{formatCurrency(perPayPeriod)} (1 PP)
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Stats */}
-                                    <div className="grid grid-cols-3 gap-3 text-center">
-                                        <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                            <div className="text-xs text-slate-500 uppercase font-medium">Remaining</div>
-                                            <div className="text-lg font-bold text-slate-800">{formatCurrency(amountRemaining)}</div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                            <div className="text-xs text-slate-500 uppercase font-medium">Pay Periods</div>
-                                            <div className="text-lg font-bold text-slate-800">{remainingPayPeriods}</div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                            <div className="text-xs text-slate-500 uppercase font-medium">Per Period</div>
-                                            <div className="text-lg font-bold text-blue-600">
-                                                {remainingPayPeriods > 0 ? formatCurrency(perPayPeriod) : '-'}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex gap-2 pt-2 border-t border-slate-200">
-                                        <button
-                                            onClick={() => setIsEditing(true)}
-                                            className="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                                        >
-                                            <Icons.Edit /> Edit
-                                        </button>
-                                        <button
-                                            onClick={() => onDelete(goal.id)}
-                                            className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg"
-                                        >
-                                            <Icons.Trash /> Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            );
-        };
-
-        // --- ADD GOAL FORM ---
-        const AddGoalForm = ({ onAdd, onCancel }) => {
-            const [name, setName] = useState('');
-            const [targetAmount, setTargetAmount] = useState('');
-            const [dueDate, setDueDate] = useState('');
-            const [notes, setNotes] = useState('');
-
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                if (!name.trim() || !targetAmount) return;
-                
-                onAdd({
-                    id: `goal-${Date.now()}`,
-                    name: name.trim(),
-                    targetAmount: parseFloat(targetAmount),
-                    currentAmount: 0,
-                    dueDate: dueDate || null,
-                    notes: notes.trim() || null,
-                    createdAt: new Date().toISOString(),
-                });
-                
-                setName('');
-                setTargetAmount('');
-                setDueDate('');
-                setNotes('');
-            };
-
-            return (
-                <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <Icons.Plus /> Add New Goal
-                    </h3>
-                    
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Name *</label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g., New Laptop, Vacation Fund..."
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            required
-                        />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Target Amount *</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                value={targetAmount}
-                                onChange={(e) => setTargetAmount(e.target.value)}
-                                placeholder="0.00"
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
-                            <input
-                                type="date"
-                                value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                    </div>
-                    
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notes (optional)</label>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            rows="2"
-                            placeholder="Any additional details..."
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-                    
-                    <div className="flex gap-2">
-                        <button
-                            type="submit"
-                            className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
-                        >
-                            Add Goal
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onCancel}
-                            className="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-300"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </form>
-            );
-        };
-
-        // --- LOGIN SCREEN ---
-        const LoginScreen = ({ onLogin, loginError }) => {
-            const [password, setPassword] = useState('');
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-                        <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Savings Goals</h2>
-                        <form onSubmit={(e) => { e.preventDefault(); onLogin(password); }} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700">Password</label>
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"/>
-                            </div>
-                            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
-                            <button type="submit" className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">Access Goals</button>
-                        </form>
-                    </div>
-                </div>
-            );
-        };
-
-
-        // --- MAIN APP ---
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [isLoading, setIsLoading] = useState(true);
-            const [loginError, setLoginError] = useState('');
-            const [isSaving, setIsSaving] = useState(false);
-            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-            const [dataLoaded, setDataLoaded] = useState(false);
-
-            const [goals, setGoals] = useState([]);
-            const [payPeriods, setPayPeriods] = useState([]);
-            const [showAddForm, setShowAddForm] = useState(false);
-            const [expandedGoalId, setExpandedGoalId] = useState(null);
-            const [filterStatus, setFilterStatus] = useState('active'); // 'active', 'completed', 'all'
-            
-            const lastSavedData = useRef(null);
-            const isInitialLoad = useRef(true);
-
-            // Auth
-            useEffect(() => {
-                const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    setIsLoading(false);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            const handleLogin = async (password) => {
-                try {
-                    setLoginError('');
-                    await signInWithEmailAndPassword(auth, USER_EMAIL, password);
-                } catch (e) {
-                    setLoginError('Access Denied');
-                }
-            };
-
-            // Load Data
-            useEffect(() => {
-                if (!user) return;
-                
-                // Load goals
-                const goalsUnsub = onSnapshot(doc(db, 'users', user.uid, 'savings_goals_data', 'current_config'), (snap) => {
-                    if (snap.exists()) {
-                        const d = snap.data();
-                        const loadedGoals = d.goals || [];
-                        setGoals(loadedGoals);
-                        lastSavedData.current = { goals: loadedGoals };
-                        isInitialLoad.current = false;
-                        setHasUnsavedChanges(false);
-                    } else {
-                        setGoals([]);
-                        lastSavedData.current = { goals: [] };
-                        isInitialLoad.current = false;
-                    }
-                    setDataLoaded(true);
-                });
-
-                // Load pay periods schedule
-                const scheduleUnsub = onSnapshot(doc(db, 'users', user.uid, 'planner_data', 'schedule'), (snap) => {
-                    if (snap.exists() && snap.data().periods) {
-                        setPayPeriods(snap.data().periods);
-                    } else {
-                        setPayPeriods([]);
-                    }
-                });
-
-                return () => {
-                    goalsUnsub();
-                    scheduleUnsub();
-                };
-            }, [user]);
-
-            // Save Data
-            const saveData = useCallback(async (force = false) => {
-                if (!user) return;
-                
-                const currentData = { goals };
-                
-                if (!force && lastSavedData.current && deepEqual(currentData, lastSavedData.current)) {
-                    return;
-                }
-                
-                setIsSaving(true);
-                try {
-                    await setDoc(doc(db, 'users', user.uid, 'savings_goals_data', 'current_config'), {
-                        goals, updatedAt: new Date()
-                    }, { merge: true });
-                    lastSavedData.current = currentData;
-                    setHasUnsavedChanges(false);
-                } catch(e) { console.error(e); }
-                finally { setIsSaving(false); }
-            }, [user, goals]);
-
-            // Check for changes and trigger save
-            useEffect(() => {
-                if (isInitialLoad.current || !user || !dataLoaded) return;
-                
-                const currentData = { goals };
-                if (lastSavedData.current && !deepEqual(currentData, lastSavedData.current)) {
-                    setHasUnsavedChanges(true);
-                    const t = setTimeout(() => saveData(), 2000);
-                    return () => clearTimeout(t);
-                }
-            }, [goals, user, saveData, dataLoaded]);
-
-            // CRUD
-            const addGoal = (goal) => {
-                setGoals([goal, ...goals]);
-                setShowAddForm(false);
-            };
-            
-            const updateGoal = (updated) => setGoals(goals.map(g => g.id === updated.id ? updated : g));
-            const deleteGoal = (id) => {
-                if (confirm('Are you sure you want to delete this goal?')) {
-                    setGoals(goals.filter(g => g.id !== id));
-                }
-            };
-
-            // --- CALCULATIONS ---
-            const summaryData = useMemo(() => {
+        // --- Logic ---
+        const Logic = {
+            calculateStats: () => {
                 const today = new Date().toISOString().split('T')[0];
                 
-                const activeGoals = goals.filter(g => {
-                    const remaining = g.targetAmount - (g.currentAmount || 0);
-                    return remaining > 0;
-                });
-                
-                const completedGoals = goals.filter(g => {
-                    const remaining = g.targetAmount - (g.currentAmount || 0);
-                    return remaining <= 0;
-                });
-
+                const activeGoals = state.goals.filter(g => (g.targetAmount - (g.currentAmount || 0)) > 0);
+                const completedGoals = state.goals.filter(g => (g.targetAmount - (g.currentAmount || 0)) <= 0);
                 const overdueGoals = activeGoals.filter(g => g.dueDate && g.dueDate < today);
 
                 const totalTargeted = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
                 const totalSaved = activeGoals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
                 const totalRemaining = totalTargeted - totalSaved;
 
-                // Calculate total needed per pay period across all active goals
                 let totalPerPayPeriod = 0;
                 activeGoals.forEach(g => {
-                    if (g.dueDate && payPeriods.length > 0) {
+                    if (g.dueDate && state.payPeriods.length > 0) {
                         const remaining = g.targetAmount - (g.currentAmount || 0);
-                        const periodsLeft = payPeriods.filter(p => p.date >= today && p.date <= g.dueDate).length;
+                        const periodsLeft = state.payPeriods.filter(p => p.date >= today && p.date <= g.dueDate).length;
                         if (periodsLeft > 0) {
                             totalPerPayPeriod += remaining / periodsLeft;
                         }
@@ -619,171 +114,475 @@
                     totalTargeted,
                     totalSaved,
                     totalRemaining,
-                    totalPerPayPeriod,
+                    totalPerPayPeriod
                 };
-            }, [goals, payPeriods]);
-
-            // Filter goals
-            const filteredGoals = useMemo(() => {
-                const today = new Date().toISOString().split('T')[0];
-                
-                return goals.filter(g => {
-                    const remaining = g.targetAmount - (g.currentAmount || 0);
-                    const isComplete = remaining <= 0;
-                    
-                    if (filterStatus === 'active') return !isComplete;
-                    if (filterStatus === 'completed') return isComplete;
+            },
+            getFilteredGoals: () => {
+                return state.goals.filter(g => {
+                    const isComplete = (g.targetAmount - (g.currentAmount || 0)) <= 0;
+                    if (state.filterStatus === 'active') return !isComplete;
+                    if (state.filterStatus === 'completed') return isComplete;
                     return true;
                 }).sort((a, b) => {
-                    // Sort by due date, then by name
                     if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
                     if (a.dueDate) return -1;
                     if (b.dueDate) return 1;
                     return a.name.localeCompare(b.name);
                 });
-            }, [goals, filterStatus]);
+            },
+            getGoalCalculations: (goal) => {
+                const today = new Date().toISOString().split('T')[0];
+                const amountRemaining = goal.targetAmount - (goal.currentAmount || 0);
+                
+                let remainingPayPeriods = 0;
+                if (goal.dueDate && state.payPeriods.length > 0) {
+                    remainingPayPeriods = state.payPeriods.filter(p => p.date >= today && p.date <= goal.dueDate).length;
+                }
 
+                const perPayPeriod = remainingPayPeriods > 0 ? amountRemaining / remainingPayPeriods : amountRemaining;
+                
+                const isComplete = amountRemaining <= 0;
+                const isOverdue = goal.dueDate && goal.dueDate < today && !isComplete;
+                const isUrgent = remainingPayPeriods <= 2 && remainingPayPeriods > 0 && !isComplete;
 
-            if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-400">Loading...</div>;
-            if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
+                let progressColor = 'blue';
+                if (isComplete) progressColor = 'green';
+                else if (isOverdue) progressColor = 'red';
+                else if (isUrgent) progressColor = 'yellow';
 
-            return (
-                <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
-                    
-                    {/* Header Dashboard */}
-                    <div className="bg-blue-900 text-white pb-24 pt-8 px-4 shadow-xl">
-                        <div className="max-w-5xl mx-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <h1 className="text-2xl font-bold flex items-center gap-2">
-                                    <Icons.Target /> Savings Goals
-                                </h1>
-                                <div className={`flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
-                                    isSaving 
-                                        ? 'bg-blue-700 text-blue-200' 
-                                        : hasUnsavedChanges 
-                                            ? 'bg-yellow-600 text-yellow-100' 
-                                            : 'bg-blue-800 text-blue-200'
-                                }`}>
-                                    {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
-                                    <div className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Active Goals</div>
-                                    <div className="text-3xl font-bold text-white">{summaryData.activeCount}</div>
-                                    {summaryData.overdueCount > 0 && (
-                                        <div className="text-xs text-red-300 mt-1">{summaryData.overdueCount} overdue</div>
-                                    )}
-                                </div>
-                                <div className="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
-                                    <div className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Total to Save</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(summaryData.totalRemaining)}</div>
-                                    <div className="text-xs text-blue-400 mt-1">of {formatCurrency(summaryData.totalTargeted)}</div>
-                                </div>
-                                <div className="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
-                                    <div className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Per Pay Period</div>
-                                    <div className="text-3xl font-bold text-white">{formatCurrency(summaryData.totalPerPayPeriod)}</div>
-                                    <div className="text-xs text-blue-400 mt-1">Across all goals</div>
-                                </div>
-                                <div className="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
-                                    <div className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Completed</div>
-                                    <div className="text-3xl font-bold text-white">{summaryData.completedCount}</div>
-                                    <div className="text-xs text-green-400 mt-1">Goals reached! 🎉</div>
-                                </div>
-                            </div>
+                const progressPercentage = goal.targetAmount > 0 ? ((goal.currentAmount || 0) / goal.targetAmount) * 100 : 0;
 
-                            {payPeriods.length === 0 && (
-                                <div className="mt-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3 text-yellow-200 text-sm">
-                                    <Icons.AlertCircle className="inline mr-2" />
-                                    No pay period schedule found. Set up your pay schedule in the Planner to see per-pay-period calculations.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="max-w-5xl mx-auto px-4 -mt-16">
-                        
-                        {/* Controls */}
-                        <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setFilterStatus('active')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                                        filterStatus === 'active'
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Active ({summaryData.activeCount})
-                                </button>
-                                <button
-                                    onClick={() => setFilterStatus('completed')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                                        filterStatus === 'completed'
-                                            ? 'bg-green-600 text-white'
-                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Completed ({summaryData.completedCount})
-                                </button>
-                                <button
-                                    onClick={() => setFilterStatus('all')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                                        filterStatus === 'all'
-                                            ? 'bg-slate-600 text-white'
-                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    All ({goals.length})
-                                </button>
-                            </div>
-                            
-                            <button
-                                onClick={() => setShowAddForm(true)}
-                                className="flex items-center gap-1 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
-                            >
-                                <Icons.Plus /> Add Goal
-                            </button>
-                        </div>
-
-                        {/* Add Form */}
-                        {showAddForm && (
-                            <div className="mb-6">
-                                <AddGoalForm onAdd={addGoal} onCancel={() => setShowAddForm(false)} />
-                            </div>
-                        )}
-
-                        {/* Goals List */}
-                        <div className="space-y-4">
-                            {filteredGoals.length === 0 && (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center text-slate-400">
-                                    {filterStatus === 'active' && "No active goals. Click 'Add Goal' to create one!"}
-                                    {filterStatus === 'completed' && "No completed goals yet. Keep saving!"}
-                                    {filterStatus === 'all' && "No goals yet. Click 'Add Goal' to get started!"}
-                                </div>
-                            )}
-                            
-                            {filteredGoals.map(goal => (
-                                <GoalCard
-                                    key={goal.id}
-                                    goal={goal}
-                                    payPeriods={payPeriods}
-                                    onUpdate={updateGoal}
-                                    onDelete={deleteGoal}
-                                    isExpanded={expandedGoalId === goal.id}
-                                    onToggleExpand={() => setExpandedGoalId(expandedGoalId === goal.id ? null : goal.id)}
-                                />
-                            ))}
-                        </div>
-
-                    </div>
-                </div>
-            );
+                return { amountRemaining, remainingPayPeriods, perPayPeriod, isComplete, isOverdue, isUrgent, progressColor, progressPercentage };
+            }
         };
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // --- Actions ---
+        const Actions = {
+            login: async (e) => {
+                e.preventDefault();
+                const pw = document.getElementById('login-password').value;
+                try { 
+                    await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+                } catch(err) { 
+                    state.loginError = "Access Denied";
+                    render();
+                }
+            },
+            scheduleSave: () => {
+                state.hasUnsavedChanges = true;
+                render();
+                if (state.saveTimer) clearTimeout(state.saveTimer);
+                
+                state.saveTimer = setTimeout(async () => {
+                    if (!state.user) return;
+                    state.isSaving = true;
+                    render();
+
+                    try {
+                        await setDoc(doc(db, 'users', state.user.uid, 'savings_goals_data', 'current_config'), {
+                            goals: state.goals,
+                            updatedAt: new Date()
+                        }, { merge: true });
+                        state.hasUnsavedChanges = false;
+                    } catch(e) {
+                        console.error("Save failed", e);
+                    } finally {
+                        state.isSaving = false;
+                        render();
+                    }
+                }, 2000);
+            },
+            toggleAddForm: (isOpen) => {
+                state.isAddFormOpen = isOpen;
+                if (isOpen) state.addForm = { name: '', targetAmount: '', dueDate: '', notes: '' };
+                render();
+            },
+            updateAddForm: (field, value) => {
+                state.addForm[field] = value;
+            },
+            submitAddForm: (e) => {
+                e.preventDefault();
+                const { name, targetAmount, dueDate, notes } = state.addForm;
+                if (!name.trim() || !targetAmount) return;
+
+                const newGoal = {
+                    id: `goal-${Date.now()}`,
+                    name: name.trim(),
+                    targetAmount: parseFloat(targetAmount),
+                    currentAmount: 0,
+                    dueDate: dueDate || null,
+                    notes: notes.trim() || null,
+                    createdAt: new Date().toISOString()
+                };
+
+                state.goals = [newGoal, ...state.goals];
+                state.isAddFormOpen = false;
+                Actions.scheduleSave();
+                render();
+            },
+            toggleExpand: (id) => {
+                state.expandedGoalId = state.expandedGoalId === id ? null : id;
+                // If we collapse, cancel editing
+                if (state.expandedGoalId !== id) state.editingGoalId = null;
+                render();
+            },
+            startEditing: (goal) => {
+                state.editingGoalId = goal.id;
+                state.editForm = { ...goal, currentAmount: goal.currentAmount || 0, dueDate: goal.dueDate || '', notes: goal.notes || '' };
+                render();
+            },
+            cancelEditing: () => {
+                state.editingGoalId = null;
+                render();
+            },
+            updateEditForm: (field, value) => {
+                state.editForm[field] = value;
+            },
+            submitEditForm: () => {
+                const updated = {
+                    ...state.editForm,
+                    targetAmount: parseFloat(state.editForm.targetAmount) || 0,
+                    currentAmount: parseFloat(state.editForm.currentAmount) || 0
+                };
+                state.goals = state.goals.map(g => g.id === updated.id ? updated : g);
+                state.editingGoalId = null;
+                Actions.scheduleSave();
+                render();
+            },
+            quickPay: (id, amount) => {
+                const goal = state.goals.find(g => g.id === id);
+                if (!goal) return;
+                const newAmount = Math.min((goal.currentAmount || 0) + amount, goal.targetAmount);
+                state.goals = state.goals.map(g => g.id === id ? { ...g, currentAmount: newAmount } : g);
+                Actions.scheduleSave();
+                render();
+            },
+            deleteGoal: (id) => {
+                if (!confirm("Are you sure you want to delete this goal?")) return;
+                state.goals = state.goals.filter(g => g.id !== id);
+                Actions.scheduleSave();
+                render();
+            },
+            setFilter: (filter) => {
+                state.filterStatus = filter;
+                render();
+            }
+        };
+
+        window.Savings = Actions;
+
+        // --- Components ---
+
+        const renderLogin = () => `
+            <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Savings Goals</h2>
+                    <form onsubmit="Savings.login(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Password</label>
+                            <input id="login-password" type="password" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"/>
+                        </div>
+                        ${state.loginError ? `<p class="text-red-500 text-sm">${state.loginError}</p>` : ''}
+                        <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">Access Goals</button>
+                    </form>
+                </div>
+            </div>
+        `;
+
+        const renderProgressBar = (percentage, color) => {
+            const colors = {
+                blue: 'bg-blue-500',
+                green: 'bg-green-500',
+                yellow: 'bg-yellow-500',
+                red: 'bg-red-500'
+            };
+            return `
+            <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                <div 
+                    class="h-full rounded-full transition-all duration-500 ${colors[color]}"
+                    style="width: ${Math.min(percentage, 100)}%"
+                ></div>
+            </div>`;
+        };
+
+        const renderEditForm = (goal) => `
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Name</label>
+                    <input type="text" value="${state.editForm.name}" oninput="Savings.updateEditForm('name', this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Target Amount</label>
+                        <input type="number" step="0.01" value="${state.editForm.targetAmount}" oninput="Savings.updateEditForm('targetAmount', this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Current Amount</label>
+                        <input type="number" step="0.01" value="${state.editForm.currentAmount}" oninput="Savings.updateEditForm('currentAmount', this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
+                    <input type="date" value="${state.editForm.dueDate}" onchange="Savings.updateEditForm('dueDate', this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Notes</label>
+                    <textarea oninput="Savings.updateEditForm('notes', this.value)" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">${state.editForm.notes}</textarea>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="Savings.submitEditForm()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Save Changes</button>
+                    <button onclick="Savings.cancelEditing()" class="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        const renderGoalCard = (goal) => {
+            const { amountRemaining, remainingPayPeriods, perPayPeriod, isComplete, isOverdue, isUrgent, progressColor, progressPercentage } = Logic.getGoalCalculations(goal);
+            const isExpanded = state.expandedGoalId === goal.id;
+            const isEditing = state.editingGoalId === goal.id;
+
+            let statusIcon = '';
+            if (isComplete) statusIcon = `<span class="text-green-500">${Icons.Check}</span>`;
+            else if (isOverdue) statusIcon = `<span class="text-red-500">${Icons.AlertCircle}</span>`;
+            else if (isUrgent) statusIcon = `<span class="text-yellow-500">${Icons.Clock}</span>`;
+
+            let cardBorder = 'border-slate-200';
+            let cardBg = 'bg-white';
+            if (isComplete) { cardBorder = 'border-green-200'; cardBg = 'bg-green-50/30'; }
+            else if (isOverdue) { cardBorder = 'border-red-200'; cardBg = 'bg-red-50/30'; }
+            else if (isUrgent) { cardBorder = 'border-yellow-200'; cardBg = 'bg-yellow-50/30'; }
+
+            return `
+            <div class="rounded-xl shadow-sm border overflow-hidden transition-all ${cardBorder} ${cardBg}">
+                <div class="p-4 cursor-pointer hover:bg-slate-50/50 transition" onclick="Savings.toggleExpand('${goal.id}')">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-grow">
+                            <div class="flex items-center gap-2 mb-1">
+                                ${statusIcon}
+                                <h3 class="font-bold text-slate-800">${goal.name}</h3>
+                            </div>
+                            
+                            <div class="flex items-center gap-4 text-sm text-slate-500 mb-3">
+                                ${goal.dueDate ? `<span class="flex items-center gap-1">${Icons.Calendar} Due: ${formatDate(goal.dueDate)}</span>` : ''}
+                                ${!isComplete && remainingPayPeriods > 0 ? `<span class="flex items-center gap-1">${Icons.Clock} ${remainingPayPeriods} pay periods left</span>` : ''}
+                            </div>
+
+                            ${renderProgressBar(progressPercentage, progressColor)}
+                            
+                            <div class="flex justify-between items-center mt-2 text-sm">
+                                <span class="text-slate-500">${formatCurrency(goal.currentAmount || 0)} of ${formatCurrency(goal.targetAmount)}</span>
+                                <span class="font-medium text-slate-700">${progressPercentage.toFixed(0)}%</span>
+                            </div>
+                        </div>
+
+                        <div class="text-right flex-shrink-0">
+                            ${!isComplete && remainingPayPeriods > 0 ? `
+                                <div class="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg">
+                                    <div class="text-xs font-medium uppercase tracking-wide">Per Pay Period</div>
+                                    <div class="text-lg font-bold">${formatCurrency(perPayPeriod)}</div>
+                                </div>
+                            ` : ''}
+                            ${isComplete ? `
+                                <div class="bg-green-100 text-green-800 px-3 py-2 rounded-lg">
+                                    <div class="text-xs font-medium uppercase">Complete!</div>
+                                    ${Icons.Check}
+                                </div>
+                            ` : ''}
+                            ${isOverdue ? `
+                                <div class="bg-red-100 text-red-800 px-3 py-2 rounded-lg">
+                                    <div class="text-xs font-medium uppercase">Overdue</div>
+                                    <div class="text-lg font-bold">${formatCurrency(amountRemaining)}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="flex justify-center mt-2 text-slate-400">
+                        ${isExpanded ? Icons.ChevronUp : Icons.ChevronDown}
+                    </div>
+                </div>
+
+                ${isExpanded ? `
+                    <div class="border-t border-slate-100 p-4 bg-slate-50/50" onclick="event.stopPropagation()">
+                        ${isEditing ? renderEditForm(goal) : `
+                            <div class="space-y-4">
+                                ${goal.notes ? `<div class="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-100">${goal.notes}</div>` : ''}
+                                
+                                ${!isComplete ? `
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Quick Add Payment</label>
+                                        <div class="flex gap-2 flex-wrap">
+                                            ${[10, 25, 50, 100].map(amt => `
+                                                <button onclick="Savings.quickPay('${goal.id}', ${amt})" class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">+$${amt}</button>
+                                            `).join('')}
+                                            ${perPayPeriod > 0 && ![10, 25, 50, 100].includes(Math.round(perPayPeriod)) ? `
+                                                <button onclick="Savings.quickPay('${goal.id}', ${Math.round(perPayPeriod*100)/100})" class="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200">+${formatCurrency(perPayPeriod)} (1 PP)</button>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                <div class="grid grid-cols-3 gap-3 text-center">
+                                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                        <div class="text-xs text-slate-500 uppercase font-medium">Remaining</div>
+                                        <div class="text-lg font-bold text-slate-800">${formatCurrency(amountRemaining)}</div>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                        <div class="text-xs text-slate-500 uppercase font-medium">Pay Periods</div>
+                                        <div class="text-lg font-bold text-slate-800">${remainingPayPeriods}</div>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                        <div class="text-xs text-slate-500 uppercase font-medium">Per Period</div>
+                                        <div class="text-lg font-bold text-blue-600">${remainingPayPeriods > 0 ? formatCurrency(perPayPeriod) : '-'}</div>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-2 pt-2 border-t border-slate-200">
+                                    <button onclick="Savings.startEditing({id: '${goal.id}', name: '${goal.name.replace(/'/g, "\\'")}', targetAmount: ${goal.targetAmount}, currentAmount: ${goal.currentAmount || 0}, dueDate: '${goal.dueDate || ''}', notes: '${(goal.notes || '').replace(/'/g, "\\'").replace(/\n/g, ' ')}'})" class="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">
+                                        ${Icons.Edit} Edit
+                                    </button>
+                                    <button onclick="Savings.deleteGoal('${goal.id}')" class="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg">
+                                        ${Icons.Trash} Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                ` : ''}
+            </div>`;
+        };
+
+        const renderAddForm = () => `
+            <form onsubmit="Savings.submitAddForm(event)" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4 mb-6">
+                <h3 class="font-bold text-slate-800 flex items-center gap-2">${Icons.Plus} Add New Goal</h3>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Name *</label>
+                    <input type="text" value="${state.addForm.name}" oninput="Savings.updateAddForm('name', this.value)" placeholder="e.g., New Laptop, Vacation Fund..." class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required/>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Target Amount *</label>
+                        <input type="number" step="0.01" value="${state.addForm.targetAmount}" oninput="Savings.updateAddForm('targetAmount', this.value)" placeholder="0.00" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required/>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
+                        <input type="date" value="${state.addForm.dueDate}" onchange="Savings.updateAddForm('dueDate', this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Notes (optional)</label>
+                    <textarea oninput="Savings.updateAddForm('notes', this.value)" rows="2" placeholder="Any additional details..." class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">${state.addForm.notes}</textarea>
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Add Goal</button>
+                    <button type="button" onclick="Savings.toggleAddForm(false)" class="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </form>
+        `;
+
+        const renderApp = () => {
+            const stats = Logic.calculateStats();
+            const goals = Logic.getFilteredGoals();
+
+            return `
+            <div class="bg-blue-900 text-white pb-24 pt-8 px-4 shadow-xl">
+                <div class="max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-2xl font-bold flex items-center gap-2">${Icons.Target} Savings Goals</h1>
+                        <div class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${state.isSaving ? 'bg-blue-700 text-blue-200' : state.hasUnsavedChanges ? 'bg-yellow-600 text-yellow-100' : 'bg-blue-800 text-blue-200'}">
+                            ${state.isSaving ? 'Saving...' : state.hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
+                            <div class="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Active Goals</div>
+                            <div class="text-3xl font-bold text-white">${stats.activeCount}</div>
+                            ${stats.overdueCount > 0 ? `<div class="text-xs text-red-300 mt-1">${stats.overdueCount} overdue</div>` : ''}
+                        </div>
+                        <div class="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
+                            <div class="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Total to Save</div>
+                            <div class="text-3xl font-bold text-white">${formatCurrency(stats.totalRemaining)}</div>
+                            <div class="text-xs text-blue-400 mt-1">of ${formatCurrency(stats.totalTargeted)}</div>
+                        </div>
+                        <div class="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
+                            <div class="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Per Pay Period</div>
+                            <div class="text-3xl font-bold text-white">${formatCurrency(stats.totalPerPayPeriod)}</div>
+                            <div class="text-xs text-blue-400 mt-1">Across all goals</div>
+                        </div>
+                        <div class="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
+                            <div class="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Completed</div>
+                            <div class="text-3xl font-bold text-white">${stats.completedCount}</div>
+                            <div class="text-xs text-green-400 mt-1">Goals reached! 🎉</div>
+                        </div>
+                    </div>
+                    ${state.payPeriods.length === 0 ? `<div class="mt-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3 text-yellow-200 text-sm">${Icons.AlertCircle} No pay period schedule found. Set up your pay schedule in the Planner to see per-pay-period calculations.</div>` : ''}
+                </div>
+            </div>
+
+            <div class="max-w-5xl mx-auto px-4 -mt-16">
+                <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+                    <div class="flex gap-2">
+                        <button onclick="Savings.setFilter('active')" class="px-4 py-2 rounded-lg text-sm font-medium transition ${state.filterStatus === 'active' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Active (${stats.activeCount})</button>
+                        <button onclick="Savings.setFilter('completed')" class="px-4 py-2 rounded-lg text-sm font-medium transition ${state.filterStatus === 'completed' ? 'bg-green-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Completed (${stats.completedCount})</button>
+                        <button onclick="Savings.setFilter('all')" class="px-4 py-2 rounded-lg text-sm font-medium transition ${state.filterStatus === 'all' ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">All (${state.goals.length})</button>
+                    </div>
+                    <button onclick="Savings.toggleAddForm(true)" class="flex items-center gap-1 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">${Icons.Plus} Add Goal</button>
+                </div>
+
+                ${state.isAddFormOpen ? renderAddForm() : ''}
+
+                <div class="space-y-4">
+                    ${goals.length === 0 ? `
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center text-slate-400">
+                            ${state.filterStatus === 'active' ? "No active goals. Click 'Add Goal' to create one!" : state.filterStatus === 'completed' ? "No completed goals yet. Keep saving!" : "No goals yet. Click 'Add Goal' to get started!"}
+                        </div>
+                    ` : goals.map(renderGoalCard).join('')}
+                </div>
+            </div>`;
+        };
+
+        const render = () => {
+            const app = document.getElementById('app');
+            if (state.isLoading) {
+                app.innerHTML = '<div class="h-screen w-full flex items-center justify-center text-slate-500">Loading Savings...</div>';
+                return;
+            }
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+                return;
+            }
+            app.innerHTML = renderApp();
+        };
+
+        // --- Init ---
+        onAuthStateChanged(auth, (u) => {
+            state.user = u;
+            state.isLoading = false;
+            
+            if (u) {
+                // Load Goals
+                onSnapshot(doc(db, 'users', u.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                    if (snap.exists()) {
+                        if (!state.hasUnsavedChanges) {
+                            state.goals = snap.data().goals || [];
+                            render();
+                        }
+                    } else {
+                        state.goals = [];
+                        render();
+                    }
+                });
+                // Load Schedule (Read-only for calculations)
+                onSnapshot(doc(db, 'users', u.uid, 'planner_data', 'schedule'), (snap) => {
+                    if (snap.exists() && snap.data().periods) {
+                        state.payPeriods = snap.data().periods;
+                        render();
+                    }
+                });
+            } else {
+                render();
+            }
+        });
     </script>
 </body>
 </html>

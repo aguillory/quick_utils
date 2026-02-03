@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Planner</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -19,34 +16,61 @@
             }
         }
     </script>
+    <style>
+        /* Custom scrollbar for webkit to match the sleek dark theme */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
-<body class="bg-slate-100 h-screen overflow-hidden">
-    <div id="root" class="h-full"></div>
-    <script type="text/babel" data-type="module">
-        const { useState, useEffect, useMemo, useRef } = React;
-        const { createRoot } = ReactDOM;
-        
+<body class="bg-slate-100 h-screen overflow-hidden text-slate-900 font-sans">
+    
+    <div id="app" class="h-full">
+        <div class="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>
+    </div>
+
+    <script type="module">
         import { db, auth } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // --- Configuration ---
         const USER_EMAIL = "default@user.com";
         const PAY_PERIODS_PER_YEAR = 26;
 
+        // --- Icons (SVG Strings) ---
         const Icons = {
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
-            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-            ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-            ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>,
-            ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
-            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
-            Target: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+            Check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+            Calendar: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+            Refresh: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>`,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+            Settings: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+            ChevronDown: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
+            ChevronRight: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+            ChevronLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
         };
 
+        // --- State Management ---
+        const state = {
+            user: null,
+            isLoading: true,
+            loginError: '',
+            isEditorOpen: false,
+            schedule: [],
+            selectedPeriodId: null,
+            masterPay: null,
+            masterAccounts: null,
+            budgetItems: [],
+            savingsGoals: [],
+            openSections: { closed: false, future: false }, // track collapsible state
+            editorText: '' // track editor textarea
+        };
+
+        // --- Helpers ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
         const formatDate = (dateStr) => {
             if (!dateStr) return 'TBD';
@@ -56,118 +80,206 @@
         const getDaySuffix = (day) => {
             if (day > 3 && day < 21) return 'th';
             switch (day % 10) {
-                case 1: return "st";
-                case 2: return "nd";
-                case 3: return "rd";
-                default: return "th";
+                case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th";
             }
         };
 
-        const LoginScreen = ({ onLogin, loginError }) => {
-            const [password, setPassword] = useState('');
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-                        <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Budget Planner</h2>
-                        <form onSubmit={(e) => { e.preventDefault(); onLogin(password); }} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700">Password</label>
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-                            </div>
-                            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
-                            <button type="submit" className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium">Access Planner</button>
-                        </form>
-                    </div>
-                </div>
-            );
-        };
-
-        const ScheduleEditor = ({ currentPeriods, onSave, onClose }) => {
-            const initialText = currentPeriods.map(p => p.date).join('\n');
-            const [text, setText] = useState(initialText);
-            const handleSave = () => {
-                const dates = text.split('\n').map(d => d.trim()).filter(d => d.match(/^\d{4}-\d{2}-\d{2}$/)); 
-                const uniqueDates = [...new Set(dates)].sort();
-                if (uniqueDates.length === 0) {
-                    alert("Please enter at least one valid date (YYYY-MM-DD)");
-                    return;
+        // --- Actions (Exposed to Window for HTML event handlers) ---
+        const Actions = {
+            login: async (e) => {
+                e.preventDefault();
+                const pw = document.getElementById('login-password').value;
+                try { 
+                    await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+                } catch(err) { 
+                    state.loginError = "Invalid Password";
+                    render();
                 }
-                onSave(uniqueDates);
-            };
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 flex flex-col max-h-[90vh]">
-                        <div className="mb-4">
-                            <h2 className="text-xl font-bold text-slate-800">Manage Pay Dates</h2>
-                            <p className="text-slate-500 text-xs mt-1">Enter your paycheck dates below (YYYY-MM-DD), one per line.</p>
-                        </div>
-                        <textarea 
-                            value={text} 
-                            onChange={(e) => setText(e.target.value)}
-                            className="flex-1 border border-slate-300 rounded-md p-3 font-mono text-sm mb-4 min-h-[300px] focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="2025-01-15&#10;2025-01-29&#10;2025-02-12..."
-                        ></textarea>
-                        <div className="flex gap-3">
-                            <button onClick={onClose} className="flex-1 bg-slate-100 text-slate-700 font-bold py-2 rounded-lg hover:bg-slate-200 transition">Cancel</button>
-                            <button onClick={handleSave} className="flex-1 bg-indigo-600 text-white font-bold py-2 rounded-lg hover:bg-indigo-700 transition">Save Schedule</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+            },
+            toggleEditor: (isOpen) => {
+                state.isEditorOpen = isOpen;
+                if(isOpen) {
+                    state.editorText = state.schedule.map(p => p.date).join('\n');
+                }
+                render();
+            },
+            updateEditorText: (text) => {
+                state.editorText = text;
+            },
+            saveSchedule: async () => {
+                const dates = state.editorText.split('\n').map(d => d.trim()).filter(d => d.match(/^\d{4}-\d{2}-\d{2}$/));
+                const uniqueDates = [...new Set(dates)].sort();
+                if (uniqueDates.length === 0) { alert("Please enter at least one valid date"); return; }
+                
+                // Logic to merge new dates with existing data
+                const newSchedule = uniqueDates.map((dateStr, index) => {
+                    const existingPeriod = state.schedule.find(p => p.date === dateStr);
+                    let nextDateStr;
+                    if (index < uniqueDates.length - 1) {
+                        nextDateStr = uniqueDates[index + 1];
+                    } else {
+                        const d = new Date(dateStr + 'T00:00:00');
+                        d.setDate(d.getDate() + 14);
+                        nextDateStr = d.toISOString().split('T')[0];
+                    }
+                    const monthKey = dateStr.substring(0, 7);
+                    const checksInThisMonth = uniqueDates.filter(d => d.startsWith(monthKey)).sort();
+                    const isAutoHoliday = checksInThisMonth.length >= 3 && checksInThisMonth[2] === dateStr;
 
-        const CollapsibleSection = ({ title, children, defaultOpen = false, count = null }) => {
-            const [isOpen, setIsOpen] = useState(defaultOpen);
-            return (
-                <div className="border-b border-slate-800">
-                    <button onClick={() => setIsOpen(!isOpen)} className="w-full p-3 flex items-center justify-between hover:bg-slate-800 transition text-left">
-                        <span className="text-xs uppercase font-bold text-slate-400 flex items-center gap-2">
-                            {isOpen ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
-                            {title}
-                            {count !== null && <span className="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">{count}</span>}
-                        </span>
-                    </button>
-                    {isOpen && children}
-                </div>
-            );
-        };
-
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [isLoading, setIsLoading] = useState(true);
-            const [isEditorOpen, setIsEditorOpen] = useState(false);
-            const [schedule, setSchedule] = useState([]);
-            const [selectedPeriodId, setSelectedPeriodId] = useState(null);
-            const hasAutoSelected = useRef(false); // <--- Must be useRef
-            const [_, setHasAutoSelectedState] = useState(false); 
-            const [masterPay, setMasterPay] = useState(null);
-            const [masterAccounts, setMasterAccounts] = useState(null);
-            const [budgetItems, setBudgetItems] = useState([]);
-            const [savingsGoals, setSavingsGoals] = useState([]);
-
-            const currentPeriod = schedule.find(p => p.id === selectedPeriodId);
-            const currentIndex = schedule.findIndex(p => p.id === selectedPeriodId);
-            const prevPeriod = currentIndex > 0 ? schedule[currentIndex - 1] : null;
-            const nextPeriod = currentIndex < schedule.length - 1 ? schedule[currentIndex + 1] : null;
-
-            const sortedBills = useMemo(() => {
-                if (!currentPeriod || !currentPeriod.bills) return [];
-                const startDay = new Date(currentPeriod.date + 'T00:00:00').getDate();
-                return [...currentPeriod.bills].sort((a, b) => {
-                    const valA = a.dueDay < startDay ? a.dueDay + 32 : a.dueDay;
-                    const valB = b.dueDay < startDay ? b.dueDay + 32 : b.dueDay;
-                    return valA - valB;
+                    if (existingPeriod) {
+                        return { ...existingPeriod, id: dateStr, date: dateStr, nextDate: nextDateStr, isHoliday: isAutoHoliday };
+                    } else {
+                        return { id: dateStr, date: dateStr, nextDate: nextDateStr, isHoliday: isAutoHoliday, isSetup: false, bills: [], manualIncome: null };
+                    }
                 });
-            }, [currentPeriod]);
 
-            const categorizedPeriods = useMemo(() => {
+                state.schedule = newSchedule;
+                // Auto-select logic if current selection is lost
+                if (!newSchedule.find(p => p.id === state.selectedPeriodId) && newSchedule.length > 0) {
+                    state.selectedPeriodId = newSchedule[0].id;
+                }
+                
+                await setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: newSchedule });
+                state.isEditorOpen = false;
+                render();
+            },
+            selectPeriod: (id) => {
+                state.selectedPeriodId = id;
+                render();
+            },
+            toggleSection: (sectionKey) => {
+                state.openSections[sectionKey] = !state.openSections[sectionKey];
+                render();
+            },
+            instantiatePeriod: async (periodId) => {
+                if (!state.masterAccounts) return;
+                const period = state.schedule.find(p => p.id === periodId);
+                const pStart = new Date(period.date + 'T00:00:00');
+                const pEnd = new Date(period.nextDate + 'T00:00:00');
+                
+                const existingCustomBills = period.bills.filter(b => b.type === 'custom');
+                let newBills = [...existingCustomBills];
+                
+                const checkDateMatch = (dueDay) => {
+                    for (let d = new Date(pStart); d < pEnd; d.setDate(d.getDate() + 1)) {
+                        if (d.getDate() === dueDay) return true;
+                    }
+                    return false;
+                };
+
+                (state.masterAccounts.bills || []).forEach(b => {
+                    if (checkDateMatch(b.dueDay)) newBills.push({ ...b, id: `bill-${b.id}`, type: 'bill', isPaid: false, note: '' });
+                });
+                (state.masterAccounts.debts || []).forEach(d => {
+                    if (checkDateMatch(d.dueDay)) newBills.push({ ...d, id: `debt-${d.id}`, amount: d.minPayment, type: 'debt', isPaid: false, note: '' });
+                });
+
+                const updatedSchedule = state.schedule.map(p => p.id === periodId ? { ...p, isSetup: true, bills: newBills } : p);
+                state.schedule = updatedSchedule; // Optimistic update
+                render();
+                await setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+            },
+            updateBill: (periodId, billId, field, value) => {
+                // Handle type conversion
+                if (field === 'amount') value = parseFloat(value) || 0;
+                
+                const updatedSchedule = state.schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    const newBills = p.bills.map(b => b.id === billId ? { ...b, [field]: value } : b);
+                    return { ...p, bills: newBills };
+                });
+                
+                state.schedule = updatedSchedule;
+                render(); // Re-render immediately for responsiveness
+                // Debounce save in production, but for now direct save
+                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+            },
+            addCustomExpense: (periodId) => {
+                const updatedSchedule = state.schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    const newExp = { id: 'custom-' + Date.now(), name: 'New Expense', amount: 0, dueDay: new Date(p.date).getDate(), isPaid: false, type: 'custom' };
+                    return { ...p, bills: [...p.bills, newExp] };
+                });
+                state.schedule = updatedSchedule;
+                render();
+                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+            },
+            deleteBill: (periodId, billId) => {
+                const updatedSchedule = state.schedule.map(p => {
+                    if (p.id !== periodId) return p;
+                    return { ...p, bills: p.bills.filter(b => b.id !== billId) };
+                });
+                state.schedule = updatedSchedule;
+                render();
+                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+            },
+            moveBill: (billId, targetPeriodId) => {
+                const currentPeriod = state.schedule.find(p => p.id === state.selectedPeriodId);
+                const billToMove = currentPeriod.bills.find(b => b.id === billId);
+                if (!billToMove || !targetPeriodId) return;
+
+                const updatedSchedule = state.schedule.map(p => {
+                    if (p.id === currentPeriod.id) {
+                        return { ...p, bills: p.bills.filter(b => b.id !== billId) };
+                    }
+                    if (p.id === targetPeriodId) {
+                        const movedBill = { ...billToMove, id: billToMove.id + '-moved-' + Date.now() };
+                        return { ...p, bills: [...p.bills, movedBill] };
+                    }
+                    return p;
+                });
+                state.schedule = updatedSchedule;
+                render();
+                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+            }
+        };
+
+        // Attach actions to window so HTML event handlers can see them
+        window.Planner = Actions;
+
+        // --- Logic: Calculators ---
+        const Logic = {
+            calculateIncome: (period) => {
+                if (!state.masterPay) return 0;
+                const { grossPay = 0, preTaxDeductions = [], taxes = [], postTaxDeductions = [] } = state.masterPay;
+                const totalTaxes = taxes.reduce((s, i) => s + i.amount, 0);
+                if (period.isHoliday) return grossPay - totalTaxes;
+                const totalPre = preTaxDeductions.reduce((s, i) => s + i.amount, 0);
+                const totalPost = postTaxDeductions.reduce((s, i) => s + i.amount, 0);
+                return grossPay - totalPre - totalTaxes - totalPost;
+            },
+            calculateBudgetItems: () => {
+                if (!state.budgetItems || state.budgetItems.length === 0) return 0;
+                let total = 0;
+                state.budgetItems.forEach(item => {
+                    const yearlyTotal = item.cost * item.frequencyPerYear;
+                    total += yearlyTotal / PAY_PERIODS_PER_YEAR;
+                });
+                return total;
+            },
+            calculateSavingsGoals: (currentPeriod) => {
+                if (!state.savingsGoals || state.savingsGoals.length === 0 || !currentPeriod) return 0;
+                const today = new Date().toISOString().split('T')[0];
+                let total = 0;
+                state.savingsGoals.forEach(goal => {
+                    const remaining = goal.targetAmount - (goal.currentAmount || 0);
+                    if (remaining <= 0) return;
+                    if (goal.dueDate && state.schedule.length > 0) {
+                        const periodsLeft = state.schedule.filter(p => p.date >= today && p.date <= goal.dueDate).length;
+                        if (periodsLeft > 0) total += remaining / periodsLeft;
+                    }
+                });
+                return total;
+            },
+            getCategorizedPeriods: () => {
                 const today = new Date().toISOString().split('T')[0];
                 const closed = [];
                 let priorPeriod = null;
                 let upcomingPeriod = null;
                 const nextTwo = [];
                 const future = [];
-                schedule.forEach((period) => {
+                
+                state.schedule.forEach((period) => {
                     const periodEnd = new Date(period.nextDate);
                     const periodStart = new Date(period.date);
                     const todayDate = new Date(today);
@@ -187,388 +299,305 @@
                 });
                 if (closed.length > 0) priorPeriod = closed.pop();
                 return { closed, priorPeriod, upcomingPeriod, nextTwo, future };
-            }, [schedule]);
+            }
+        };
 
-            useEffect(() => {
-                const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    setIsLoading(false);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            const handleLogin = async (pw) => {
-                try { await signInWithEmailAndPassword(auth, USER_EMAIL, pw); } catch(e) { alert("Invalid"); }
-            };
-
-            useEffect(() => {
-                if (!user) return;
-                onSnapshot(doc(db, 'users', user.uid, 'paycheck_data', 'current_config'), (snap) => setMasterPay(snap.data() || {}));
-                onSnapshot(doc(db, 'users', user.uid, 'accounts_data', 'current_config'), (snap) => setMasterAccounts(snap.data() || { bills: [], debts: [] }));
-                onSnapshot(doc(db, 'users', user.uid, 'budget_items_data', 'current_config'), (snap) => {
-                    if (snap.exists()) setBudgetItems(snap.data().items || []);
-                });
-                onSnapshot(doc(db, 'users', user.uid, 'savings_goals_data', 'current_config'), (snap) => {
-                    if (snap.exists()) setSavingsGoals(snap.data().goals || []);
-                });
-                onSnapshot(doc(db, 'users', user.uid, 'planner_data', 'schedule'), (snap) => {
-                    if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
-                        setSchedule(snap.data().periods);
-                        if (!hasAutoSelected.current) {
-                            const today = new Date().toISOString().split('T')[0];
-                            const upcoming = snap.data().periods.find(p => p.date >= today);
-                            if (upcoming) setSelectedPeriodId(upcoming.id);
-                            else setSelectedPeriodId(snap.data().periods[snap.data().periods.length - 1].id);
-                            
-                            hasAutoSelected.current = true; 
-                            setHasAutoSelectedState(true);
-                        }
-                    } else {
-                        setSchedule([]); 
-                        setIsEditorOpen(true);
-                    }
-                });
-            }, [user]);
-
-            const saveSchedule = async (newSchedule) => {
-                if(!user) return;
-                await setDoc(doc(db, 'users', user.uid, 'planner_data', 'schedule'), { periods: newSchedule });
-            };
-
-            const handleUpdateSchedule = (dateList) => {
-                const newSchedule = dateList.map((dateStr, index) => {
-                    const existingPeriod = schedule.find(p => p.date === dateStr);
-                    let nextDateStr;
-                    if (index < dateList.length - 1) {
-                        nextDateStr = dateList[index + 1];
-                    } else {
-                        const d = new Date(dateStr + 'T00:00:00');
-                        d.setDate(d.getDate() + 14);
-                        nextDateStr = d.toISOString().split('T')[0];
-                    }
-                    const monthKey = dateStr.substring(0, 7);
-                    const checksInThisMonth = dateList.filter(d => d.startsWith(monthKey)).sort();
-                    const isAutoHoliday = checksInThisMonth.length >= 3 && checksInThisMonth[2] === dateStr;
-                    if (existingPeriod) {
-                        return { ...existingPeriod, id: dateStr, date: dateStr, nextDate: nextDateStr, isHoliday: isAutoHoliday };
-                    } else {
-                        return { id: dateStr, date: dateStr, nextDate: nextDateStr, isHoliday: isAutoHoliday, isSetup: false, bills: [], manualIncome: null };
-                    }
-                });
-                setSchedule(newSchedule);
-                const stillExists = newSchedule.find(p => p.id === selectedPeriodId);
-                if (!stillExists && newSchedule.length > 0) setSelectedPeriodId(newSchedule[0].id);
-                saveSchedule(newSchedule);
-                setIsEditorOpen(false);
-            };
-
-            const calculateIncome = (period) => {
-                if (!masterPay) return 0;
-                const { grossPay = 0, preTaxDeductions = [], taxes = [], postTaxDeductions = [] } = masterPay;
-                const totalTaxes = taxes.reduce((s, i) => s + i.amount, 0);
-                if (period.isHoliday) return grossPay - totalTaxes;
-                const totalPre = preTaxDeductions.reduce((s, i) => s + i.amount, 0);
-                const totalPost = postTaxDeductions.reduce((s, i) => s + i.amount, 0);
-                return grossPay - totalPre - totalTaxes - totalPost;
-            };
-
-            const instantiatePeriod = (period) => {
-                if (!masterAccounts) return;
-                const pStart = new Date(period.date + 'T00:00:00');
-                const pEnd = new Date(period.nextDate + 'T00:00:00');
-                const existingCustomBills = period.bills.filter(b => b.type === 'custom');
-                let newBills = [...existingCustomBills];
-                const checkDateMatch = (dueDay) => {
-                    for (let d = new Date(pStart); d < pEnd; d.setDate(d.getDate() + 1)) {
-                        if (d.getDate() === dueDay) return true;
-                    }
-                    return false;
-                };
-                (masterAccounts.bills || []).forEach(b => {
-                    if (checkDateMatch(b.dueDay)) newBills.push({ ...b, id: `bill-${b.id}`, type: 'bill', isPaid: false, note: '' });
-                });
-                (masterAccounts.debts || []).forEach(d => {
-                    if (checkDateMatch(d.dueDay)) newBills.push({ ...d, id: `debt-${d.id}`, amount: d.minPayment, type: 'debt', isPaid: false, note: '' });
-                });
-                const updatedSchedule = schedule.map(p => p.id === period.id ? { ...p, isSetup: true, bills: newBills } : p);
-                saveSchedule(updatedSchedule);
-            };
-
-            const calculateBudgetItems = () => {
-                if (!budgetItems || budgetItems.length === 0) return 0;
-                let total = 0;
-                budgetItems.forEach(item => {
-                    const yearlyTotal = item.cost * item.frequencyPerYear;
-                    total += yearlyTotal / PAY_PERIODS_PER_YEAR;
-                });
-                return total;
-            };
-
-            const calculateSavingsGoals = () => {
-                if (!savingsGoals || savingsGoals.length === 0 || !currentPeriod) return 0;
-                const today = new Date().toISOString().split('T')[0];
-                let total = 0;
-                savingsGoals.forEach(goal => {
-                    const remaining = goal.targetAmount - (goal.currentAmount || 0);
-                    if (remaining <= 0) return;
-                    if (goal.dueDate && schedule.length > 0) {
-                        const periodsLeft = schedule.filter(p => p.date >= today && p.date <= goal.dueDate).length;
-                        if (periodsLeft > 0) total += remaining / periodsLeft;
-                    }
-                });
-                return total;
-            };
-
-            const updatePeriodBill = (periodId, billId, field, value) => {
-                const updated = schedule.map(p => {
-                    if (p.id !== periodId) return p;
-                    const newBills = p.bills.map(b => b.id === billId ? { ...b, [field]: value } : b);
-                    return { ...p, bills: newBills };
-                });
-                saveSchedule(updated);
-            };
-
-            const addCustomExpense = (periodId) => {
-                const updated = schedule.map(p => {
-                    if (p.id !== periodId) return p;
-                    const newExp = { id: 'custom-' + Date.now(), name: 'New Expense', amount: 0, dueDay: new Date(p.date).getDate(), isPaid: false, type: 'custom' };
-                    return { ...p, bills: [...p.bills, newExp] };
-                });
-                saveSchedule(updated);
-            };
-
-            const deletePeriodBill = (periodId, billId) => {
-                const updated = schedule.map(p => {
-                    if (p.id !== periodId) return p;
-                    return { ...p, bills: p.bills.filter(b => b.id !== billId) };
-                });
-                saveSchedule(updated);
-            };
-
-            const moveBillToPeriod = (billId, targetPeriodId) => {
-                if (!currentPeriod || !targetPeriodId) return;
-                const billToMove = currentPeriod.bills.find(b => b.id === billId);
-                if (!billToMove) return;
-                const updated = schedule.map(p => {
-                    if (p.id === currentPeriod.id) {
-                        return { ...p, bills: p.bills.filter(b => b.id !== billId) };
-                    }
-                    if (p.id === targetPeriodId) {
-                        const movedBill = { ...billToMove, id: billToMove.id + '-moved-' + Date.now() };
-                        return { ...p, bills: [...p.bills, movedBill] };
-                    }
-                    return p;
-                });
-                saveSchedule(updated);
-            };
-
-            if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>;
-            if (!user) return <LoginScreen onLogin={handleLogin} />;
-            if (!currentPeriod && !isEditorOpen) return (
-                <div className="h-screen flex flex-col items-center justify-center gap-4">
-                    <p className="text-slate-500">No schedule found.</p>
-                    <button onClick={() => setIsEditorOpen(true)} className="bg-indigo-600 text-white px-4 py-2 rounded">Create Schedule</button>
-                    {isEditorOpen && <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />}
+        // --- View: Components (Template Literals) ---
+        
+        const renderLogin = () => `
+            <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+                <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Budget Planner</h2>
+                    <form onsubmit="Planner.login(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Password</label>
+                            <input id="login-password" type="password" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                        </div>
+                        ${state.loginError ? `<p class="text-red-500 text-sm">${state.loginError}</p>` : ''}
+                        <button type="submit" class="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium">Access Planner</button>
+                    </form>
                 </div>
-            );
-            if (!currentPeriod && isEditorOpen) return <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />;
+            </div>
+        `;
 
-            const netIncome = calculateIncome(currentPeriod);
+        const renderEditor = () => {
+            if (!state.isEditorOpen) return '';
+            return `
+            <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div class="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 flex flex-col max-h-[90vh]">
+                    <div class="mb-4">
+                        <h2 class="text-xl font-bold text-slate-800">Manage Pay Dates</h2>
+                        <p class="text-slate-500 text-xs mt-1">Enter your paycheck dates below (YYYY-MM-DD), one per line.</p>
+                    </div>
+                    <textarea 
+                        oninput="Planner.updateEditorText(this.value)"
+                        class="flex-1 border border-slate-300 rounded-md p-3 font-mono text-sm mb-4 min-h-[300px] focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="2025-01-15&#10;2025-01-29&#10;2025-02-12..."
+                    >${state.editorText}</textarea>
+                    <div class="flex gap-3">
+                        <button onclick="Planner.toggleEditor(false)" class="flex-1 bg-slate-100 text-slate-700 font-bold py-2 rounded-lg hover:bg-slate-200 transition">Cancel</button>
+                        <button onclick="Planner.saveSchedule()" class="flex-1 bg-indigo-600 text-white font-bold py-2 rounded-lg hover:bg-indigo-700 transition">Save Schedule</button>
+                    </div>
+                </div>
+            </div>`;
+        };
+
+        const renderSidebarItem = (period, label = null) => {
+            const isSelected = period.id === state.selectedPeriodId;
+            return `
+            <div 
+                onclick="Planner.selectPeriod('${period.id}')"
+                class="p-4 border-b border-slate-800 cursor-pointer transition-colors hover:bg-slate-800 ${isSelected ? 'bg-indigo-900 border-l-4 border-l-indigo-500' : ''}"
+            >
+                ${label ? `<div class="text-[10px] uppercase font-bold text-slate-500 mb-1">${label}</div>` : ''}
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-bold ${isSelected ? 'text-white' : 'text-slate-200'}">${formatDate(period.date)}</span>
+                    ${period.isHoliday ? `<span class="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 rounded">HOL</span>` : ''}
+                </div>
+                <div class="text-xs text-slate-500">${period.isSetup ? `${period.bills.filter(b=>b.isPaid).length}/${period.bills.length} Paid` : 'Not Planned'}</div>
+            </div>`;
+        };
+
+        const renderSidebar = (cats) => {
+            let html = `
+            <div class="w-56 bg-slate-850 text-slate-300 flex flex-col border-r border-slate-700 flex-shrink-0">
+                <div class="p-4 border-b border-slate-700 bg-slate-900 flex justify-between items-center">
+                    <h1 class="text-white font-bold text-lg flex items-center gap-2">${Icons.Calendar} Pay Days</h1>
+                    <button onclick="Planner.toggleEditor(true)" class="text-slate-400 hover:text-white transition">${Icons.Settings}</button>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar">`;
+
+            // Closed Section
+            if (cats.closed.length > 0) {
+                html += `
+                <div class="border-b border-slate-800">
+                    <button onclick="Planner.toggleSection('closed')" class="w-full p-3 flex items-center justify-between hover:bg-slate-800 transition text-left">
+                        <span class="text-xs uppercase font-bold text-slate-400 flex items-center gap-2">
+                            ${state.openSections.closed ? Icons.ChevronDown : Icons.ChevronRight} Closed
+                            <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">${cats.closed.length}</span>
+                        </span>
+                    </button>
+                    ${state.openSections.closed ? cats.closed.map(p => renderSidebarItem(p)).join('') : ''}
+                </div>`;
+            }
+
+            if (cats.priorPeriod) html += renderSidebarItem(cats.priorPeriod, "Prior");
+            if (cats.upcomingPeriod) html += `<div class="bg-emerald-900/20 border-b border-slate-700">${renderSidebarItem(cats.upcomingPeriod, "Current")}</div>`;
+            cats.nextTwo.forEach(p => html += renderSidebarItem(p));
+
+            // Future Section
+            if (cats.future.length > 0) {
+                html += `
+                <div class="border-b border-slate-800">
+                    <button onclick="Planner.toggleSection('future')" class="w-full p-3 flex items-center justify-between hover:bg-slate-800 transition text-left">
+                        <span class="text-xs uppercase font-bold text-slate-400 flex items-center gap-2">
+                            ${state.openSections.future ? Icons.ChevronDown : Icons.ChevronRight} Future
+                            <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">${cats.future.length}</span>
+                        </span>
+                    </button>
+                    ${state.openSections.future ? cats.future.map(p => renderSidebarItem(p)).join('') : ''}
+                </div>`;
+            }
+
+            html += `</div></div>`;
+            return html;
+        };
+
+        const renderBillItem = (bill, currentPeriod, prevPeriod, nextPeriod) => {
+            return `
+            <div class="flex items-center gap-3 px-5 py-3 group transition-colors ${bill.isPaid ? 'bg-slate-50/50' : 'hover:bg-slate-50'}">
+                <button
+                    onclick="Planner.updateBill('${currentPeriod.id}', '${bill.id}', 'isPaid', ${!bill.isPaid})"
+                    class="w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${bill.isPaid ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-transparent hover:border-emerald-400'}"
+                >${Icons.Check}</button>
+                <div class="w-12 text-center flex-shrink-0">
+                    <div class="font-bold text-sm ${bill.isPaid ? 'text-slate-400' : 'text-slate-700'}">
+                        ${bill.dueDay}<span class="text-[10px] align-top">${getDaySuffix(bill.dueDay)}</span>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium truncate ${bill.isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}">${bill.name}</div>
+                    ${bill.type === 'custom' ? '<span class="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">ONE-TIME</span>' : ''}
+                </div>
+                <div class="w-28 flex-shrink-0">
+                    <div class="relative">
+                        <span class="absolute left-2 top-1.5 text-slate-400 text-sm">$</span>
+                        <input 
+                            type="number" 
+                            value="${bill.amount}"
+                            ${bill.isPaid ? 'disabled' : ''}
+                            onchange="Planner.updateBill('${currentPeriod.id}', '${bill.id}', 'amount', this.value)"
+                            class="w-full pl-6 py-1 rounded border text-right font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-sm ${bill.isPaid ? 'bg-transparent border-transparent text-slate-400' : 'bg-white border-slate-200 text-slate-800'}"
+                        />
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    ${prevPeriod ? `
+                        <button onclick="Planner.moveBill('${bill.id}', '${prevPeriod.id}')" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition" title="Move to ${formatDate(prevPeriod.date)}">
+                            ${Icons.ChevronLeft}
+                        </button>` : ''}
+                    ${nextPeriod ? `
+                        <button onclick="Planner.moveBill('${bill.id}', '${nextPeriod.id}')" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition" title="Move to ${formatDate(nextPeriod.date)}">
+                            ${Icons.ChevronRight}
+                        </button>` : ''}
+                    <button onclick="Planner.deleteBill('${currentPeriod.id}', '${bill.id}')" class="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition" title="Remove">
+                        ${Icons.Trash}
+                    </button>
+                </div>
+            </div>`;
+        };
+
+        const renderMainContent = () => {
+            const currentPeriod = state.schedule.find(p => p.id === state.selectedPeriodId);
+            if (!currentPeriod && !state.isEditorOpen) return `<div class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-500"><p>No schedule.</p><button onclick="Planner.toggleEditor(true)" class="bg-indigo-600 text-white px-4 py-2 rounded">Create Schedule</button></div>`;
+            if (!currentPeriod) return '<div class="flex-1"></div>';
+
+            const currentIndex = state.schedule.findIndex(p => p.id === state.selectedPeriodId);
+            const prevPeriod = currentIndex > 0 ? state.schedule[currentIndex - 1] : null;
+            const nextPeriod = currentIndex < state.schedule.length - 1 ? state.schedule[currentIndex + 1] : null;
+
+            // Calculations
+            const netIncome = Logic.calculateIncome(currentPeriod);
             const totalBills = currentPeriod.bills.reduce((sum, b) => sum + b.amount, 0);
             const totalPaid = currentPeriod.bills.filter(b => b.isPaid).reduce((sum, b) => sum + b.amount, 0);
             const remainingDue = totalBills - totalPaid;
             const incomeAfterBills = netIncome - totalBills;
-            const budgetItemsTotal = calculateBudgetItems();
-            const savingsGoalsTotal = calculateSavingsGoals();
+            const budgetItemsTotal = Logic.calculateBudgetItems();
+            const savingsGoalsTotal = Logic.calculateSavingsGoals(currentPeriod);
             const finalBudget = incomeAfterBills - budgetItemsTotal - savingsGoalsTotal;
 
-            const SidebarItem = ({ period, label }) => (
-                <div 
-                    onClick={() => setSelectedPeriodId(period.id)}
-                    className={`p-4 border-b border-slate-800 cursor-pointer transition-colors hover:bg-slate-800 ${period.id === selectedPeriodId ? 'bg-indigo-900 border-l-4 border-l-indigo-500' : ''}`}
-                >
-                    {label && <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">{label}</div>}
-                    <div className="flex justify-between items-center mb-1">
-                        <span className={`font-bold ${period.id === selectedPeriodId ? 'text-white' : 'text-slate-200'}`}>{formatDate(period.date)}</span>
-                        {period.isHoliday && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 rounded">HOL</span>}
-                    </div>
-                    <div className="text-xs text-slate-500">{period.isSetup ? `${period.bills.filter(b=>b.isPaid).length}/${period.bills.length} Paid` : 'Not Planned'}</div>
-                </div>
-            );
+            // Sorting Bills
+            const startDay = new Date(currentPeriod.date + 'T00:00:00').getDate();
+            const sortedBills = [...currentPeriod.bills].sort((a, b) => {
+                const valA = a.dueDay < startDay ? a.dueDay + 32 : a.dueDay;
+                const valB = b.dueDay < startDay ? b.dueDay + 32 : b.dueDay;
+                return valA - valB;
+            });
 
-            return (
-                <div className="flex h-screen font-sans text-slate-900">
-                    <div className="w-56 bg-slate-850 text-slate-300 flex flex-col border-r border-slate-700">
-                        <div className="p-4 border-b border-slate-700 bg-slate-900 flex justify-between items-center">
-                            <h1 className="text-white font-bold text-lg flex items-center gap-2"><Icons.Calendar /> Pay Days</h1>
-                            <button onClick={() => setIsEditorOpen(true)} className="text-slate-400 hover:text-white transition"><Icons.Settings /></button>
+            return `
+            <div class="flex-1 flex flex-col bg-slate-50 h-full overflow-hidden">
+                <div class="bg-white border-b border-slate-200 p-5 shadow-sm flex-shrink-0">
+                    <div class="flex justify-between items-start mb-5">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800">Bills due from ${formatDate(currentPeriod.date)} to ${formatDate(currentPeriod.nextDate)}</h2>
+                            <div class="mt-2 flex items-center gap-3">
+                                <button onclick="Planner.instantiatePeriod('${currentPeriod.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded font-bold ${!currentPeriod.isSetup ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}">
+                                    ${Icons.Refresh} ${!currentPeriod.isSetup ? 'Load Bills' : 'Reset Bills'}
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto">
-                            {categorizedPeriods.closed.length > 0 && (
-                                <CollapsibleSection title="Closed" count={categorizedPeriods.closed.length} defaultOpen={false}>
-                                    {categorizedPeriods.closed.map(period => <SidebarItem key={period.id} period={period} />)}
-                                </CollapsibleSection>
-                            )}
-                            {categorizedPeriods.priorPeriod && <SidebarItem period={categorizedPeriods.priorPeriod} label="Prior" />}
-                            {categorizedPeriods.upcomingPeriod && (
-                                <div className="bg-emerald-900/20 border-b border-slate-700">
-                                    <SidebarItem period={categorizedPeriods.upcomingPeriod} label="Current" />
-                                </div>
-                            )}
-                            {categorizedPeriods.nextTwo.map(period => <SidebarItem key={period.id} period={period} />)}
-                            {categorizedPeriods.future.length > 0 && (
-                                <CollapsibleSection title="Future" count={categorizedPeriods.future.length} defaultOpen={false}>
-                                    {categorizedPeriods.future.map(period => <SidebarItem key={period.id} period={period} />)}
-                                </CollapsibleSection>
-                            )}
+                        <div class="text-right">
+                            <div class="text-sm text-slate-500 uppercase font-bold tracking-wider">Final Surplus</div>
+                            <div class="text-3xl font-bold ${finalBudget >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatCurrency(finalBudget)}</div>
                         </div>
                     </div>
-                    <div className="flex-1 flex flex-col bg-slate-50 h-full overflow-hidden">
-                        <div className="bg-white border-b border-slate-200 p-5 shadow-sm">
-                            <div className="flex justify-between items-start mb-5">
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-800">Bills due from {formatDate(currentPeriod.date)} to {formatDate(currentPeriod.nextDate)}</h2>
-                                    <div className="mt-2 flex items-center gap-3">
-                                        {!currentPeriod.isSetup && (
-                                            <button onClick={() => instantiatePeriod(currentPeriod)} className="flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded hover:bg-emerald-200 font-bold">
-                                                <Icons.Refresh /> Load Bills
-                                            </button>
-                                        )}
-                                        {currentPeriod.isSetup && (
-                                            <button onClick={() => instantiatePeriod(currentPeriod)} className="flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded hover:bg-slate-200 font-bold" title="Reloads standard bills">
-                                                <Icons.Refresh /> Reset Bills
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-sm text-slate-500 uppercase font-bold tracking-wider">Final Surplus</div>
-                                    <div className={`text-3xl font-bold ${finalBudget >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(finalBudget)}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-4 gap-3 mb-3">
-                                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
-                                    <div className="text-xs text-indigo-500 font-bold uppercase">Net Income</div>
-                                    <div className="text-lg font-semibold text-indigo-900">{formatCurrency(netIncome)}</div>
-                                </div>
-                                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                    <div className="text-xs text-slate-500 font-bold uppercase">Total Bills</div>
-                                    <div className="text-lg font-semibold text-slate-700">{formatCurrency(totalBills)}</div>
-                                </div>
-                                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
-                                    <div className="text-xs text-emerald-600 font-bold uppercase">Already Paid</div>
-                                    <div className="text-lg font-semibold text-emerald-800">{formatCurrency(totalPaid)}</div>
-                                </div>
-                                <div className="bg-orange-50 p-3 rounded-lg border border-orange-100">
-                                    <div className="text-xs text-orange-600 font-bold uppercase">Remaining Due</div>
-                                    <div className="text-lg font-semibold text-orange-800">{formatCurrency(remainingDue)}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-4 gap-3">
-                                <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                                    <div className="text-xs text-purple-500 font-bold uppercase">Income After Bills</div>
-                                    <div className={`text-lg font-semibold ${incomeAfterBills >= 0 ? 'text-purple-900' : 'text-red-600'}`}>{formatCurrency(incomeAfterBills)}</div>
-                                </div>
-                                <div className="bg-amber-50 p-3 rounded-lg border border-amber-100">
-                                    <div className="text-xs text-amber-600 font-bold uppercase">Budget</div>
-                                    <div className="text-lg font-semibold text-amber-800">{formatCurrency(budgetItemsTotal)}</div>
-                                </div>
-                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                    <div className="text-xs text-blue-600 font-bold uppercase">Savings</div>
-                                    <div className="text-lg font-semibold text-blue-800">{formatCurrency(savingsGoalsTotal)}</div>
-                                </div>
-                                <div className={`p-3 rounded-lg border ${finalBudget >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                                    <div className={`text-xs font-bold uppercase ${finalBudget >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>Leftover</div>
-                                    <div className={`text-lg font-semibold ${finalBudget >= 0 ? 'text-emerald-900' : 'text-red-700'}`}>{formatCurrency(finalBudget)}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-5">
-                            {!currentPeriod.isSetup ? (
-                                <div className="text-center py-20 text-slate-400">
-                                    <Icons.Calendar />
-                                    <p className="mt-2">Click "Load Bills" to generate the checklist for this pay day.</p>
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow border border-slate-200">
-                                    <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                                        <h3 className="font-bold text-slate-700">Bills & Expenses</h3>
-                                        <button onClick={() => addCustomExpense(currentPeriod.id)} className="text-xs flex items-center gap-1 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 text-slate-600">
-                                            <Icons.Plus /> Add One-time Expense
-                                        </button>
-                                    </div>
-                                    <div className="divide-y divide-slate-100">
-                                        {sortedBills.map(bill => (
-                                            <div key={bill.id} className={`flex items-center gap-3 px-5 py-3 group transition-colors ${bill.isPaid ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}>
-                                                <button
-                                                    onClick={() => updatePeriodBill(currentPeriod.id, bill.id, 'isPaid', !bill.isPaid)}
-                                                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${bill.isPaid ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-transparent hover:border-emerald-400'}`}
-                                                >
-                                                    <Icons.Check />
-                                                </button>
-                                                <div className="w-12 text-center flex-shrink-0">
-                                                    <div className={`font-bold text-sm ${bill.isPaid ? 'text-slate-400' : 'text-slate-700'}`}>
-                                                        {bill.dueDay}<span className="text-[10px] align-top">{getDaySuffix(bill.dueDay)}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className={`font-medium truncate ${bill.isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{bill.name}</div>
-                                                    {bill.type === 'custom' && <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">ONE-TIME</span>}
-                                                </div>
-                                                <div className="w-28 flex-shrink-0">
-                                                    <div className="relative">
-                                                        <span className="absolute left-2 top-1.5 text-slate-400 text-sm">$</span>
-                                                        <input 
-                                                            type="number" 
-                                                            value={bill.amount}
-                                                            disabled={bill.isPaid}
-                                                            onChange={(e) => updatePeriodBill(currentPeriod.id, bill.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                            className={`w-full pl-6 py-1 rounded border text-right font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-sm ${bill.isPaid ? 'bg-transparent border-transparent text-slate-400' : 'bg-white border-slate-200 text-slate-800'}`}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                    {prevPeriod && (
-                                                        <button 
-                                                            onClick={() => moveBillToPeriod(bill.id, prevPeriod.id)}
-                                                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
-                                                            title={`Move to ${formatDate(prevPeriod.date)}`}
-                                                        >
-                                                            <Icons.ChevronLeft />
-                                                        </button>
-                                                    )}
-                                                    {nextPeriod && (
-                                                        <button 
-                                                            onClick={() => moveBillToPeriod(bill.id, nextPeriod.id)}
-                                                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
-                                                            title={`Move to ${formatDate(nextPeriod.date)}`}
-                                                        >
-                                                            <Icons.ChevronRight />
-                                                        </button>
-                                                    )}
-                                                    <button 
-                                                        onClick={() => deletePeriodBill(currentPeriod.id, bill.id)}
-                                                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition"
-                                                        title="Remove from this pay day"
-                                                    >
-                                                        <Icons.Trash />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {currentPeriod.bills.length === 0 && <div className="p-8 text-center text-slate-400 italic">No bills found for this date range.</div>}
-                                </div>
-                            )}
-                        </div>
+                    
+                    <div class="grid grid-cols-4 gap-3 mb-3">
+                        <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100"><div class="text-xs text-indigo-500 font-bold uppercase">Net Income</div><div class="text-lg font-semibold text-indigo-900">${formatCurrency(netIncome)}</div></div>
+                        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200"><div class="text-xs text-slate-500 font-bold uppercase">Total Bills</div><div class="text-lg font-semibold text-slate-700">${formatCurrency(totalBills)}</div></div>
+                        <div class="bg-emerald-50 p-3 rounded-lg border border-emerald-100"><div class="text-xs text-emerald-600 font-bold uppercase">Already Paid</div><div class="text-lg font-semibold text-emerald-800">${formatCurrency(totalPaid)}</div></div>
+                        <div class="bg-orange-50 p-3 rounded-lg border border-orange-100"><div class="text-xs text-orange-600 font-bold uppercase">Remaining Due</div><div class="text-lg font-semibold text-orange-800">${formatCurrency(remainingDue)}</div></div>
                     </div>
-                    {isEditorOpen && <ScheduleEditor currentPeriods={schedule} onSave={handleUpdateSchedule} onClose={() => setIsEditorOpen(false)} />}
+                    <div class="grid grid-cols-4 gap-3">
+                        <div class="bg-purple-50 p-3 rounded-lg border border-purple-100"><div class="text-xs text-purple-500 font-bold uppercase">Income After Bills</div><div class="text-lg font-semibold ${incomeAfterBills >= 0 ? 'text-purple-900' : 'text-red-600'}">${formatCurrency(incomeAfterBills)}</div></div>
+                        <div class="bg-amber-50 p-3 rounded-lg border border-amber-100"><div class="text-xs text-amber-600 font-bold uppercase">Budget</div><div class="text-lg font-semibold text-amber-800">${formatCurrency(budgetItemsTotal)}</div></div>
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-100"><div class="text-xs text-blue-600 font-bold uppercase">Savings</div><div class="text-lg font-semibold text-blue-800">${formatCurrency(savingsGoalsTotal)}</div></div>
+                        <div class="p-3 rounded-lg border ${finalBudget >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}"><div class="text-xs font-bold uppercase ${finalBudget >= 0 ? 'text-emerald-600' : 'text-red-600'}">Leftover</div><div class="text-lg font-semibold ${finalBudget >= 0 ? 'text-emerald-900' : 'text-red-700'}">${formatCurrency(finalBudget)}</div></div>
+                    </div>
                 </div>
-            );
+
+                <div class="flex-1 overflow-y-auto p-5 custom-scrollbar">
+                    ${!currentPeriod.isSetup ? `
+                        <div class="text-center py-20 text-slate-400">
+                            ${Icons.Calendar}
+                            <p class="mt-2">Click "Load Bills" to generate the checklist for this pay day.</p>
+                        </div>
+                    ` : `
+                        <div class="bg-white rounded-xl shadow border border-slate-200 pb-2">
+                            <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                                <h3 class="font-bold text-slate-700">Bills & Expenses</h3>
+                                <button onclick="Planner.addCustomExpense('${currentPeriod.id}')" class="text-xs flex items-center gap-1 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 text-slate-600">
+                                    ${Icons.Plus} Add One-time Expense
+                                </button>
+                            </div>
+                            <div class="divide-y divide-slate-100">
+                                ${sortedBills.map(b => renderBillItem(b, currentPeriod, prevPeriod, nextPeriod)).join('')}
+                            </div>
+                            ${currentPeriod.bills.length === 0 ? '<div class="p-8 text-center text-slate-400 italic">No bills found for this date range.</div>' : ''}
+                        </div>
+                    `}
+                </div>
+            </div>`;
         };
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // --- Main Render Loop ---
+        const render = () => {
+            const app = document.getElementById('app');
+            
+            if (state.isLoading) {
+                app.innerHTML = '<div class="h-screen flex items-center justify-center text-slate-500">Loading Planner...</div>';
+                return;
+            }
+
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+                return;
+            }
+
+            const cats = Logic.getCategorizedPeriods();
+            
+            app.innerHTML = `
+                <div class="flex h-screen font-sans text-slate-900">
+                    ${renderSidebar(cats)}
+                    ${renderMainContent()}
+                    ${renderEditor()}
+                </div>
+            `;
+        };
+
+        // --- Initialization ---
+        onAuthStateChanged(auth, (u) => {
+            state.user = u;
+            state.isLoading = false;
+            
+            if (u) {
+                // Initialize Listeners
+                onSnapshot(doc(db, 'users', u.uid, 'paycheck_data', 'current_config'), (snap) => {
+                    state.masterPay = snap.data() || {};
+                    render();
+                });
+                onSnapshot(doc(db, 'users', u.uid, 'accounts_data', 'current_config'), (snap) => {
+                    state.masterAccounts = snap.data() || { bills: [], debts: [] };
+                    render();
+                });
+                onSnapshot(doc(db, 'users', u.uid, 'budget_items_data', 'current_config'), (snap) => {
+                    if (snap.exists()) state.budgetItems = snap.data().items || [];
+                    render();
+                });
+                onSnapshot(doc(db, 'users', u.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                    if (snap.exists()) state.savingsGoals = snap.data().goals || [];
+                    render();
+                });
+                onSnapshot(doc(db, 'users', u.uid, 'planner_data', 'schedule'), (snap) => {
+                    if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
+                        state.schedule = snap.data().periods;
+                        // Auto select if first load
+                        if (!state.selectedPeriodId) {
+                            const today = new Date().toISOString().split('T')[0];
+                            const upcoming = snap.data().periods.find(p => p.date >= today);
+                            state.selectedPeriodId = upcoming ? upcoming.id : snap.data().periods[snap.data().periods.length - 1].id;
+                        }
+                    } else {
+                        state.schedule = [];
+                        state.isEditorOpen = true;
+                    }
+                    render();
+                });
+            } else {
+                render();
+            }
+        });
+
     </script>
 </body>
 </html>
