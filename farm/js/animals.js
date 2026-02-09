@@ -27,11 +27,17 @@ async function loadUserFarm() {
         if (farmDoc.exists) {
             currentFarmId = farmDoc.id;
             currentFarmName = farmDoc.data().farmName;
+            
+            // Wait for ALL data to load before displaying
             await Promise.all([
                 loadSpecies(),
                 loadAnimals(),
                 loadAllFarms()
             ]);
+            
+            // Now display, ensuring allFarms and allAnimals are ready
+            displayAnimals(allAnimals); 
+            
         } else {
             alert('No farm found. Please create a farm first.');
             window.location.href = 'dashboard.html';
@@ -80,7 +86,9 @@ async function loadAnimals() {
             allAnimals.push({ id: doc.id, ...doc.data() });
         });
         
-        displayAnimals(allAnimals);
+        // REMOVED: displayAnimals(allAnimals); 
+        // Reason: Moved to loadUserFarm to prevent "Owner undefined" race condition
+        
     } catch (error) {
         console.error('Error loading animals:', error);
     }
@@ -119,7 +127,6 @@ function displayAnimals(animals) {
         animalsList.appendChild(createAnimalCard(animal));
     });
 }
-
 function createAnimalCard(animal) {
     const card = document.createElement('div');
     card.className = 'animal-card';
@@ -128,29 +135,33 @@ function createAnimalCard(animal) {
     const species = allSpecies.find(s => s.id === animal.species);
     const speciesName = species ? species.name : 'Unknown';
     
-    // Get farm name
-    const farmName = animal.ownerFarmId ? allFarms[animal.ownerFarmId] : (animal.ownerCustom || 'Unknown');
+    // Get farm name with safety check
+    let farmName = 'Unknown';
+    if (animal.ownerFarmId) {
+        farmName = allFarms[animal.ownerFarmId] || 'Unknown Farm';
+    } else if (animal.ownerCustom) {
+        farmName = animal.ownerCustom;
+    }
     
+    // Create the photo HTML (Image or Placeholder)
+    const photoHtml = animal.photo 
+        ? `<img src="${animal.photo}" alt="${animal.name}" class="animal-photo-img">`
+        : `<div class="no-photo-placeholder">🐾</div>`;
+
     card.innerHTML = `
-        ${animal.photo ? 
-            `<img src="${animal.photo}" alt="${animal.name}" class="animal-photo-img">` :
-            `<div class="animal-photo">🐾</div>`
-        }
+        <div class="animal-photo-wrapper">
+            ${photoHtml}
+        </div>
         <div class="animal-info">
             <div class="animal-name">${animal.name}</div>
             <div class="animal-details">Species: ${speciesName}</div>
             <div class="animal-details">Gender: ${animal.gender || 'Unknown'}</div>
+            ${animal.color ? `<div class="animal-details">Color: ${animal.color}</div>` : ''}
             <div class="animal-details">Owner: ${farmName}</div>
             ${animal.birthDate ? `<div class="animal-details">Age: ${calculateAge(animal.birthDate)}</div>` : ''}
             <span class="animal-status status-${animal.status || 'active'}">
                 ${(animal.status || 'active').toUpperCase()}
             </span>
-            ${animal.statusDetails ? `
-                <div class="status-details-small">
-                    ${animal.statusDetails.date ? `<small>${formatDate(animal.statusDetails.date)}</small>` : ''}
-                    ${animal.statusDetails.details ? `<small> - ${animal.statusDetails.details}</small>` : ''}
-                </div>
-            ` : ''}
         </div>
     `;
     
@@ -187,11 +198,31 @@ const addAnimalBtn = document.getElementById('addAnimalBtn');
 const closeBtn = document.querySelector('.modal-close');
 const cancelBtn = document.querySelector('.btn-cancel');
 const animalForm = document.getElementById('animalForm');
+const deleteBtn = document.getElementById('deleteAnimalBtn'); // NEW
 
 addAnimalBtn.onclick = () => openModal();
 closeBtn.onclick = () => closeModal();
 cancelBtn.onclick = () => closeModal();
 
+// NEW: Delete Button Handler
+deleteBtn.onclick = async () => {
+    if (!editingAnimalId) return;
+    
+    if (confirm('Are you sure you want to delete this animal? This action cannot be undone.')) {
+        try {
+            await firebase.firestore()
+                .collection('animals')
+                .doc(editingAnimalId)
+                .delete();
+                
+            closeModal();
+            loadAnimals(); // Refresh the list
+        } catch (error) {
+            console.error('Error deleting animal:', error);
+            alert('Error deleting animal: ' + error.message);
+        }
+    }
+};
 // Handle animal photo upload
 document.getElementById('animalPhotoFile').addEventListener('change', function(e) {
     const file = e.target.files[0];
@@ -248,12 +279,15 @@ document.getElementById('animalPhotoFile').addEventListener('change', function(e
 function openModal(animalId = null) {
     editingAnimalId = animalId;
     const modalTitle = document.getElementById('modalTitle');
+    const deleteBtn = document.getElementById('deleteAnimalBtn'); // NEW
     
     if (animalId) {
         modalTitle.textContent = 'Edit Animal';
+        deleteBtn.style.display = 'flex'; // NEW: Show delete button when editing
         loadAnimalForEdit(animalId);
     } else {
         modalTitle.textContent = 'Add Animal';
+        deleteBtn.style.display = 'none'; // NEW: Hide delete button when adding
         animalForm.reset();
         document.getElementById('customFieldsContainer').innerHTML = '';
         document.getElementById('animalPhotoPreview').innerHTML = '';
@@ -405,6 +439,8 @@ animalForm.addEventListener('submit', async (e) => {
         name: document.getElementById('animalName').value,
         species: document.getElementById('animalSpecies').value,
         gender: document.getElementById('animalGender').value,
+        color: document.getElementById('animalColor').value, // NEW
+        acquisitionDate: document.getElementById('animalAcquisitionDate').value || null, // NEW
         status: document.getElementById('animalStatus').value,
         birthDate: document.getElementById('animalBirthDate').value || null,
         photo: document.getElementById('animalPhotoData').value || null,
@@ -477,6 +513,8 @@ async function loadAnimalForEdit(animalId) {
             document.getElementById('animalName').value = animal.name;
             document.getElementById('animalSpecies').value = animal.species;
             document.getElementById('animalGender').value = animal.gender || 'unknown';
+            document.getElementById('animalColor').value = animal.color || ''; // NEW
+            document.getElementById('animalAcquisitionDate').value = animal.acquisitionDate || ''; // NEW
             document.getElementById('animalStatus').value = animal.status || 'active';
             document.getElementById('animalBirthDate').value = animal.birthDate || '';
             
