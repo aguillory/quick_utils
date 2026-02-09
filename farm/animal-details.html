@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal Details - Farm Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/animals.css">
+    <link rel="stylesheet" href="css/health.css">
+    <style>
+        .details-header { display: flex; gap: 2rem; margin-bottom: 2rem; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .details-photo-container { width: 250px; height: 250px; flex-shrink: 0; position: relative; border-radius: 8px; overflow: hidden; background: #f5f5f5; }
+        .details-photo { width: 100%; height: 100%; object-fit: cover; }
+        .details-info { flex: 1; }
+        .details-actions { display: flex; gap: 10px; margin-top: 1.5rem; flex-wrap: wrap;}
+        .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1rem; }
+        .info-item label { display: block; color: #666; font-size: 0.9rem; margin-bottom: 0.25rem; }
+        .info-item span { font-weight: 600; font-size: 1.1rem; color: #333; }
+        .health-history { margin-top: 2rem; }
+        .no-photo-placeholder { display: flex; align-items: center; justify-content: center; font-size: 4rem; height: 100%; color: #ccc; }
+        .hidden { display: none !important; }
+        
+        @media (max-width: 768px) {
+            .details-header { flex-direction: column; }
+            .details-photo-container { width: 100%; height: 300px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="global-nav"></div>
+
+    <main class="container">
+        <a href="animals.html" class="btn-text" style="margin-bottom: 1rem; display: inline-block;">
+            <i class="fas fa-arrow-left"></i> Back to Animals
+        </a>
+
+        <div id="loadingState" class="loading-placeholder">
+            <i class="fas fa-spinner fa-spin"></i> Loading animal details...
+        </div>
+
+        <div id="animalContent" class="hidden">
+            <div class="details-header">
+                <div class="details-photo-container">
+                    <div id="detailPhoto"></div>
+                </div>
+                <div class="details-info">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h1 id="detailName" style="margin:0;">-</h1>
+                        <span id="detailStatus" class="animal-status">-</span>
+                    </div>
+                    
+                    <div class="info-grid">
+                        <div class="info-item"><label>Species</label><span id="detailSpecies">-</span></div>
+                        <div class="info-item"><label>Gender</label><span id="detailGender">-</span></div>
+                        <div class="info-item"><label>Age</label><span id="detailAge">-</span></div>
+                        <div class="info-item"><label>Color</label><span id="detailColor">-</span></div>
+                        <div class="info-item"><label>Owner</label><span id="detailOwner">-</span></div>
+                        <div class="info-item"><label>Tag/ID</label><span id="detailTag">-</span></div>
+                    </div>
+
+                    <div class="details-actions">
+                        <button class="btn-secondary" id="btnEditAnimal">
+                            <i class="fas fa-pencil-alt"></i> Edit Details
+                        </button>
+                        <button class="btn-secondary" id="btnScheduleTask">
+                            <i class="fas fa-calendar-plus"></i> Schedule Task
+                        </button>
+                        <button class="btn-primary" id="btnAddHealthRecord">
+                            <i class="fas fa-notes-medical"></i> Add Record
+                        </button>
+                        <button class="btn-danger" id="btnDeleteAnimal" style="margin-left: auto;">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="detailCustomFields" class="card" style="display:none; margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px;">
+                <h3>Additional Details</h3>
+                <div class="info-grid" id="customFieldsGrid"></div>
+            </div>
+
+            <div class="health-history">
+                <div class="section-header">
+                    <h2><i class="fas fa-history"></i> Medical History</h2>
+                </div>
+                <div id="healthRecordsList" class="records-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="animalModal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3>Edit Animal</h3>
+                <button class="modal-close" data-modal="animalModal">&times;</button>
+            </div>
+            <form id="animalForm">
+                <input type="hidden" id="animalId">
+                <input type="hidden" id="animalPhotoData">
+                
+                <div class="form-row">
+                    <div class="form-group"><label>Species *</label><select id="animalSpecies" required disabled style="background:#f0f0f0;"><option>Loading...</option></select></div>
+                    <div class="form-group"><label>Name *</label><input type="text" id="animalName" required></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Gender</label><select id="animalGender"><option value="male">Male</option><option value="female">Female</option></select></div>
+                    <div class="form-group"><label>Status</label><select id="animalStatus"><option value="active">Active</option><option value="sold">Sold</option><option value="deceased">Deceased</option></select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Birth Date</label><input type="date" id="animalBirthDate"></div>
+                    <div class="form-group"><label>Color</label><input type="text" id="animalColor"></div>
+                </div>
+                 <div class="form-group">
+                    <label>Photo</label>
+                    <input type="file" id="animalPhotoFile" accept="image/*">
+                    <div id="animalPhotoPreview" style="margin-top:10px;"></div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="animalModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="recordModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="modal-close" data-modal="recordModal">&times;</span>
+            <h2 id="recordModalTitle"><i class="fas fa-notes-medical"></i> Add Health Record</h2>
+            <form id="recordForm">
+                <input type="hidden" id="recordId">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Event Type *</label>
+                        <select id="recordEventType" required>
+                            <option value="">Select type...</option>
+                            <option value="Vaccination">Vaccination</option>
+                            <option value="Deworming">Deworming</option>
+                            <option value="Hoof/Foot Trimming">Hoof/Foot Trimming</option>
+                            <option value="Disbudding/Dehorning">Disbudding/Dehorning</option>
+                            <option value="Banding/Castration">Banding/Castration</option>
+                            <option value="Shearing/Grooming">Shearing/Grooming</option>
+                            <option value="Veterinary Visit">Veterinary Visit</option>
+                            <option value="Illness/Injury">Illness/Injury</option>
+                            <option value="Surgery">Surgery</option>
+                            <option value="Dental Care">Dental Care</option>
+                            <option value="Fecal Test">Fecal Test</option>
+                            <option value="Blood Test">Blood Test</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date *</label>
+                        <input type="date" id="recordDate" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="recordDescription" placeholder="Description">
+                </div>
+
+                <div class="form-section collapsible">
+                    <div class="section-toggle" data-target="medicationFields">
+                        <i class="fas fa-pills"></i> Medication/Treatment
+                        <i class="fas fa-chevron-down toggle-icon"></i>
+                    </div>
+                    <div class="section-fields" id="medicationFields">
+                        <div class="form-row">
+                            <div class="form-group"><label>Medication</label><input type="text" id="recordMedication"></div>
+                            <div class="form-group"><label>Dosage</label><input type="text" id="recordDosage"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section collapsible">
+                    <div class="section-toggle" data-target="withdrawalFields">
+                        <i class="fas fa-clock"></i> Withdrawal
+                        <i class="fas fa-chevron-down toggle-icon"></i>
+                    </div>
+                    <div class="section-fields" id="withdrawalFields">
+                        <div class="form-row three-col">
+                            <div class="form-group"><label>Meat (days)</label><input type="number" id="withdrawalMeat" min="0"></div>
+                            <div class="form-group"><label>Dairy (days)</label><input type="number" id="withdrawalDairy" min="0"></div>
+                            <div class="form-group"><label>Eggs (days)</label><input type="number" id="withdrawalEggs" min="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section collapsible">
+                    <div class="section-toggle" data-target="followupFields">
+                        <i class="fas fa-redo"></i> Schedule Follow-up
+                        <i class="fas fa-chevron-down toggle-icon"></i>
+                    </div>
+                    <div class="section-fields" id="followupFields">
+                        <div class="form-group checkbox-group">
+                            <label><input type="checkbox" id="recordScheduleFollowup"> Schedule a follow-up task</label>
+                        </div>
+                        <div id="followupDetails" class="hidden">
+                            <div class="form-row">
+                                <div class="form-group"><label>Date</label><input type="date" id="followupDate"></div>
+                                <div class="form-group"><label>Notes</label><input type="text" id="followupNotes"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="recordNotes" rows="3"></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="recordModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Record</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="taskModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="modal-close" data-modal="taskModal">&times;</span>
+            <h2 id="taskModalTitle"><i class="fas fa-calendar-plus"></i> Schedule Health Task</h2>
+            <form id="taskForm">
+                <input type="hidden" id="taskId">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Event Type *</label>
+                        <select id="taskEventType" required>
+                             <option value="">Select type...</option>
+                            <option value="Vaccination">Vaccination</option>
+                            <option value="Deworming">Deworming</option>
+                            <option value="Hoof/Foot Trimming">Hoof/Foot Trimming</option>
+                            <option value="Disbudding/Dehorning">Disbudding/Dehorning</option>
+                            <option value="Banding/Castration">Banding/Castration</option>
+                            <option value="Shearing/Grooming">Shearing/Grooming</option>
+                            <option value="Veterinary Visit">Veterinary Visit</option>
+                            <option value="Illness/Injury">Illness/Injury Check</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Due Date</label>
+                        <div class="date-option-group" style="display:flex; gap:15px; margin-bottom:5px;">
+                            <label><input type="radio" name="taskDateOption" value="dated" checked> Date</label>
+                            <label><input type="radio" name="taskDateOption" value="undated"> No Date</label>
+                        </div>
+                        <input type="date" id="taskDueDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="taskPriority">
+                            <option value="low">Low</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description *</label>
+                    <input type="text" id="taskDescription" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="taskNotes" rows="2"></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="taskModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/shared.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/animal-details.js"></script>
+</body>
+</html>

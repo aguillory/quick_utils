@@ -8,13 +8,16 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/animals.css">
+    <style>
+        /* Add toggle style from health.css if not globally available */
+        .dashboard-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+        .dashboard-toggle label { cursor: pointer; user-select: none; color: #666; font-weight: 500; }
+    </style>
 </head>
 <body>
     
 <div id="global-nav"></div>
 
-    <main class="container">
-        </main>
     <main class="container">
         <div class="page-header">
             <h2>Animals</h2>
@@ -23,8 +26,16 @@
             </button>
         </div>
 
-        <!-- Filters -->
         <div class="filters-section">
+            <div style="width: 100%; display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <div class="dashboard-toggle">
+                    <input type="checkbox" id="showAllAnimalsToggle">
+                    <label for="showAllAnimalsToggle">
+                        <i class="fas fa-globe"></i> Show all animals across farms
+                    </label>
+                </div>
+            </div>
+
             <select id="speciesFilter" class="filter-select">
                 <option value="">All Species</option>
             </select>
@@ -45,10 +56,9 @@
         </div>
 
         <div id="animalsList" class="animals-grid">
-            <!-- Animal cards will be dynamically added here -->
-        </div>
+            </div>
     </main>
-<!-- Add/Edit Animal Modal -->
+
 <div id="animalModal" class="modal">
     <div class="modal-content large">
         <div class="modal-header">
@@ -64,7 +74,7 @@
                     <label for="animalSpecies">Species *</label>
                     <select id="animalSpecies" required>
                         <option value="">Select Species</option>
-                        </select>
+                    </select>
                 </div>
                 
                 <div class="form-group">
@@ -101,8 +111,7 @@
                     <option value="custom">Other</option>
                 </select>
                 <select id="animalOwnerFarm">
-                    <!-- Farm owners will be loaded here -->
-                </select>
+                    </select>
                 <input type="text" id="animalOwnerCustom" placeholder="Enter owner name" style="display:none;">
             </div>
 
@@ -131,7 +140,6 @@
                 </div>
             </div>
 
-            <!-- Status Details (shown based on status) -->
             <div id="statusDetails" style="display:none;">
                 <div class="form-row">
                     <div class="form-group">
@@ -145,7 +153,6 @@
                 </div>
             </div>
 
-            <!-- Genealogy -->
             <div class="form-section">
                 <h4>Genealogy (Optional)</h4>
                 <div class="form-row">
@@ -164,10 +171,7 @@
                 </div>
             </div>
 
-            <!-- Custom Fields Container -->
-            <div id="customFieldsContainer" class="form-section">
-                <!-- Custom fields will be dynamically added based on species -->
-            </div>
+            <div id="customFieldsContainer" class="form-section"></div>
 
             <div class="modal-footer">
                 <button type="button" id="deleteAnimalBtn" class="btn-danger" style="display: none; margin-right: auto;">
@@ -177,9 +181,6 @@
                 <button type="button" class="btn-cancel">Cancel</button>
                 <button type="submit" class="btn-primary">Save Animal</button>
             </div>
-        </form>
-    </div>
-</div>
         </form>
     </div>
 </div>

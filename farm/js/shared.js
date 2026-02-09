@@ -35,3 +35,21 @@ function showNotification(message, type = 'success') {
         notification.remove();
     }, 3000);
 }
+
+// Calculate days between two dates
+function daysBetween(date1, date2) {
+    const oneDay = 24 * 60 * 60 * 1000;
+    return Math.round(Math.abs((date1 - date2) / oneDay));
+}
+
+// Format date as relative (e.g., "2 days ago", "in 3 days")
+function formatRelativeDate(date) {
+    const now = new Date();
+    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays === -1) return 'Yesterday';
+    if (diffDays > 0) return `In ${diffDays} days`;
+    return `${Math.abs(diffDays)} days ago`;
+}

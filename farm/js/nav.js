@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <a href="dashboard.html" data-page="dashboard.html"><i class="fas fa-home"></i> Dashboard</a>
                 <a href="species.html" data-page="species.html"><i class="fas fa-paw"></i> Species</a>
                 <a href="animals.html" data-page="animals.html"><i class="fas fa-horse"></i> Animals</a>
+                <a href="health.html" data-page="health.html"><i class="fas fa-heartbeat"></i> Health</a>
                 <button id="logoutBtn" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
             </div>
         </div>
