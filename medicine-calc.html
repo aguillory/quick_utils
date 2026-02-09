@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Livestock Medicine Calculator v3</title>
+    <title>Animal Medicine Calculator</title>
     <style>
         :root {
             --primary: #2d5a27;
@@ -159,7 +159,6 @@
         <button class="tab" data-tab="find-meds">🔍 Find Meds</button>
         <button class="tab" data-tab="tools">🔧 Tools</button>
         <button class="tab" data-tab="reference">📖 Reference</button>
-        <button class="tab" data-tab="editor">📝 Editor</button>
     </div>
 
     <div id="calculator" class="tab-content active">
@@ -293,16 +292,7 @@
         </div>
     </div>
 
-    <div id="editor" class="tab-content">
-        <div class="card">
-            <h2>Database Editor</h2>
-            <p>Paste new JSON here to update locally.</p>
-            <textarea id="jsonInput" style="height:300px; font-family:monospace; font-size:0.8em; margin-bottom:10px;" placeholder="Paste JSON..."></textarea>
-            <button class="btn btn-primary" onclick="loadCustomJson()">Load JSON</button>
-            <button class="btn btn-outline" onclick="clearCustomJson()">Reset to Default</button>
-        </div>
-    </div>
-
+    
     <div class="modal-overlay" id="percentCalcModal">
         <div class="modal">
             <div class="modal-header"><h3>% Solution Calculator</h3><button class="modal-close" onclick="closeModal('percentCalc')">&times;</button></div>
@@ -739,22 +729,7 @@
             }
         }
 
-        // --- JSON EDITOR ---
-        function loadCustomJson() {
-            try {
-                const j = JSON.parse(document.getElementById('jsonInput').value);
-                db.medicines = Array.isArray(j) ? j : j.medicines;
-                localStorage.setItem('farmMedsDB', JSON.stringify(db.medicines));
-                alert("Database updated!");
-                location.reload();
-            } catch(e) { alert("Invalid JSON"); }
-        }
-        function clearCustomJson() {
-            if(confirm("Reset to defaults?")) {
-                localStorage.removeItem('farmMedsDB');
-                location.reload();
-            }
-        }
+       
 
     </script>
 </body>

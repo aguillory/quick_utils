@@ -1655,7 +1655,7 @@ function getTaskById(taskId) {
 }
 
 function openMedCalculator() {
-    window.open('https://test.com/med-calc.html', '_blank');
+    window.open('https://aguillory.github.io/quick_utils/medicine-calc.html', '_blank');
 }
 
 function toggleDashboardFarmView() {
