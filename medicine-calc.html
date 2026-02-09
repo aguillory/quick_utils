@@ -3,1282 +3,759 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Livestock Medicine Calculator</title>
+    <title>Livestock Medicine Calculator v3</title>
     <style>
         :root {
             --primary: #2d5a27;
             --primary-light: #4a7c43;
             --secondary: #8b4513;
-            --background: #f5f5dc;
+            --background: #f4f7f4;
             --card-bg: #ffffff;
             --text: #333333;
             --text-light: #666666;
             --border: #ddd;
             --warning: #d4a017;
             --danger: #c41e3a;
-            --success: #228b22;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: var(--background);
             color: var(--text);
             line-height: 1.6;
             padding: 20px;
             max-width: 1200px;
             margin: 0 auto;
+            padding-bottom: 80px;
         }
 
-        h1 { color: var(--primary); text-align: center; margin-bottom: 10px; font-size: 2em; }
-        .subtitle { text-align: center; color: var(--text-light); margin-bottom: 20px; }
+        h1 { color: var(--primary); text-align: center; margin-bottom: 5px; font-size: 1.8em; }
+        .subtitle { text-align: center; color: var(--text-light); margin-bottom: 20px; font-size: 0.9em; }
 
+        /* --- CARDS --- */
         .card {
             background: var(--card-bg);
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+        .card h2 { 
+            color: var(--primary); margin-bottom: 15px; padding-bottom: 10px; 
+            border-bottom: 2px solid #e8f5e8; font-size: 1.2em; 
         }
 
-        .card h2 { color: var(--primary); margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid var(--primary-light); font-size: 1.3em; }
-        .card h3 { color: var(--secondary); margin: 15px 0 10px 0; font-size: 1.1em; }
+        /* --- TABS --- */
+        .tabs { display: flex; overflow-x: auto; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { 
+            padding: 12px 20px; border: none; background: none; cursor: pointer; 
+            font-weight: 600; color: var(--text-light); white-space: nowrap; 
+            border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; 
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--primary); background: #f5f5f5; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); background: #e8f5e8; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Grids and Flex */
-        .animal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 15px; }
-        .input-row { display: flex; gap: 10px; align-items: end; }
-        .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        
-        /* Animal Button */
+        /* --- ANIMAL GRID --- */
+        .animal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
         .animal-btn {
-            padding: 15px 10px;
+            padding: 15px 5px;
             border: 2px solid var(--border);
             border-radius: 10px;
-            background: var(--card-bg);
+            background: white;
             cursor: pointer;
             text-align: center;
             transition: all 0.2s;
         }
         .animal-btn:hover { border-color: var(--primary-light); background: #f0f7f0; }
-        .animal-btn.selected { border-color: var(--primary); background: #e8f5e8; }
+        .animal-btn.selected { border-color: var(--primary); background: #e8f5e8; box-shadow: 0 0 0 2px var(--primary) inset; }
         .animal-btn .icon { font-size: 2em; display: block; margin-bottom: 5px; }
-        .animal-btn .name { font-size: 0.9em; font-weight: 500; }
+        .animal-btn .name { font-size: 0.85em; font-weight: 600; }
 
-        /* Forms */
-        .form-group { margin-bottom: 15px; flex: 1; }
-        label { display: block; margin-bottom: 5px; font-weight: 500; color: var(--text); }
-        select, input[type="text"], input[type="number"], input[type="password"], input[type="date"], textarea {
-            width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 1em; transition: border-color 0.2s;
+        /* --- SEARCHABLE DROPDOWN --- */
+        .search-wrapper { position: relative; }
+        input[type="text"], input[type="number"], select, textarea {
+            width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; 
+            font-size: 1em; transition: 0.2s; background: white;
         }
-        select:focus, input:focus, textarea:focus { outline: none; border-color: var(--primary); }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+        
+        .dropdown-list {
+            position: absolute; top: 100%; left: 0; right: 0;
+            background: white; border: 2px solid var(--primary); border-top: none;
+            border-radius: 0 0 8px 8px; max-height: 300px; overflow-y: auto;
+            z-index: 1000; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .dropdown-list.active { display: block; }
+        .dropdown-item { padding: 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+        .dropdown-item:hover { background: #f0f7f0; color: var(--primary); }
+        .dropdown-item strong { display: block; }
+        .dropdown-item small { color: #888; }
+        .dropdown-header { background: #eee; padding: 5px 12px; font-weight: bold; font-size: 0.8em; color: #555; }
 
-        /* Buttons */
-        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1em; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+        /* --- FORMS & BUTTONS --- */
+        .input-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9em; color: var(--text-light); }
+        
+        .btn { padding: 12px 20px; border: none; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-light); }
         .btn-secondary { background: var(--secondary); color: white; }
-        .btn-secondary:hover { background: #a0522d; }
-        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
-        .btn-outline:hover { background: var(--primary); color: white; }
-        .btn-small { padding: 8px 16px; font-size: 0.9em; }
-        .btn-block { width: 100%; }
+        .btn-outline { border: 2px solid var(--primary); background: transparent; color: var(--primary); }
+        .btn-block { width: 100%; display: block; }
 
-        /* Unit Toggle */
-        .unit-toggle { display: flex; border: 2px solid var(--border); border-radius: 8px; overflow: hidden; }
-        .unit-toggle button { flex: 1; padding: 12px; border: none; background: var(--card-bg); cursor: pointer; font-weight: 500; transition: all 0.2s; }
-        .unit-toggle button.active { background: var(--primary); color: white; }
+        /* --- RESULTS --- */
+        .results-box { background: linear-gradient(135deg, #e8f5e8 0%, #f0f7f0 100%); border: 2px solid var(--primary); border-radius: 12px; padding: 20px; }
+        .result-main { font-size: 2.5em; font-weight: 800; color: var(--primary); text-align: center; margin: 10px 0; }
+        .pill-visual { display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.6); padding: 10px; border-radius: 8px; margin-top: 10px; }
 
-        /* Tabs */
-        .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
-        .tab { padding: 12px 20px; border: none; background: none; cursor: pointer; font-weight: 500; color: var(--text-light); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
-        .tab:hover { color: var(--primary); }
-        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        /* --- TOOLS & MODALS --- */
+        .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .tool-card { background: white; border: 2px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .tool-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+        .tool-icon { font-size: 2.5em; margin-bottom: 10px; }
 
-        /* Results & Info */
-        .results-box { background: linear-gradient(135deg, #e8f5e8 0%, #f0f7f0 100%); border: 2px solid var(--primary); border-radius: 12px; padding: 20px; margin-top: 15px; }
-        .result-main { font-size: 2.5em; font-weight: bold; color: var(--primary); text-align: center; margin: 10px 0; }
-        .result-detail { background: white; padding: 12px; border-radius: 8px; margin: 10px 0; }
-        .result-actions { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .result-actions .btn { flex: 1; }
-        
-        .warning-box { background: #fff8e1; border-left: 4px solid var(--warning); padding: 12px; margin: 10px 0; border-radius: 0 8px 8px 0; }
-        .info-box { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 12px; margin: 10px 0; border-radius: 0 8px 8px 0; }
-        
-        /* Conditions */
-        .condition-card { border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin: 10px 0; cursor: pointer; transition: all 0.2s; }
-        .condition-card:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .condition-card.selected { border-color: var(--primary); background: #f0f7f0; }
-        .condition-card.other-card { border-style: dashed; background: #fafafa; }
-
-        /* Tools */
-        .tool-card { background: var(--card-bg); border: 2px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; }
-        .tool-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .tool-card .tool-icon { font-size: 2.5em; margin-bottom: 10px; }
-
-        /* Finder Styles */
-        .finder-cat-btn { padding: 10px 15px; border: 1px solid var(--border); border-radius: 20px; background: white; cursor: pointer; margin: 0 5px 5px 0; font-size: 0.9em; transition: 0.2s; display: inline-block; }
-        .finder-cat-btn:hover { border-color: var(--primary); }
-        .finder-cat-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
-        .finder-result { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid var(--border); padding: 15px; margin-bottom: 10px; border-radius: 8px; }
-        .finder-result:hover { border-color: var(--primary); }
-
-        /* Modals */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
         .modal-overlay.active { display: flex; }
-        .modal { background: var(--card-bg); border-radius: 12px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 25px; }
-        .modal.modal-wide { max-width: 900px; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-close { background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--text-light); }
+        .modal { background: white; border-radius: 12px; width: 100%; max-width: 500px; padding: 25px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .modal-close { background: none; border: none; font-size: 1.5em; cursor: pointer; }
 
-        /* Treatment Sheet Styles */
-        .treatment-sheet { padding: 20px; background: white; }
-        .treatment-header { border-bottom: 3px solid var(--primary); padding-bottom: 15px; margin-bottom: 20px; }
-        .treatment-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-        .treatment-info-item { padding: 8px 12px; background: #f5f5f5; border-radius: 6px; }
-        .treatment-info-item .ti-label { font-size: 0.8em; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; }
-        .treatment-info-item .ti-value { font-weight: 600; color: var(--text); font-size: 1.1em; }
-        
-        .treatment-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        .treatment-table th { background: var(--primary); color: white; padding: 10px 8px; text-align: center; font-size: 0.85em; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .treatment-table th:first-child { text-align: left; min-width: 90px; }
-        .treatment-table td { border: 1px solid var(--border); padding: 8px; text-align: center; height: 40px; }
-        .treatment-table td:first-child { text-align: left; font-weight: 500; font-size: 0.9em; background: #f9f9f9; }
-        .treatment-table .check-cell { width: 50px; min-width: 50px; }
-        
-        .treatment-notes-section { margin-top: 20px; border-top: 2px solid var(--border); padding-top: 15px; }
-        .treatment-notes-lines .note-line { border-bottom: 1px solid var(--border); height: 30px; margin-bottom: 5px; }
+        /* --- REFERENCE TABLES --- */
+        .ref-table { width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 10px; }
+        .ref-table th { text-align: left; background: #f5f5f5; padding: 8px; }
+        .ref-table td { padding: 8px; border-top: 1px solid #eee; }
+        .ref-card { border-left: 4px solid var(--secondary); cursor: pointer; }
 
-        /* Edit Controls */
-        .sheet-controls { background: #f0f0f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-        
-        /* Dosage Breakdown & Pill Visuals */
-        .dosage-breakdown { background: white; border: 2px solid var(--primary); border-radius: 8px; padding: 15px; margin: 15px 0; }
-        .dosage-step { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px dashed var(--border); }
-        .dosage-step:last-child { border-bottom: none; }
-        .dosage-step .step-num { background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9em; margin-right: 12px; flex-shrink: 0; }
-        .dosage-step .step-content { flex: 1; }
-        .dosage-step .step-label { font-size: 0.85em; color: var(--text-light); }
-        .dosage-step .step-value { font-size: 1.2em; font-weight: 600; color: var(--primary); }
-        
-        .pill-visual { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px; background: #f0f7f0; border-radius: 8px; }
-        .pill-icon { font-size: 2em; }
-        .pill-fraction { font-size: 1.5em; font-weight: bold; color: var(--primary); }
-        .pill-percent { color: var(--text-light); font-size: 0.9em; }
-
-        /* Custom Medicine Form */
-        .custom-dosage-form { background: #f9f9f9; border: 2px solid var(--secondary); border-radius: 8px; padding: 15px; margin-top: 15px; }
-        .editable-concentration { background: #fff8e1; border: 2px solid var(--warning); border-radius: 8px; padding: 15px; margin-top: 15px; }
+        /* --- FIND MEDS TAB --- */
+        .cat-btn { display: inline-block; padding: 8px 15px; border: 1px solid var(--border); border-radius: 20px; margin: 0 5px 5px 0; cursor: pointer; background: white; }
+        .cat-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        .med-result-item { padding: 15px; border: 1px solid #eee; margin-bottom: 10px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .med-result-item:hover { border-color: var(--primary); background: #fafafa; }
 
         .hidden { display: none !important; }
 
-        /* --- PRINT STYLES (Compact) --- */
         @media print {
-            body { background: white; padding: 0; margin: 0; }
-            body > *:not(.modal-overlay) { display: none !important; }
-            .modal-overlay { 
-                position: absolute !important; top: 0; left: 0; width: 100%; height: auto;
-                background: white; display: block !important; padding: 0; z-index: 9999;
-            }
-            .modal { box-shadow: none; max-width: 100%; width: 100%; padding: 0; margin: 0; border-radius: 0; overflow: visible; }
-            .modal-close, .sheet-controls, .modal-header button, .no-print { display: none !important; }
-            .treatment-sheet { padding: 0; }
-            .treatment-header { padding-bottom: 5px; margin-bottom: 10px; border-bottom-width: 2px; }
-            .treatment-header h2 { font-size: 16pt; margin: 0; color: black; }
-            .treatment-info-grid { margin: 5px 0; gap: 5px; grid-template-columns: 1fr 1fr 1fr 1fr; }
-            .treatment-info-item { padding: 4px 8px; border: 1px solid #ccc; background: white; }
-            .treatment-info-item .ti-label { font-size: 7pt; }
-            .treatment-info-item .ti-value { font-size: 9pt; }
-            .treatment-table { margin: 10px 0; }
-            .treatment-table th { padding: 4px; font-size: 9pt; background: #444 !important; color: white !important; }
-            .treatment-table td { padding: 4px; height: 25px; font-size: 9pt; }
-            .treatment-notes-section { margin-top: 10px; padding-top: 5px; }
-            .note-line { height: 20px; }
+            .no-print, .tabs, .animal-grid, .search-wrapper { display: none !important; }
+            .card { border: none; box-shadow: none; padding: 0; }
+            .results-box { border: 2px solid black; }
         }
     </style>
 </head>
 <body>
-    <h1 class="no-print">🐄 Livestock Medicine Calculator</h1>
-    <p class="subtitle no-print">Quick dosage calculations for farm medications</p>
+
+    <h1 class="no-print">🐄 Farm Meds v3</h1>
+    <p class="subtitle no-print">Dosage Calculator, Tools & Reference</p>
 
     <div class="tabs no-print">
         <button class="tab active" data-tab="calculator">💊 Calculator</button>
-        <button class="tab" data-tab="find-medicine">🔍 Find Meds</button>
+        <button class="tab" data-tab="find-meds">🔍 Find Meds</button>
         <button class="tab" data-tab="tools">🔧 Tools</button>
-        <button class="tab" data-tab="add-medicine">➕ Add Medicine</button>
-        <button class="tab" data-tab="database">📋 Database</button>
+        <button class="tab" data-tab="reference">📖 Reference</button>
+        <button class="tab" data-tab="editor">📝 Editor</button>
     </div>
 
     <div id="calculator" class="tab-content active">
         <div class="card">
             <h2>1. Select Animal</h2>
-            <div class="animal-grid" id="animalGrid"></div>
+            <div class="animal-grid" id="calcAnimalGrid"></div>
         </div>
 
-        <div class="card" id="medicineSection">
+        <div class="card" id="medSelectCard">
             <h2>2. Select Medicine</h2>
-            <div class="form-group">
-                <select id="medicineSelect">
-                    <option value="">-- Select a medicine --</option>
-                </select>
+            <div class="search-wrapper">
+                <input type="text" id="medSearchInput" placeholder="Type to search medicine (e.g. Penicillin)..." autocomplete="off">
+                <div class="dropdown-list" id="medDropdown"></div>
             </div>
-            <div id="medicineInfo" class="hidden"></div>
-            <div id="editableConcentration" class="hidden"></div>
+            <div id="selectedMedDisplay" class="hidden" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary);"></div>
         </div>
 
-        <div class="card hidden" id="conditionSection">
-            <h2>3. Select Condition</h2>
+        <div class="card hidden" id="conditionCard">
+            <h2>3. Select Usage</h2>
             <div id="conditionList"></div>
-            <div id="customDosageForm" class="custom-dosage-form hidden"></div>
-        </div>
-
-        <div class="card hidden" id="weightSection">
-            <h2>4. Enter Weight</h2>
-            <div class="input-row">
-                <div class="form-group">
-                    <label for="weightInput">Animal Weight</label>
-                    <input type="number" id="weightInput" placeholder="Enter weight" min="0" step="0.1">
+            
+            <div id="weightContainer" class="hidden" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+                <label>Animal Weight</label>
+                <div class="input-row">
+                    <input type="number" id="weightInput" placeholder="0.0" style="font-size: 1.2em; font-weight: bold;">
+                    <select id="weightUnit" style="width: auto; min-width: 80px;">
+                        <option value="lb">lb</option>
+                        <option value="kg">kg</option>
+                    </select>
                 </div>
-                <div class="form-group">
-                    <label>Unit</label>
-                    <div class="unit-toggle">
-                        <button class="active" data-unit="lb">lb</button>
-                        <button data-unit="kg">kg</button>
-                    </div>
+                <div id="weightWarning" class="hidden" style="background:#fff3cd; color:#856404; padding:10px; margin-bottom:10px; border-radius:5px; font-size:0.9em; cursor:pointer;" onclick="openModal('weightEstimate')">
+                    📏 Don't have a scale? Click to Estimate Weight.
                 </div>
+                <button class="btn btn-primary btn-block" onclick="calculateDosage()">Calculate</button>
             </div>
-            <div id="weightEstimator" class="hidden"></div>
-            <button class="btn btn-primary btn-block" id="calculateBtn" style="margin-top: 15px;">
-                Calculate Dosage
-            </button>
         </div>
 
-        <div class="card hidden" id="resultsSection">
-            <h2>📊 Dosage Results</h2>
-            <div class="results-box" id="resultsBox"></div>
+        <div class="card hidden" id="resultsCard">
+            <h2>📊 Results</h2>
+            <div class="results-box">
+                <div style="text-align: center; color: var(--text-light); font-size: 0.9em; text-transform: uppercase;">Give Amount</div>
+                <div class="result-main" id="resAmount">--</div>
+                <div id="resVisual" class="pill-visual hidden"></div>
+                <div style="text-align: center; margin-top: 5px;" id="resMedName"></div>
+            </div>
+            
+            <div style="margin-top: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div><small>Route</small><br><strong id="resRoute">--</strong></div>
+                    <div><small>Frequency</small><br><strong id="resFreq">--</strong></div>
+                    <div><small>Duration</small><br><strong id="resDuration">--</strong></div>
+                    <div><small>Total Dose</small><br><span id="resTotalDose">--</span></div>
+                </div>
+                <div id="resNotes" style="margin-top:10px; padding:10px; background:#fff3cd; color:#856404; border-radius:5px; font-size:0.9em; display:none;"></div>
+            </div>
+
+            <div class="input-row" style="margin-top: 15px;">
+                <button class="btn btn-secondary btn-block" id="suspensionBtn" onclick="openSuspensionTool()" style="display:none;">💧 Make Suspension</button>
+            </div>
         </div>
     </div>
 
-    <div id="find-medicine" class="tab-content">
+    <div id="find-meds" class="tab-content">
         <div class="card">
             <h2>1. Select Animal</h2>
             <div class="animal-grid" id="findAnimalGrid"></div>
         </div>
         <div class="card hidden" id="findCategoryCard">
             <h2>2. Select Category</h2>
-            <div id="findCategoryList"></div>
+            <div id="categoryList"></div>
         </div>
         <div class="card hidden" id="findResultsCard">
-            <h2>3. Matching Medicines</h2>
-            <p style="color: var(--text-light); margin-bottom: 10px;">Click a medicine to load it into the calculator.</p>
-            <div id="findResultsList"></div>
+            <h2>3. Medicines</h2>
+            <div id="findMedList"></div>
         </div>
     </div>
 
     <div id="tools" class="tab-content">
         <div class="card">
-            <h2>Helpful Tools</h2>
+            <h2>Useful Tools</h2>
             <div class="tools-grid">
                 <div class="tool-card" onclick="openModal('percentCalc')">
                     <div class="tool-icon">💉</div>
-                    <div class="tool-name">% Solution Calculator</div>
+                    <div>% Solution Calc</div>
                 </div>
                 <div class="tool-card" onclick="openModal('pillSuspension')">
-                    <div class="tool-icon">💊</div>
-                    <div class="tool-name">Pill to Suspension</div>
+                    <div class="tool-icon">💧</div>
+                    <div>Pill to Suspension</div>
                 </div>
                 <div class="tool-card" onclick="openModal('unitConverter')">
                     <div class="tool-icon">⚖️</div>
-                    <div class="tool-name">Unit Converter</div>
-                </div>
-                <div class="tool-card" onclick="window.open('https://www.drugs.com/imprints.php', '_blank')">
-                    <div class="tool-icon">🔍</div>
-                    <div class="tool-name">Pill Identifier</div>
-                    <div class="tool-desc">Look up pills by imprint code</div>
+                    <div>Unit Converter</div>
                 </div>
                 <div class="tool-card" onclick="openModal('weightEstimate')">
                     <div class="tool-icon">📏</div>
-                    <div class="tool-name">Weight Estimator</div>
+                    <div>Weight Estimator</div>
+                </div>
+                <div class="tool-card" onclick="window.open('https://www.drugs.com/imprints.php', '_blank')">
+                    <div class="tool-icon">💊</div>
+                    <div>Pill Identifier</div>
+                    <small style="color:#888;">(External Site)</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="add-medicine" class="tab-content">
-        <div class="card">
-            <h2>Add / Edit Medicine</h2>
-            <div class="form-group">
-                <label for="newMedName">Medicine Name *</label>
-                <input type="text" id="newMedName" placeholder="e.g., Penicillin G">
+    <div id="reference" class="tab-content">
+        <div class="card ref-card" onclick="toggleRef('tempRef')">
+            <h2>🌡️ Temperature Ranges <span style="float:right">▼</span></h2>
+            <div id="tempRef" class="hidden">
+                <table class="ref-table"><thead><tr><th>Species</th><th>°F</th><th>°C</th></tr></thead><tbody id="tempTableBody"></tbody></table>
             </div>
-            <div class="form-group">
-                <label for="newMedType">Type</label>
-                <select id="newMedType">
-                    <option value="injectable">Injectable</option>
-                    <option value="oral-liquid">Oral Liquid</option>
-                    <option value="oral-pill">Oral Pill</option>
-                    <option value="topical">Topical</option>
-                    <option value="other">Other</option>
-                </select>
+        </div>
+        <div class="card ref-card" onclick="toggleRef('heartRef')">
+            <h2>❤️ Heart Rate <span style="float:right">▼</span></h2>
+            <div id="heartRef" class="hidden">
+                <table class="ref-table"><thead><tr><th>Species</th><th>BPM</th></tr></thead><tbody id="heartTableBody"></tbody></table>
             </div>
-            <div class="form-group">
-                <label for="newMedUsage">Usage/Category</label>
-                <input type="text" id="newMedUsage" placeholder="e.g., Antibiotic, Antiparasitic">
+        </div>
+        <div class="card ref-card" onclick="toggleRef('respRef')">
+            <h2>🫁 Respiratory Rate <span style="float:right">▼</span></h2>
+            <div id="respRef" class="hidden">
+                <table class="ref-table"><thead><tr><th>Species</th><th>Breaths/Min</th></tr></thead><tbody id="respTableBody"></tbody></table>
             </div>
-            <div class="input-row">
-                <div class="form-group">
-                    <label for="newMedConc">Concentration</label>
-                    <input type="number" id="newMedConc" placeholder="e.g., 200" step="any">
-                </div>
-                <div class="form-group">
-                    <label for="newMedConcUnit">Unit</label>
-                    <select id="newMedConcUnit">
-                        <option value="mg/ml">mg/ml</option>
-                        <option value="mcg/ml">mcg/ml</option>
-                        <option value="mg/tablet">mg/tablet</option>
-                        <option value="%">% solution</option>
-                    </select>
-                </div>
+        </div>
+        <div class="card ref-card" onclick="toggleRef('urineRef')">
+            <h2>💧 Urine Volume <span style="float:right">▼</span></h2>
+            <div id="urineRef" class="hidden">
+                <table class="ref-table"><thead><tr><th>Species</th><th>mL/kg/day</th><th>Specific Gravity</th></tr></thead><tbody id="urineTableBody"></tbody></table>
             </div>
-            <div class="form-group">
-                <label for="newMedStorage">Storage Instructions</label>
-                <input type="text" id="newMedStorage" placeholder="e.g., Refrigerate, protect from light">
-            </div>
-            <div class="form-group">
-                <label for="newMedNotes">General Notes</label>
-                <textarea id="newMedNotes" placeholder="Any important notes about this medicine"></textarea>
-            </div>
-
-            <h3>Dosing Information</h3>
-            <div id="dosingEntries">
-                <div class="dosing-entry card" style="background: #f9f9f9;">
-                    <div class="input-row">
-                        <div class="form-group">
-                            <label>Animal</label>
-                            <select class="dosingAnimal">
-                                <option value="cat">Cat</option>
-                                <option value="dog">Dog</option>
-                                <option value="cow">Cow</option>
-                                <option value="pig">Pig</option>
-                                <option value="goat">Goat</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Condition</label>
-                            <input type="text" class="dosingCondition" placeholder="e.g., Respiratory infection">
-                        </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="form-group">
-                            <label>Dosage</label>
-                            <input type="number" class="dosingValue" placeholder="Amount" step="any">
-                        </div>
-                        <div class="form-group">
-                            <label>Unit</label>
-                            <select class="dosingUnit">
-                                <option value="mg/lb">mg per lb</option>
-                                <option value="mg/kg">mg per kg</option>
-                                <option value="mcg/lb">mcg per lb</option>
-                                <option value="mcg/kg">mcg per kg</option>
-                                <option value="ml/lb">ml per lb</option>
-                                <option value="ml/kg">ml per kg</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="form-group">
-                            <label>Route</label>
-                            <select class="dosingRoute">
-                                <option value="SubQ">SubQ</option>
-                                <option value="IM">IM</option>
-                                <option value="IV">IV</option>
-                                <option value="Oral">Oral</option>
-                                <option value="Topical">Topical</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Location</label>
-                            <input type="text" class="dosingLocation" placeholder="e.g., Neck">
-                        </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="form-group">
-                            <label>Frequency</label>
-                            <input type="text" class="dosingFrequency" placeholder="e.g., Once daily">
-                        </div>
-                        <div class="form-group">
-                            <label>Times/Day</label>
-                            <input type="number" class="dosingTimesPerDay" placeholder="1" min="1" max="6" value="1">
-                        </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="form-group">
-                            <label>Duration</label>
-                            <input type="text" class="dosingDuration" placeholder="e.g., 7-14 days">
-                        </div>
-                        <div class="form-group">
-                            <label>Default Days</label>
-                            <input type="number" class="dosingDurationDays" placeholder="7" min="1">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Notes</label>
-                        <input type="text" class="dosingNotes" placeholder="Any specific notes for this dosing">
-                    </div>
-                </div>
-            </div>
-
-            <button class="btn btn-outline btn-small" onclick="addDosingEntry()" style="margin: 10px 0;">
-                + Add Another Dosing
-            </button>
-
-            <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border);">
-
-            <h3>Save to Database</h3>
-            <div class="form-group">
-                <label for="githubPassword">Update Password (for GitHub)</label>
-                <input type="password" id="githubPassword" placeholder="Required only if saving to GitHub">
-            </div>
-
-            <div class="input-row">
-                <button class="btn btn-primary" onclick="saveNewMedicine(true)">
-                    💾 Save to GitHub
-                </button>
-                <button class="btn btn-secondary" onclick="saveNewMedicine(false)">
-                    📋 Save Locally Only
-                </button>
-            </div>
-            <div id="saveStatus"></div>
         </div>
     </div>
 
-    <div id="database" class="tab-content">
+    <div id="editor" class="tab-content">
         <div class="card">
-            <h2>Medicine Database</h2>
-            <p style="color: var(--text-light); margin-bottom: 15px;">
-                All medicines currently in the system. <br>
-                <small>Click "Edit" to load the medicine into the Add Medicine tab.</small>
-            </p>
-            <div id="databaseList"></div>
+            <h2>Database Editor</h2>
+            <p>Paste new JSON here to update locally.</p>
+            <textarea id="jsonInput" style="height:300px; font-family:monospace; font-size:0.8em; margin-bottom:10px;" placeholder="Paste JSON..."></textarea>
+            <button class="btn btn-primary" onclick="loadCustomJson()">Load JSON</button>
+            <button class="btn btn-outline" onclick="clearCustomJson()">Reset to Default</button>
         </div>
     </div>
 
     <div class="modal-overlay" id="percentCalcModal">
         <div class="modal">
-            <div class="modal-header">
-                <h2>% Solution Calculator</h2>
-                <button class="modal-close" onclick="closeModal('percentCalc')">&times;</button>
-            </div>
-            <div class="form-group">
-                <label>Solution Percentage (%)</label>
-                <input type="number" id="percentInput" placeholder="e.g., 1" oninput="calcPercent()">
-            </div>
-            <div class="results-box"><div class="result-main" id="percentConc">-- mg/ml</div></div>
+            <div class="modal-header"><h3>% Solution Calculator</h3><button class="modal-close" onclick="closeModal('percentCalc')">&times;</button></div>
+            <div class="form-group"><label>Percentage (%)</label><input type="number" id="pcPercent" oninput="runPercentCalc()"></div>
+            <div class="results-box"><div class="result-main" id="pcResult">-- mg/ml</div></div>
         </div>
     </div>
 
     <div class="modal-overlay" id="pillSuspensionModal">
         <div class="modal">
-            <div class="modal-header">
-                <h2>Pill to Suspension</h2>
-                <button class="modal-close" onclick="closeModal('pillSuspension')">&times;</button>
+            <div class="modal-header"><h3>Pill to Suspension</h3><button class="modal-close" onclick="closeModal('pillSuspension')">&times;</button></div>
+            <div class="input-row">
+                <div class="form-group"><label>Pill Strength (mg)</label><input type="number" id="psStrength" oninput="runSuspensionCalc()"></div>
+                <div class="form-group"><label>Liquid Added (ml)</label><input type="number" id="psLiquid" value="5" oninput="runSuspensionCalc()"></div>
             </div>
-            <div class="form-group">
-                <label>Pill Strength (mg)</label>
-                <input type="number" id="pillStrength" oninput="calcSuspension()">
-            </div>
-            <div class="form-group">
-                <label>Target Dose (mg)</label>
-                <input type="number" id="targetDose" oninput="calcSuspension()">
-            </div>
-            <div class="form-group">
-                <label>Liquid Amount (ml)</label>
-                <input type="number" id="liquidSlider" value="5" oninput="calcSuspension()">
-            </div>
+            <div class="form-group"><label>Target Dose (mg)</label><input type="number" id="psTarget" oninput="runSuspensionCalc()"></div>
             <div class="results-box">
-                <div class="result-main" id="suspConc">-- mg/ml</div>
-                <div class="result-detail">Give <strong id="doseVolume">--</strong> ml</div>
+                <div style="text-align:center">Concentration: <strong id="psConc">--</strong></div>
+                <div class="result-main" id="psDoseVol">-- ml</div>
+                <div style="text-align:center">Give this amount</div>
             </div>
         </div>
     </div>
 
     <div class="modal-overlay" id="unitConverterModal">
         <div class="modal">
-            <div class="modal-header"><h2>Unit Converter</h2><button class="modal-close" onclick="closeModal('unitConverter')">&times;</button></div>
+            <div class="modal-header"><h3>Unit Converter</h3><button class="modal-close" onclick="closeModal('unitConverter')">&times;</button></div>
             <div class="input-row">
-                <input type="number" id="convertValue" placeholder="Value" oninput="convertUnits()">
-                <select id="convertFrom" onchange="convertUnits()">
-                    <option value="kg">kg</option><option value="lb">lb</option><option value="mg">mg</option>
-                    <option value="mcg">mcg</option><option value="ml">ml</option>
+                <input type="number" id="ucValue" placeholder="Value" oninput="runUnitConv()">
+                <select id="ucType" onchange="runUnitConv()">
+                    <option value="kg_lb">kg to lb</option>
+                    <option value="lb_kg">lb to kg</option>
+                    <option value="c_f">°C to °F</option>
+                    <option value="f_c">°F to °C</option>
                 </select>
             </div>
-            <div class="results-box" id="conversionResults"></div>
+            <div class="results-box"><div class="result-main" id="ucResult">--</div></div>
         </div>
     </div>
 
     <div class="modal-overlay" id="weightEstimateModal">
         <div class="modal">
-            <div class="modal-header">
-                <h2>📏 Weight Estimator</h2>
-                <button class="modal-close" onclick="closeModal('weightEstimate')">&times;</button>
-            </div>
-            <div class="form-group">
-                <label>Animal Type</label>
-                <select id="estimateSpecies"><option value="cattle">Cattle</option><option value="goat">Goat</option></select>
-            </div>
-            <div class="info-box">
-                Measure <strong>Heart Girth</strong> (behind front legs) and <strong>Body Length</strong> (shoulder to pin).
-            </div>
+            <div class="modal-header"><h3>Weight Estimator</h3><button class="modal-close" onclick="closeModal('weightEstimate')">&times;</button></div>
+            <p style="font-size:0.9em; color:#666; margin-bottom:10px;">For Cattle/Goats. Formula: (Girth² x Length) / 300</p>
             <div class="input-row">
-                <div class="form-group">
-                    <label>Heart Girth (inches)</label>
-                    <input type="number" id="heartGirth" oninput="estimateWeight()">
-                </div>
-                <div class="form-group">
-                    <label>Body Length (inches)</label>
-                    <input type="number" id="bodyLength" oninput="estimateWeight()">
-                </div>
+                <div class="form-group"><label>Heart Girth (inches)</label><input type="number" id="weGirth" oninput="runWeightEst()"></div>
+                <div class="form-group"><label>Body Length (inches)</label><input type="number" id="weLength" oninput="runWeightEst()"></div>
             </div>
             <div class="results-box">
-                <div class="result-main" id="estimatedWeightResult">-- lbs</div>
-                <div style="text-align:center">(Formula: Girth² × Length / 300)</div>
+                <div class="result-main" id="weResult">-- lb</div>
             </div>
-            <button class="btn btn-primary btn-block" onclick="useEstimatedWeight()">Use Weight</button>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="treatmentSheetModal">
-        <div class="modal modal-wide">
-            <div class="modal-header no-print">
-                <h2>📋 Treatment Sheet</h2>
-                <button class="modal-close" onclick="closeModal('treatmentSheet')">&times;</button>
-            </div>
-
-            <div class="sheet-controls no-print">
-                <h4>✏️ Edit Treatment Plan</h4>
-                <div class="input-row">
-                    <div class="form-group">
-                        <label>Animal Name/ID</label>
-                        <input type="text" id="sheetAnimalName" placeholder="e.g., Daisy, Tag #42">
-                    </div>
-                    <div class="form-group">
-                        <label>Start Date</label>
-                        <input type="date" id="sheetStartDate">
-                    </div>
-                </div>
-                <div class="input-row">
-                    <div class="form-group">
-                        <label>Days</label>
-                        <input type="number" id="sheetDays" min="1" max="60" value="7" onchange="regenerateSheet()">
-                    </div>
-                    <div class="form-group">
-                        <label>Times/Day</label>
-                        <input type="number" id="sheetTimesPerDay" min="1" max="6" value="1" onchange="regenerateSheet()">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Notes</label>
-                    <input type="text" id="sheetNotes" placeholder="Special instructions...">
-                </div>
-                <div class="input-row" style="margin-top: 10px;">
-                    <button class="btn btn-primary" onclick="regenerateSheet()">🔄 Update Sheet</button>
-                    <button class="btn btn-secondary" onclick="printSheet()">🖨️ Print</button>
-                </div>
-            </div>
-
-            <div id="treatmentSheetContent" class="treatment-sheet">
-                </div>
+            <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="applyEstimatedWeight()">Use This Weight</button>
         </div>
     </div>
 
     <script>
-        const CONFIG = {
-            DB_FILE: 'med-db.json',
-            GITHUB_REPO: 'aguillory/quick_utils',
-            MASKED_KEY: 'github_pat_11AI#4H#Q0E5mQGCj2y#Nx_#Zvp7P#ojY6K2XY2vmzCx0g6pGK#IoA85hRNE##n2b1#E5WSBI2Sd6Nj9Uj',
-            KEY_MAP: { 1: 78, 2: 31, 3: 62, 4: 19, 5: 35, 6: 16, 7: 41, 8: 72, 9: 73 }
-        };
-
-        // Static definition of animals to fix initialization errors
-        const STATIC_ANIMALS = [
-            { id: 'cow', name: 'Cattle', icon: '🐄' },
+        // --- DATA & CONFIG ---
+        const ANIMALS = [
+            { id: 'cattle', name: 'Cattle', icon: '🐄' },
+            { id: 'horse', name: 'Horse', icon: '🐎' },
             { id: 'goat', name: 'Goat', icon: '🐐' },
+            { id: 'sheep', name: 'Sheep', icon: '🐑' },
+            { id: 'pig', name: 'Pig', icon: '🐖' },
             { id: 'dog', name: 'Dog', icon: '🐕' },
             { id: 'cat', name: 'Cat', icon: '🐈' },
-            { id: 'pig', name: 'Pig', icon: '🐖' }
+            { id: 'poultry', name: 'Poultry', icon: '🐔' },
+            { id: 'camelid', name: 'Camelid', icon: '🦙' },
+            { id: 'rodent', name: 'Rodent', icon: '🐀' }
         ];
 
-        let database = { animals: STATIC_ANIMALS, medicines: [] };
-        let selectedAnimal = null, selectedMedicine = null, selectedCondition = null;
-        let weightUnit = 'lb', effectiveConcentration = null, isCustomCondition = false, lastCalculationData = null;
-        
-        // Find Tab Variables
-        let findAnimal = null, findCategory = null;
+        const REF_DATA = {
+            temp: [ { s: 'Beef Cow', f: '98.0-102.4', c: '36.7-39.1' }, { s: 'Horse', f: '99.0-100.8', c: '37.2-38.2' }, { s: 'Goat', f: '101.3-103.5', c: '38.5-39.7' }, { s: 'Pig', f: '101.6-103.6', c: '38.7-39.8' }, { s: 'Dog', f: '99.5-102.5', c: '37.5-39.2' }, { s: 'Cat', f: '100.5-102.5', c: '38.1-39.2' } ],
+            heart: [ { s: 'Cow', v: '48-84' }, { s: 'Horse', v: '28-40' }, { s: 'Goat/Sheep', v: '70-80' }, { s: 'Dog', v: '70-120' }, { s: 'Cat', v: '120-140' } ],
+            resp: [ { s: 'Cow', v: '26-50' }, { s: 'Horse', v: '10-14' }, { s: 'Sheep', v: '16-34' }, { s: 'Dog', v: '18-34' }, { s: 'Cat', v: '16-40' } ],
+            urine: [ { s: 'Cow', v: '17-45', g: '1.030-1.045' }, { s: 'Horse', v: '3-18', g: '1.025-1.060' }, { s: 'Goat', v: '10-40', g: '1.015-1.045' }, { s: 'Dog', v: '20-100', g: '1.016-1.060' } ]
+        };
 
+        let db = { medicines: [] };
+        let state = { animal: null, med: null, condition: null, findAnimal: null };
+        let lastCalc = null; // Store last calculation for tools
+
+        // --- INIT ---
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadDatabase();
-            setupEventListeners();
-            renderAnimals();
-            renderFindTab();
-            renderDatabaseList();
-            document.getElementById('sheetStartDate').valueAsDate = new Date();
+            setupTabs();
+            renderAnimals('calcAnimalGrid', 'selectAnimal');
+            renderAnimals('findAnimalGrid', 'selectFindAnimal');
+            renderRefTables();
+            
+            // Search Dropdown Logic
+            const searchInput = document.getElementById('medSearchInput');
+            searchInput.addEventListener('input', handleSearch);
+            searchInput.addEventListener('focus', handleSearch);
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.search-wrapper')) document.getElementById('medDropdown').classList.remove('active');
+            });
+
+            // Load DB
+            const saved = localStorage.getItem('farmMedsDB');
+            if(saved) {
+                try { db.medicines = JSON.parse(saved); } catch(e) {}
+            } else {
+                try {
+                    const r = await fetch('med-db.json');
+                    if(r.ok) {
+                        const d = await r.json();
+                        db.medicines = Array.isArray(d) ? d : d.medicines;
+                    }
+                } catch(e) {}
+            }
         });
 
-        async function loadDatabase() {
-            try {
-                const response = await fetch(CONFIG.DB_FILE);
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // FIXED: Handle if the JSON is just an array of medicines (raw format)
-                    if (Array.isArray(data)) {
-                        database.medicines = data;
-                    } else if (data.medicines) {
-                        database = data;
-                        if (!database.animals || database.animals.length === 0) {
-                            database.animals = STATIC_ANIMALS;
-                        }
-                    } else {
-                        console.warn("Unknown DB format, using defaults");
-                    }
-
-                    // Check for custom medicines in JSON structure
-                    if (database.customMedicines) {
-                        database.medicines.push(...database.customMedicines);
-                    }
-                }
-            } catch (e) { 
-                console.log('Using default database structure due to load error: ', e); 
-            }
-            
-            // Load local storage customs
-            const localMeds = JSON.parse(localStorage.getItem('customMedicines') || '[]');
-            localMeds.forEach(lm => {
-                // Avoid duplicates based on ID
-                if(!database.medicines.find(m => m.id === lm.id)) {
-                    database.medicines.push(lm);
-                }
-            });
-            
-            renderMedicineSelect(); // Re-render after load
-        }
-
-        function setupEventListeners() {
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', () => {
-                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                    tab.classList.add('active');
-                    document.getElementById(tab.dataset.tab).classList.add('active');
+        // --- CORE UI FUNCTIONS ---
+        function setupTabs() {
+            document.querySelectorAll('.tab').forEach(t => {
+                t.addEventListener('click', () => {
+                    document.querySelectorAll('.tab, .tab-content').forEach(el => el.classList.remove('active'));
+                    t.classList.add('active');
+                    document.getElementById(t.dataset.tab).classList.add('active');
                 });
             });
-            document.querySelectorAll('.unit-toggle button').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    this.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    weightUnit = this.dataset.unit;
-                });
-            });
-            document.getElementById('medicineSelect').addEventListener('change', (e) => selectMedicine(e.target.value));
-            document.getElementById('calculateBtn').addEventListener('click', calculateDosage);
         }
 
-        function renderAnimals() {
-            if (!database.animals) return;
-            document.getElementById('animalGrid').innerHTML = database.animals.map(animal => `
-                <div class="animal-btn" data-id="${animal.id}" onclick="selectAnimal('${animal.id}')">
-                    <span class="icon">${animal.icon}</span><span class="name">${animal.name}</span>
+        function renderAnimals(gridId, onClickFn) {
+            document.getElementById(gridId).innerHTML = ANIMALS.map(a => `
+                <div class="animal-btn" data-id="${a.id}" onclick="${onClickFn}('${a.id}', this)">
+                    <span class="icon">${a.icon}</span><span class="name">${a.name}</span>
                 </div>
             `).join('');
         }
 
-        function selectAnimal(id) {
-            selectedAnimal = id; selectedMedicine = null; selectedCondition = null;
-            document.querySelectorAll('#animalGrid .animal-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.id === id));
-            renderMedicineSelect();
-            ['conditionSection', 'weightSection', 'resultsSection', 'editableConcentration', 'customDosageForm'].forEach(id => document.getElementById(id).classList.add('hidden'));
+        function renderRefTables() {
+            const fill = (id, d, keys) => {
+                document.getElementById(id).innerHTML = d.map(r => `<tr><td><strong>${r.s}</strong></td>${keys.map(k=>`<td>${r[k]}</td>`).join('')}</tr>`).join('');
+            };
+            fill('tempTableBody', REF_DATA.temp, ['f','c']);
+            fill('heartTableBody', REF_DATA.heart, ['v']);
+            fill('respTableBody', REF_DATA.resp, ['v']);
+            fill('urineTableBody', REF_DATA.urine, ['v','g']);
+        }
+        function toggleRef(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+        // --- CALCULATOR LOGIC ---
+        function selectAnimal(id, btn) {
+            state.animal = id; state.med = null;
+            document.querySelectorAll('#calcAnimalGrid .animal-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            
+            document.getElementById('medSearchInput').value = '';
+            document.getElementById('selectedMedDisplay').classList.add('hidden');
+            document.getElementById('conditionCard').classList.add('hidden');
+            document.getElementById('resultsCard').classList.add('hidden');
+            
+            // Show estimator warning if cow/goat
+            const showEst = (id === 'cattle' || id === 'goat');
+            if(showEst) document.getElementById('weightWarning').classList.remove('hidden');
+            else document.getElementById('weightWarning').classList.add('hidden');
         }
 
-        function renderMedicineSelect() {
-            let relevantMeds = database.medicines.filter(med => !selectedAnimal || (med.animals && med.animals[selectedAnimal]));
+        function handleSearch(e) {
+            if(!state.animal) return;
+            const term = e.target.value.toLowerCase();
+            const list = document.getElementById('medDropdown');
             
-            // FIXED: Sort by Usage/Category first, then Name
-            relevantMeds.sort((a, b) => {
-                const useA = (a.usage || 'Other').toUpperCase();
-                const useB = (b.usage || 'Other').toUpperCase();
-                if (useA < useB) return -1;
-                if (useA > useB) return 1;
-                return a.name.localeCompare(b.name);
+            const matches = db.medicines.filter(m => {
+                const hasSpecies = m.animals && m.animals[state.animal];
+                if(!hasSpecies) return false;
+                return m.name.toLowerCase().includes(term) || (m.usage||'').toLowerCase().includes(term);
             });
 
-            // FIXED: Group by Usage
-            const groups = {};
-            relevantMeds.forEach(med => {
-                const use = med.usage || "Other";
-                if (!groups[use]) groups[use] = [];
-                groups[use].push(med);
-            });
-
-            let html = `<option value="">-- Select a medicine --</option>`;
-            
-            // Sort group keys alphabetically
-            Object.keys(groups).sort().forEach(group => {
-                html += `<optgroup label="${group}">`;
-                groups[group].forEach(med => {
-                    html += `<option value="${med.id}">${med.name}</option>`;
+            if(matches.length === 0) {
+                list.innerHTML = '<div style="padding:10px; color:#999;">No medicines found for this animal.</div>';
+            } else {
+                // Group by Usage
+                const groups = {};
+                matches.forEach(m => {
+                    const u = m.usage || 'General';
+                    if(!groups[u]) groups[u] = [];
+                    groups[u].push(m);
                 });
-                html += `</optgroup>`;
-            });
-
-            html += `<option value="other">➕ Other (Manual Entry)</option>`;
-            document.getElementById('medicineSelect').innerHTML = html;
+                
+                let html = '';
+                Object.keys(groups).sort().forEach(g => {
+                    html += `<div class="dropdown-header">${g}</div>`;
+                    groups[g].forEach(m => {
+                        html += `<div class="dropdown-item" onclick="selectMed('${m.id}')">
+                            <strong>${m.name}</strong>
+                            <small>${m.type} • ${m.concentration ? m.concentration.value + m.concentration.unit : ''}</small>
+                        </div>`;
+                    });
+                });
+                list.innerHTML = html;
+            }
+            list.classList.add('active');
         }
 
-        function selectMedicine(id) {
-            if (id === 'other') { document.querySelector('[data-tab="add-medicine"]').click(); return; }
-            selectedMedicine = database.medicines.find(m => m.id === id);
-            if (!selectedMedicine) return;
+        function selectMed(id) {
+            state.med = db.medicines.find(m => m.id === id);
+            document.getElementById('medDropdown').classList.remove('active');
+            document.getElementById('medSearchInput').value = state.med.name;
             
-            effectiveConcentration = selectedMedicine.concentration ? { ...selectedMedicine.concentration } : null;
+            // Display Med Info
+            const disp = document.getElementById('selectedMedDisplay');
+            disp.innerHTML = `<strong>${state.med.name}</strong> (${state.med.type})<br>${state.med.notes ? `<span style="color:red">⚠️ ${state.med.notes}</span>` : ''}`;
+            disp.classList.remove('hidden');
             
-            document.getElementById('medicineInfo').innerHTML = `
-                <div class="info-box"><strong>${selectedMedicine.name}</strong> (${selectedMedicine.type})<br>
-                ${selectedMedicine.concentration ? `Default: ${selectedMedicine.concentration.value} ${selectedMedicine.concentration.unit}/${selectedMedicine.concentration.per}` : ''}</div>
-            `;
-            
-            const defConc = selectedMedicine.concentration || {value:'', unit:'mg', per:'ml'};
-            document.getElementById('editableConcentration').innerHTML = `
-                <div class="editable-concentration">
-                    <h4>✏️ Concentration (Editable)</h4>
-                    <div class="input-row">
-                        <input type="number" id="editConcValue" value="${defConc.value}" onchange="updateEffectiveConc()">
-                        <select id="editConcUnit" onchange="updateEffectiveConc()">
-                            <option value="mg/ml" ${defConc.unit==='mg' && defConc.per==='ml'?'selected':''}>mg/ml</option>
-                            <option value="mg/tablet" ${defConc.per==='tablet'?'selected':''}>mg/tablet</option>
-                            <option value="mg/capsule" ${defConc.per==='capsule'?'selected':''}>mg/capsule</option>
-                        </select>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('medicineInfo').classList.remove('hidden');
-            document.getElementById('editableConcentration').classList.remove('hidden');
             renderConditions();
         }
 
-        function updateEffectiveConc() {
-            const val = parseFloat(document.getElementById('editConcValue').value);
-            const [unit, per] = document.getElementById('editConcUnit').value.split('/');
-            if(val) effectiveConcentration = { value: val, unit, per };
-        }
-
         function renderConditions() {
-            if (!selectedAnimal || !selectedMedicine.animals || !selectedMedicine.animals[selectedAnimal]) {
-                document.getElementById('conditionSection').classList.add('hidden'); return;
-            }
-            const conditions = selectedMedicine.animals[selectedAnimal].conditions;
-            document.getElementById('conditionList').innerHTML = conditions.map((cond, idx) => `
-                <div class="condition-card" onclick="selectCondition(${idx})">
-                    <div class="condition-name"><strong>${cond.name}</strong> <span style="font-size:0.8em; color:var(--text-light); border:1px solid #ccc; border-radius:4px; padding:0 4px;">${cond.category || 'General'}</span></div>
-                    <div class="condition-details">${cond.dosage.value} ${cond.dosage.unit}/${cond.dosage.per} • ${cond.frequency}</div>
-                </div>
-            `).join('') + `<div class="condition-card other-card" onclick="selectCustomCondition()">➕ Custom Dosage</div>`;
-            document.getElementById('conditionSection').classList.remove('hidden');
-        }
-
-        function selectCondition(idx) {
-            selectedCondition = selectedMedicine.animals[selectedAnimal].conditions[idx];
-            isCustomCondition = false;
-            document.getElementById('customDosageForm').classList.add('hidden');
-            document.getElementById('weightSection').classList.remove('hidden');
-            document.getElementById('resultsSection').classList.add('hidden');
+            const list = document.getElementById('conditionList');
+            const data = state.med.animals[state.animal];
             
-            if(selectedAnimal === 'cow' || selectedAnimal === 'goat') {
-                document.getElementById('weightEstimator').innerHTML = `
-                    <div class="warning-box" style="margin-top:10px; cursor:pointer" onclick="openModal('weightEstimate')">
-                        📏 Don't have a scale? Click here to estimate weight.
-                    </div>
-                `;
-                document.getElementById('weightEstimator').classList.remove('hidden');
-            } else {
-                document.getElementById('weightEstimator').classList.add('hidden');
-            }
-        }
-
-        function selectCustomCondition() {
-            isCustomCondition = true; selectedCondition = null;
-            document.getElementById('customDosageForm').innerHTML = `
-                <h4>Custom Dosage</h4>
-                <div class="input-row"><input id="customDoseValue" placeholder="Dose"><select id="customDoseUnit"><option value="mg">mg</option><option value="ml">ml</option></select></div>
-                <div class="input-row"><input id="customFreq" placeholder="Frequency"><input id="customRoute" placeholder="Route"></div>
-                <input id="customNotes" placeholder="Notes">
-            `;
-            document.getElementById('customDosageForm').classList.remove('hidden');
-            document.getElementById('weightSection').classList.remove('hidden');
-        }
-
-        // --- FIND A MEDICINE TAB LOGIC ---
-        function renderFindTab() {
-             document.getElementById('findAnimalGrid').innerHTML = database.animals.map(animal => `
-                <div class="animal-btn" data-find-id="${animal.id}" onclick="selectFindAnimal('${animal.id}')">
-                    <span class="icon">${animal.icon}</span><span class="name">${animal.name}</span>
-                </div>
-            `).join('');
-        }
-
-        function selectFindAnimal(id) {
-            findAnimal = id;
-            document.querySelectorAll('#findAnimalGrid .animal-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.findId === id));
-            
-            // Get all conditions categories for this animal
-            const categories = new Set();
-            database.medicines.forEach(med => {
-                if(med.animals && med.animals[id]) {
-                    med.animals[id].conditions.forEach(c => {
-                        if(c.category) categories.add(c.category);
-                    });
-                }
-            });
-
-            const sortedCats = Array.from(categories).sort();
-            document.getElementById('findCategoryList').innerHTML = sortedCats.map(cat => 
-                `<button class="finder-cat-btn" onclick="selectFindCategory('${cat}')">${cat}</button>`
-            ).join('');
-            
-            document.getElementById('findCategoryCard').classList.remove('hidden');
-            document.getElementById('findResultsCard').classList.add('hidden');
-        }
-
-        function selectFindCategory(category) {
-            findCategory = category;
-            document.querySelectorAll('.finder-cat-btn').forEach(btn => btn.classList.toggle('selected', btn.innerText === category));
-
-            // Filter Meds
-            const matchingMeds = [];
-            database.medicines.forEach(med => {
-                if(med.animals && med.animals[findAnimal]) {
-                    const matchedConditions = med.animals[findAnimal].conditions.filter(c => c.category === category);
-                    if(matchedConditions.length > 0) {
-                        matchingMeds.push({ med, conditions: matchedConditions });
-                    }
-                }
-            });
-
-            document.getElementById('findResultsList').innerHTML = matchingMeds.map(item => `
-                <div class="finder-result" onclick="loadFoundMedicine('${item.med.id}', '${item.conditions[0].name}')" style="cursor:pointer">
+            list.innerHTML = data.conditions.map((c, idx) => `
+                <div class="med-result-item" onclick="selectCondition(${idx}, this)">
                     <div>
-                        <h3 style="color:var(--primary);">${item.med.name}</h3>
-                        <small>${item.med.type}</small>
-                        <ul style="margin-top:5px; padding-left:20px; color:var(--text-light); font-size:0.9em;">
-                            ${item.conditions.map(c => `<li>${c.name} (${c.dosage.value} ${c.dosage.unit}/${c.dosage.per})</li>`).join('')}
-                        </ul>
+                        <strong>${c.name}</strong> <small>(${c.category})</small>
+                        <div>Dosage: ${c.dosage.value}${c.dosage.valueMax ? '-'+c.dosage.valueMax : ''} ${c.dosage.unit}/${c.dosage.per}</div>
                     </div>
                     <div>➡️</div>
                 </div>
             `).join('');
-
-            document.getElementById('findResultsCard').classList.remove('hidden');
+            
+            document.getElementById('conditionCard').classList.remove('hidden');
+            document.getElementById('weightContainer').classList.add('hidden');
+            document.getElementById('resultsCard').classList.add('hidden');
         }
 
-        function loadFoundMedicine(medId, conditionName) {
-            // Switch tab
-            document.querySelector('[data-tab="calculator"]').click();
-            // Select Animal
-            selectAnimal(findAnimal);
-            // Select Med
-            document.getElementById('medicineSelect').value = medId;
-            selectMedicine(medId);
-            // Try to auto-select condition if possible, or just scroll to conditions
-            // We scroll to conditions to be safe
-            document.getElementById('conditionSection').scrollIntoView({ behavior: 'smooth' });
+        function selectCondition(idx, btn) {
+            document.querySelectorAll('.med-result-item').forEach(b => b.style.background = 'white');
+            btn.style.background = '#e8f5e8';
+            state.condition = state.med.animals[state.animal].conditions[idx];
+            document.getElementById('weightContainer').classList.remove('hidden');
+            document.getElementById('weightInput').focus();
         }
 
-        // --- CALCULATION LOGIC ---
         function calculateDosage() {
-            const weight = parseFloat(document.getElementById('weightInput').value);
-            if (!weight) return alert('Enter weight');
+            const wIn = parseFloat(document.getElementById('weightInput').value);
+            const wUnit = document.getElementById('weightUnit').value;
+            if(!wIn) return alert("Enter weight");
 
-            let condition = isCustomCondition ? {
-                name: 'Custom',
-                dosage: { value: parseFloat(document.getElementById('customDoseValue').value), unit: document.getElementById('customDoseUnit').value, per: weightUnit },
-                route: document.getElementById('customRoute').value,
-                frequency: document.getElementById('customFreq').value,
-                notes: document.getElementById('customNotes').value
-            } : selectedCondition;
+            const cond = state.condition;
+            const conc = state.med.concentration;
 
-            // Basic Unit Conversion logic
-            let doseVal = condition.dosage.value * weight; 
-            // Simple unit swap check
-            if (condition.dosage.per !== weightUnit && (condition.dosage.per === 'lb' || condition.dosage.per === 'kg')) {
-                let w = weight;
-                if(weightUnit === 'kg' && condition.dosage.per === 'lb') w = weight * 2.20462;
-                if(weightUnit === 'lb' && condition.dosage.per === 'kg') w = weight / 2.20462;
-                doseVal = condition.dosage.value * w;
-            }
+            // 1. Normalize Weight to 'lb' for logic if needed, or match per unit
+            let weight = wIn;
+            if(cond.dosage.per === 'lb' && wUnit === 'kg') weight = wIn * 2.20462;
+            if(cond.dosage.per === 'kg' && wUnit === 'lb') weight = wIn / 2.20462;
 
-            let vol = null;
-            let isPill = false;
-            let pillFraction = '';
+            // 2. Calc Dose Range
+            const minDose = cond.dosage.value * weight;
+            const maxDose = cond.dosage.valueMax ? cond.dosage.valueMax * weight : null;
 
-            if (effectiveConcentration) {
-                // If med unit is mcg and conc is mg, convert
-                let needed = doseVal;
-                if(condition.dosage.unit === 'mcg' && effectiveConcentration.unit === 'mg') needed = doseVal / 1000;
-                
-                vol = needed / effectiveConcentration.value;
-                isPill = (effectiveConcentration.per === 'tablet' || effectiveConcentration.per === 'capsule');
-                if(isPill) pillFraction = getPillFraction(vol);
-            }
-
-            lastCalculationData = { weight, weightUnit, doseVal, vol, isPill, condition, medicine: selectedMedicine, concentration: effectiveConcentration };
+            // 3. Calc Volume/Tablets if Conc exists
+            let minVol=null, maxVol=null, dispUnit=cond.dosage.unit;
             
-            // Build the Detailed Display HTML
-            let breakdownHTML = `
-                <div class="dosage-breakdown">
-                    <div class="dosage-step">
-                        <div class="step-num">1</div>
-                        <div class="step-content">
-                            <div class="step-label">Required dosage</div>
-                            <div class="step-value">${doseVal.toFixed(1)} ${condition.dosage.unit}</div>
-                        </div>
-                    </div>
-            `;
+            if(conc && conc.value) {
+                // Unit match check
+                let factor = 1;
+                if(cond.dosage.unit === 'mcg' && conc.unit === 'mg') factor = 0.001;
+                if(cond.dosage.unit === 'g' && conc.unit === 'mg') factor = 1000;
+
+                minVol = (minDose * factor) / conc.value;
+                if(maxDose) maxVol = (maxDose * factor) / conc.value;
+                dispUnit = conc.per;
+            }
+
+            // 4. Render
+            const fmt = (n) => n < 10 ? n.toPrecision(3) : Math.round(n);
+            let amountTxt = "";
+            let visualHTML = "";
             
-            let amountDisplay = '';
-
-            if(vol !== null) {
-                const amountUnit = effectiveConcentration.per;
-                const formattedAmt = isPill ? pillFraction : vol.toFixed(2);
-                
-                breakdownHTML += `
-                    <div class="dosage-step">
-                        <div class="step-num">2</div>
-                        <div class="step-content">
-                            <div class="step-label">Amount to give (${effectiveConcentration.value}${effectiveConcentration.unit}/${amountUnit})</div>
-                            <div class="step-value">${vol.toFixed(2)} ${amountUnit}(s)</div>
-                            ${isPill ? `
-                            <div class="pill-visual">
-                                <span class="pill-icon">💊</span>
-                                <div>
-                                    <div class="pill-fraction">${pillFraction} ${amountUnit}</div>
-                                    <div class="pill-percent">(${Math.round(vol*100)}% of 1 ${amountUnit})</div>
-                                </div>
-                            </div>` : ''}
-                        </div>
-                    </div>`;
-                amountDisplay = `${formattedAmt} ${amountUnit}(s)`;
-            } else {
-                amountDisplay = `${doseVal.toFixed(1)} ${condition.dosage.unit}`;
-            }
-
-            breakdownHTML += `</div>`;
-
-            // Action Buttons
-            let actionButtons = '';
-            if(isPill) {
-                actionButtons += `<button class="btn btn-secondary" onclick="openPillSuspensionWithData()">💧 Make Suspension</button>`;
-            }
-            actionButtons += `<button class="btn btn-primary" onclick="openTreatmentSheet()">📋 Treatment Sheet</button>`;
-
-            document.getElementById('resultsBox').innerHTML = `
-                <div class="result-label">Give this animal:</div>
-                <div class="result-main">${amountDisplay}</div>
-                <div class="result-label">of ${selectedMedicine.name}</div>
-                ${breakdownHTML}
-                <div class="result-detail"><strong>Route:</strong> ${condition.route}</div>
-                <div class="result-detail"><strong>Frequency:</strong> ${condition.frequency}</div>
-                ${condition.notes ? `<div class="info-box"><strong>Note:</strong> ${condition.notes}</div>` : ''}
-                <div class="result-actions">${actionButtons}</div>
-            `;
-            document.getElementById('resultsSection').classList.remove('hidden');
-            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function getPillFraction(decimal) {
-            const fractions = [
-                { val: 0.125, str: '⅛' }, { val: 0.25, str: '¼' }, { val: 0.333, str: '⅓' }, 
-                { val: 0.5, str: '½' }, { val: 0.666, str: '⅔' }, { val: 0.75, str: '¾' }, 
-                { val: 1, str: '1' }, { val: 1.25, str: '1¼' }, { val: 1.5, str: '1½' }, { val: 2, str: '2' }
-            ];
-            let closest = fractions[0];
-            let minDiff = Math.abs(decimal - closest.val);
-            for (const f of fractions) {
-                const diff = Math.abs(decimal - f.val);
-                if (diff < minDiff) { minDiff = diff; closest = f; }
-            }
-            if (minDiff < 0.1) return closest.str;
-            return decimal.toFixed(1);
-        }
-
-        function openPillSuspensionWithData() {
-            if(!lastCalculationData) return;
-            openModal('pillSuspension');
-            if(lastCalculationData.concentration) {
-                document.getElementById('pillStrength').value = lastCalculationData.concentration.value;
-            }
-            document.getElementById('targetDose').value = lastCalculationData.doseVal.toFixed(2);
-            calcSuspension();
-        }
-
-        // --- Treatment Sheet Logic ---
-        function openTreatmentSheet() {
-            if (!lastCalculationData) return;
-            const cond = lastCalculationData.condition;
-            const daysMatch = (cond.duration || "").match(/(\d+)/);
-            if(daysMatch) document.getElementById('sheetDays').value = daysMatch[1];
-            regenerateSheet();
-            openModal('treatmentSheet');
-        }
-
-        function regenerateSheet() {
-            const data = lastCalculationData;
-            const days = parseInt(document.getElementById('sheetDays').value) || 7;
-            const times = parseInt(document.getElementById('sheetTimesPerDay').value) || 1;
-            const start = new Date(document.getElementById('sheetStartDate').value);
-            const notes = document.getElementById('sheetNotes').value;
-            const animal = document.getElementById('sheetAnimalName').value || "________________";
-
-            // Determine dosage display text
-            let doseDisplay;
-            if(data.vol) {
-                 doseDisplay = data.isPill ? `${getPillFraction(data.vol)} ${data.concentration.per}(s)` : `${data.vol.toFixed(2)} ml`;
-                 doseDisplay += ` (${data.doseVal.toFixed(1)} ${data.condition.dosage.unit})`;
-            } else {
-                 doseDisplay = `${data.doseVal.toFixed(1)} ${data.condition.dosage.unit}`;
-            }
-
-            let rows = '';
-            for(let i=0; i<days; i++) {
-                let d = new Date(start); d.setDate(d.getDate() + i);
-                let dateStr = d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
-                let checks = '';
-                for(let t=0; t<times; t++) checks += `<td class="check-cell"></td>`;
-                rows += `<tr><td>Day ${i+1}<br><small>${dateStr}</small></td>${checks}<td></td></tr>`;
-            }
-
-            let timeHeaders = '';
-            for(let t=0; t<times; t++) timeHeaders += `<th>Dose ${t+1}</th>`;
-
-            document.getElementById('treatmentSheetContent').innerHTML = `
-                <div class="treatment-header">
-                    <h2>🐾 Treatment Record</h2>
-                </div>
-                <div class="treatment-info-grid">
-                    <div class="treatment-info-item"><span class="ti-label">Animal</span><br><span class="ti-value">${animal}</span></div>
-                    <div class="treatment-info-item"><span class="ti-label">Weight</span><br><span class="ti-value">${data.weight} ${data.weightUnit}</span></div>
-                    <div class="treatment-info-item"><span class="ti-label">Medicine</span><br><span class="ti-value">${data.medicine.name}</span></div>
-                    <div class="treatment-info-item"><span class="ti-label">Dose</span><br><span class="ti-value">${doseDisplay}</span></div>
-                    <div class="treatment-info-item"><span class="ti-label">Route</span><br><span class="ti-value">${data.condition.route}</span></div>
-                    <div class="treatment-info-item"><span class="ti-label">Freq</span><br><span class="ti-value">${data.condition.frequency}</span></div>
-                </div>
-                ${notes ? `<div class="info-box" style="margin:5px 0; font-size:0.9em;"><strong>Note:</strong> ${notes}</div>` : ''}
-                <table class="treatment-table">
-                    <thead><tr><th>Date</th>${timeHeaders}<th>Initials/Notes</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-                <div class="treatment-notes-section">
-                    <small>Notes:</small>
-                    <div class="treatment-notes-lines">
-                        <div class="note-line"></div><div class="note-line"></div><div class="note-line"></div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function printSheet() { window.print(); }
-
-        // --- Database & Editing ---
-        function renderDatabaseList() {
-            document.getElementById('databaseList').innerHTML = database.medicines.map(med => `
-                <div class="card" style="margin:10px 0; display:flex; justify-content:space-between; align-items:center; background:#f9f9f9;">
-                    <div>
-                        <h3 style="margin:0;">${med.name}</h3>
-                        <small>${med.type} • ${med.concentration ? med.concentration.value + ' ' + med.concentration.unit : 'No Conc'}</small>
-                    </div>
-                    <button class="btn btn-outline btn-small" onclick="editMedicine('${med.id}')">✏️ Edit / Load</button>
-                </div>
-            `).join('');
-        }
-
-        function editMedicine(id) {
-            const med = database.medicines.find(m => m.id === id);
-            if (!med) return;
-            document.getElementById('newMedName').value = med.name;
-            document.getElementById('newMedType').value = med.type;
-            document.getElementById('newMedUsage').value = med.usage || '';
-            if (med.concentration) {
-                document.getElementById('newMedConc').value = med.concentration.value;
-                document.getElementById('newMedConcUnit').value = `${med.concentration.unit}/${med.concentration.per}`;
-            }
-            document.getElementById('newMedStorage').value = med.storage || '';
-            document.getElementById('newMedNotes').value = med.notes || '';
-
-            const container = document.getElementById('dosingEntries');
-            container.innerHTML = ''; 
-            
-            let hasConditions = false;
-            if (med.animals) {
-                for (const [animal, data] of Object.entries(med.animals)) {
-                    data.conditions.forEach(cond => {
-                        hasConditions = true;
-                        const div = document.createElement('div');
-                        div.className = 'dosing-entry card';
-                        div.style.background = '#f9f9f9';
-                        div.innerHTML = `
-                             <div class="input-row"><div class="form-group"><label>Animal</label><select class="dosingAnimal"><option value="cat">Cat</option><option value="dog">Dog</option><option value="cow">Cow</option><option value="pig">Pig</option><option value="goat">Goat</option></select></div><div class="form-group"><label>Condition</label><input class="dosingCondition" value="${cond.name}"></div></div>
-                             <div class="input-row"><div class="form-group"><label>Dosage</label><input type="number" class="dosingValue" value="${cond.dosage.value}"></div><div class="form-group"><label>Unit</label><select class="dosingUnit"><option value="mg/lb">mg/lb</option><option value="ml/lb">ml/lb</option></select></div></div>
-                             <div class="input-row"><div class="form-group"><label>Route</label><select class="dosingRoute"><option value="SubQ">SubQ</option><option value="IM">IM</option><option value="Oral">Oral</option></select></div><div class="form-group"><label>Freq</label><input class="dosingFrequency" value="${cond.frequency}"></div></div>
-                        `;
-                        div.querySelector('.dosingAnimal').value = animal;
-                        div.querySelector('.dosingUnit').value = `${cond.dosage.unit}/${cond.dosage.per}`;
-                        div.querySelector('.dosingRoute').value = cond.route;
-                        container.appendChild(div);
-                    });
+            if(minVol !== null) {
+                // Formatting for Pills vs Liquid
+                if(dispUnit === 'tablet' || dispUnit === 'capsule') {
+                    const frac = getFraction(minVol);
+                    amountTxt = frac + (maxVol ? ` - ${getFraction(maxVol)}` : '');
+                    visualHTML = `<span style="font-size:1.5em">💊</span> <strong>${frac}</strong>`;
+                    document.getElementById('suspensionBtn').style.display = 'block';
+                    lastCalc = { dose: minDose }; // Save for suspension tool
+                } else {
+                    amountTxt = minVol.toFixed(2) + (maxVol ? ` - ${maxVol.toFixed(2)}` : '');
+                    visualHTML = "";
+                    document.getElementById('suspensionBtn').style.display = 'none';
                 }
+                amountTxt += ` ${dispUnit}`;
+            } else {
+                amountTxt = fmt(minDose) + (maxDose ? ` - ${fmt(maxDose)}` : '') + ` ${cond.dosage.unit}`;
+                document.getElementById('suspensionBtn').style.display = 'none';
             }
-            if(!hasConditions) addDosingEntry();
-            document.querySelector('[data-tab="add-medicine"]').click();
-            window.scrollTo(0,0);
-            document.getElementById('saveStatus').innerHTML = '<div class="status-message info-box">Editing ' + med.name + '. Save to update.</div>';
-        }
 
-        function reconstructKey(p) {
-            let k=CONFIG.MASKED_KEY.split('');
-            for(let i=0;i<k.length;i++) if(k[i]==='#') for(let[pp,kp]of Object.entries(CONFIG.KEY_MAP)) if(kp-1===i) { k[i]=p[pp-1]||''; break; }
-            return k.join('');
-        }
+            document.getElementById('resAmount').innerText = amountTxt;
+            document.getElementById('resVisual').innerHTML = visualHTML;
+            document.getElementById('resVisual').classList.remove('hidden');
+            if(!visualHTML) document.getElementById('resVisual').classList.add('hidden');
 
-        async function saveNewMedicine(toGithub) {
-            const name = document.getElementById('newMedName').value;
-            if(!name) return alert('Name required');
-            const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-            const concVal = parseFloat(document.getElementById('newMedConc').value);
-            const [cUnit, cPer] = document.getElementById('newMedConcUnit').value.split('/');
+            document.getElementById('resMedName').innerText = state.med.name;
+            document.getElementById('resRoute').innerText = cond.route;
+            document.getElementById('resFreq').innerText = cond.frequency;
+            document.getElementById('resDuration').innerText = cond.duration;
+            document.getElementById('resTotalDose').innerText = minDose.toFixed(1) + " " + cond.dosage.unit;
             
-            const animals = {};
-            document.querySelectorAll('.dosing-entry').forEach(entry => {
-                const an = entry.querySelector('.dosingAnimal').value;
-                const cond = entry.querySelector('.dosingCondition').value;
-                if(cond) {
-                    if(!animals[an]) animals[an] = {conditions:[]};
-                    const dVal = parseFloat(entry.querySelector('.dosingValue').value);
-                    const [dUnit, dPer] = entry.querySelector('.dosingUnit').value.split('/');
-                    animals[an].conditions.push({
-                        name: cond,
-                        dosage: { value: dVal, unit: dUnit, per: dPer },
-                        route: entry.querySelector('.dosingRoute').value,
-                        frequency: entry.querySelector('.dosingFrequency').value || 'Daily'
-                    });
+            const n = document.getElementById('resNotes');
+            if(cond.notes) { n.innerText = cond.notes; n.style.display = 'block'; }
+            else n.style.display = 'none';
+
+            document.getElementById('resultsCard').classList.remove('hidden');
+            document.getElementById('resultsCard').scrollIntoView({behavior:'smooth'});
+        }
+
+        function getFraction(dec) {
+            const d = dec % 1;
+            const base = Math.floor(dec);
+            if(d < 0.1) return base || "0";
+            if(d > 0.9) return base + 1;
+            if(d >= 0.2 && d <= 0.3) return (base ? base + " " : "") + "¼";
+            if(d >= 0.4 && d <= 0.6) return (base ? base + " " : "") + "½";
+            if(d >= 0.7 && d <= 0.8) return (base ? base + " " : "") + "¾";
+            return dec.toFixed(1);
+        }
+
+        // --- FIND MEDS TAB LOGIC ---
+        function selectFindAnimal(id, btn) {
+            state.findAnimal = id;
+            document.querySelectorAll('#findAnimalGrid .animal-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            
+            // Extract Categories
+            const cats = new Set();
+            db.medicines.forEach(m => {
+                if(m.animals && m.animals[id]) {
+                    m.animals[id].conditions.forEach(c => cats.add(c.category));
                 }
             });
 
-            const newMed = {
-                id, name, type: document.getElementById('newMedType').value,
-                usage: document.getElementById('newMedUsage').value,
-                concentration: concVal ? { value: concVal, unit: cUnit, per: cPer } : null,
-                storage: document.getElementById('newMedStorage').value,
-                notes: document.getElementById('newMedNotes').value,
-                animals
-            };
-
-            let localMeds = JSON.parse(localStorage.getItem('customMedicines') || '[]');
-            localMeds = localMeds.filter(m => m.id !== id);
-            localMeds.push(newMed);
-            localStorage.setItem('customMedicines', JSON.stringify(localMeds));
-            
-            // Fix: Update database.medicines, handling the potential array structure
-            const existingIdx = database.medicines.findIndex(m => m.id === id);
-            if(existingIdx >= 0) database.medicines[existingIdx] = newMed;
-            else database.medicines.push(newMed);
-            
-            renderDatabaseList();
-
-            if(toGithub) {
-                const pw = document.getElementById('githubPassword').value;
-                if(!pw) return document.getElementById('saveStatus').innerHTML = '<div class="warning-box">Password required for GitHub</div>';
-                
-                try {
-                    const key = reconstructKey(pw);
-                    const r1 = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`, {headers:{'Authorization':`token ${key}`}});
-                    const d1 = await r1.json();
-                    
-                    // Decode current content
-                    let currentData = JSON.parse(atob(d1.content));
-                    
-                    // Logic to update the content based on its structure (array vs object)
-                    if (Array.isArray(currentData)) {
-                        // It's the new array format
-                        const cIdx = currentData.findIndex(m => m.id === id);
-                        if(cIdx >= 0) currentData[cIdx] = newMed;
-                        else currentData.push(newMed);
-                    } else {
-                        // It's the old object format
-                        if(!currentData.customMedicines) currentData.customMedicines = [];
-                        const cIdx = currentData.customMedicines.findIndex(m => m.id === id);
-                        if(cIdx >= 0) currentData.customMedicines[cIdx] = newMed;
-                        else currentData.customMedicines.push(newMed);
-                    }
-
-                    const r2 = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DB_FILE}`, {
-                        method:'PUT',
-                        headers:{'Authorization':`token ${key}`},
-                        body: JSON.stringify({
-                            message: `Update ${name}`,
-                            content: btoa(JSON.stringify(currentData, null, 2)),
-                            sha: d1.sha
-                        })
-                    });
-                    if(!r2.ok) throw new Error('Failed');
-                    document.getElementById('saveStatus').innerHTML = '<div class="info-box" style="background:#d4edda; color:#155724">Saved to GitHub!</div>';
-                } catch(e) {
-                    console.error(e);
-                    document.getElementById('saveStatus').innerHTML = '<div class="warning-box">GitHub save failed. Saved locally only.</div>';
-                }
+            const catList = document.getElementById('categoryList');
+            if(cats.size === 0) {
+                catList.innerHTML = "No medicines found.";
             } else {
-                document.getElementById('saveStatus').innerHTML = '<div class="info-box" style="background:#d4edda; color:#155724">Saved Locally!</div>';
+                catList.innerHTML = Array.from(cats).sort().map(c => 
+                    `<div class="cat-btn" onclick="filterByCat('${c}', this)">${c}</div>`
+                ).join('');
             }
+            document.getElementById('findCategoryCard').classList.remove('hidden');
+            document.getElementById('findResultsCard').classList.add('hidden');
         }
 
-        // Helpers
-        function addDosingEntry() {
-            const tmpl = document.querySelector('.dosing-entry');
-            const clone = tmpl.cloneNode(true);
-            clone.querySelectorAll('input').forEach(i => i.value = '');
-            document.getElementById('dosingEntries').appendChild(clone);
+        function filterByCat(cat, btn) {
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            
+            const matches = [];
+            db.medicines.forEach(m => {
+                if(m.animals && m.animals[state.findAnimal]) {
+                    const conds = m.animals[state.findAnimal].conditions.filter(c => c.category === cat);
+                    if(conds.length) matches.push({ m, conds });
+                }
+            });
+
+            document.getElementById('findMedList').innerHTML = matches.map(item => `
+                <div class="med-result-item" onclick="loadFoundMed('${item.m.id}')">
+                    <div>
+                        <strong>${item.m.name}</strong>
+                        <div style="font-size:0.85em; color:#666;">${item.conds.map(c=>c.name).join(', ')}</div>
+                    </div>
+                    <div>➡️</div>
+                </div>
+            `).join('');
+            document.getElementById('findResultsCard').classList.remove('hidden');
         }
+
+        function loadFoundMed(id) {
+            document.querySelector('[data-tab="calculator"]').click();
+            // Simulate selection
+            const btn = document.querySelector(`#calcAnimalGrid .animal-btn[data-id="${state.findAnimal}"]`);
+            if(btn) btn.click();
+            selectMed(id);
+        }
+
+        // --- TOOLS ---
         function openModal(id) { document.getElementById(id+'Modal').classList.add('active'); }
         function closeModal(id) { document.getElementById(id+'Modal').classList.remove('active'); }
         
-        // Modal Calcs
-        function calcPercent() { document.getElementById('percentConc').innerText = (parseFloat(document.getElementById('percentInput').value)*10) + ' mg/ml'; }
-        function calcSuspension() {
-            const s = parseFloat(document.getElementById('pillStrength').value), t = parseFloat(document.getElementById('targetDose').value), l = parseFloat(document.getElementById('liquidSlider').value);
-            if(s&&l) {
-                const c = s/l; document.getElementById('suspConc').innerText = c.toFixed(2) + ' mg/ml';
-                if(t) document.getElementById('doseVolume').innerText = (t/c).toFixed(2);
+        // Tool Functions
+        function runPercentCalc() {
+            const p = parseFloat(document.getElementById('pcPercent').value);
+            document.getElementById('pcResult').innerText = (p ? (p*10) : 0) + " mg/ml";
+        }
+
+        function openSuspensionTool() {
+            if(lastCalc) document.getElementById('psTarget').value = lastCalc.dose.toFixed(1);
+            if(state.med && state.med.concentration) document.getElementById('psStrength').value = state.med.concentration.value;
+            openModal('pillSuspension');
+            runSuspensionCalc();
+        }
+
+        function runSuspensionCalc() {
+            const s = parseFloat(document.getElementById('psStrength').value);
+            const l = parseFloat(document.getElementById('psLiquid').value);
+            const t = parseFloat(document.getElementById('psTarget').value);
+            
+            if(s && l) {
+                const c = s/l;
+                document.getElementById('psConc').innerText = c.toFixed(1) + " mg/ml";
+                if(t) document.getElementById('psDoseVol').innerText = (t/c).toFixed(2) + " ml";
             }
         }
-        function convertUnits() {
-            const v=parseFloat(document.getElementById('convertValue').value), u=document.getElementById('convertFrom').value;
-            let res = '';
-            if(u==='kg') res = `${(v*2.204).toFixed(2)} lb`;
-            if(u==='lb') res = `${(v/2.204).toFixed(2)} kg`;
-            if(u==='ml') res = `${v} cc`;
-            document.getElementById('conversionResults').innerHTML = `<div class="result-main">${res}</div>`;
+
+        function runUnitConv() {
+            const v = parseFloat(document.getElementById('ucValue').value);
+            const t = document.getElementById('ucType').value;
+            if(isNaN(v)) return;
+            let res = 0, unit = "";
+            if(t === 'kg_lb') { res = v*2.20462; unit="lb"; }
+            if(t === 'lb_kg') { res = v/2.20462; unit="kg"; }
+            if(t === 'c_f') { res = (v*9/5)+32; unit="°F"; }
+            if(t === 'f_c') { res = (v-32)*5/9; unit="°C"; }
+            document.getElementById('ucResult').innerText = res.toFixed(2) + " " + unit;
         }
-        function estimateWeight() {
-            const g = parseFloat(document.getElementById('heartGirth').value), l = parseFloat(document.getElementById('bodyLength').value);
-            if(g&&l) document.getElementById('estimatedWeightResult').innerText = Math.round((g*g*l)/300) + " lbs";
+
+        function runWeightEst() {
+            const g = parseFloat(document.getElementById('weGirth').value);
+            const l = parseFloat(document.getElementById('weLength').value);
+            if(g && l) {
+                document.getElementById('weResult').innerText = Math.round((g*g*l)/300) + " lb";
+            }
         }
-        function useEstimatedWeight() {
-            const txt = document.getElementById('estimatedWeightResult').innerText;
-            if(txt.includes('lbs')) {
+
+        function applyEstimatedWeight() {
+            const txt = document.getElementById('weResult').innerText;
+            if(txt.includes('lb')) {
                 document.getElementById('weightInput').value = parseInt(txt);
+                document.getElementById('weightUnit').value = 'lb';
                 closeModal('weightEstimate');
             }
         }
+
+        // --- JSON EDITOR ---
+        function loadCustomJson() {
+            try {
+                const j = JSON.parse(document.getElementById('jsonInput').value);
+                db.medicines = Array.isArray(j) ? j : j.medicines;
+                localStorage.setItem('farmMedsDB', JSON.stringify(db.medicines));
+                alert("Database updated!");
+                location.reload();
+            } catch(e) { alert("Invalid JSON"); }
+        }
+        function clearCustomJson() {
+            if(confirm("Reset to defaults?")) {
+                localStorage.removeItem('farmMedsDB');
+                location.reload();
+            }
+        }
+
     </script>
 </body>
 </html>
