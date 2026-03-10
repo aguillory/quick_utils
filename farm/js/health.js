@@ -17,57 +17,6 @@ let selectedBulkAnimals = new Set();
 let showAllFarmsAnimals = false;
 let showAllFarmsDashboard = false; // Toggle for main dashboard
 
-
-// Event types configuration
-const EVENT_TYPES = {
-    'Vaccination': { icon: 'fa-syringe', color: 'var(--primary-color)', hasWithdrawal: true, hasFollowup: true },
-    'Deworming': { icon: 'fa-pills', color: 'var(--warning-color)', hasWithdrawal: true, hasFollowup: true },
-    'Hoof/Foot Trimming': { icon: 'fa-shoe-prints', color: 'var(--secondary-color)', hasWithdrawal: false, hasFollowup: true },
-    'Disbudding/Dehorning': { icon: 'fa-fire', color: 'var(--danger-color)', hasWithdrawal: false, hasFollowup: false },
-    'Banding/Castration': { icon: 'fa-cut', color: 'var(--danger-color)', hasWithdrawal: false, hasFollowup: true },
-    'Shearing/Grooming': { icon: 'fa-scissors', color: 'var(--success-color)', hasWithdrawal: false, hasFollowup: true },
-    'Veterinary Visit': { icon: 'fa-user-md', color: 'var(--primary-color)', hasWithdrawal: true, hasFollowup: true },
-    'Illness/Injury': { icon: 'fa-band-aid', color: 'var(--danger-color)', hasWithdrawal: true, hasFollowup: true },
-    'Surgery': { icon: 'fa-procedures', color: 'var(--danger-color)', hasWithdrawal: true, hasFollowup: true },
-    'Dental Care': { icon: 'fa-tooth', color: 'var(--secondary-color)', hasWithdrawal: false, hasFollowup: true },
-    'Fecal Test': { icon: 'fa-vial', color: 'var(--warning-color)', hasWithdrawal: false, hasFollowup: true },
-    'Blood Test': { icon: 'fa-tint', color: 'var(--danger-color)', hasWithdrawal: false, hasFollowup: true },
-    'Other': { icon: 'fa-notes-medical', color: 'var(--secondary-color)', hasWithdrawal: true, hasFollowup: true }
-};
-
-// ============================================================
-// DATE HELPER FUNCTIONS - Fixed for timezone issues
-// ============================================================
-function parseLocalDate(dateString) {
-    // Parse a date string (YYYY-MM-DD) as local time, not UTC
-    if (!dateString) return null;
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
-}
-
-function getLocalDateOnly(date) {
-    // Get a date object with only the date part (no time), in local timezone
-    if (!date) return null;
-    if (date.toDate) date = date.toDate(); // Handle Firestore Timestamp
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function getTodayLocal() {
-    // Get today's date at midnight local time
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
-
-function formatDateForInput(date) {
-    // Format a date for an input[type="date"] field
-    if (!date) return '';
-    if (date.toDate) date = date.toDate();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -218,7 +167,7 @@ function populateFilters() {
     const typeFilter = document.getElementById('recordsTypeFilter');
     if (typeFilter) {
         typeFilter.innerHTML = '<option value="all">All Types</option>';
-        Object.keys(EVENT_TYPES).forEach(type => {
+        Object.keys(window.EVENT_TYPES).forEach(type => {
             typeFilter.innerHTML += `<option value="${type}">${type}</option>`;
         });
     }
@@ -575,7 +524,7 @@ function renderTasks(filter = 'all') {
     
     container.innerHTML = tasks.map(task => {
         const animal = findAnimal(task.animalId);
-        const eventConfig = EVENT_TYPES[task.eventType] || EVENT_TYPES['Other'];
+        const eventConfig = getEventConfig(task.eventType);
         const dueDate = task.dueDate?.toDate();
         
         let statusClass = '';
@@ -676,7 +625,7 @@ function renderRecords(speciesFilter = 'all', typeFilter = 'all') {
     
     container.innerHTML = records.map(record => {
         const animal = findAnimal(record.animalId);
-        const eventConfig = EVENT_TYPES[record.eventType] || EVENT_TYPES['Other'];
+        const eventConfig = getEventConfig(record.eventType);
         const eventDate = record.eventDate?.toDate();
         
         const hasWithdrawal = record.withdrawal && 
@@ -1074,7 +1023,7 @@ function viewRecord(recordId) {
     if (!record) return;
     
     const animal = findAnimal(record.animalId);
-    const eventConfig = EVENT_TYPES[record.eventType] || EVENT_TYPES['Other'];
+    const eventConfig = getEventConfig(record.eventType);
     const eventDate = record.eventDate?.toDate();
     
     let withdrawalHTML = '';
@@ -1215,7 +1164,7 @@ async function saveHealthRecord(e) {
     const recordId = document.getElementById('recordId').value;
     const linkedTaskId = document.getElementById('recordLinkedTaskId').value;
     
-    // Parse date as local time
+    // Parse date as local time (Shared Util)
     const eventDate = parseLocalDate(document.getElementById('recordDate').value);
     
     // Build withdrawal data
@@ -1225,19 +1174,14 @@ async function saveHealthRecord(e) {
     const eggsDays = parseInt(document.getElementById('withdrawalEggs').value) || 0;
     
     if (meatDays > 0) {
-        const endDate = new Date(eventDate);
-        endDate.setDate(endDate.getDate() + meatDays);
-        withdrawal.meat = { days: meatDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        // Shared Util
+        withdrawal.meat = { days: meatDays, endDate: addDaysToTimestamp(eventDate, meatDays) };
     }
     if (dairyDays > 0) {
-        const endDate = new Date(eventDate);
-        endDate.setDate(endDate.getDate() + dairyDays);
-        withdrawal.dairy = { days: dairyDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        withdrawal.dairy = { days: dairyDays, endDate: addDaysToTimestamp(eventDate, dairyDays) };
     }
     if (eggsDays > 0) {
-        const endDate = new Date(eventDate);
-        endDate.setDate(endDate.getDate() + eggsDays);
-        withdrawal.eggs = { days: eggsDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        withdrawal.eggs = { days: eggsDays, endDate: addDaysToTimestamp(eventDate, eggsDays) };
     }
     
     const animal = findAnimal(document.getElementById('recordAnimal').value);
@@ -1385,19 +1329,13 @@ async function completeTask(e) {
     const eggsDays = parseInt(document.getElementById('completeWithdrawalEggs').value) || 0;
     
     if (meatDays > 0) {
-        const endDate = new Date(completionDate);
-        endDate.setDate(endDate.getDate() + meatDays);
-        withdrawal.meat = { days: meatDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        withdrawal.meat = { days: meatDays, endDate: addDaysToTimestamp(completionDate, meatDays) };
     }
     if (dairyDays > 0) {
-        const endDate = new Date(completionDate);
-        endDate.setDate(endDate.getDate() + dairyDays);
-        withdrawal.dairy = { days: dairyDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        withdrawal.dairy = { days: dairyDays, endDate: addDaysToTimestamp(completionDate, dairyDays) };
     }
     if (eggsDays > 0) {
-        const endDate = new Date(completionDate);
-        endDate.setDate(endDate.getDate() + eggsDays);
-        withdrawal.eggs = { days: eggsDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+        withdrawal.eggs = { days: eggsDays, endDate: addDaysToTimestamp(completionDate, eggsDays) };
     }
     
     try {
@@ -1518,19 +1456,13 @@ async function saveBulkRecords(e) {
             if (recordType === 'record') {
                 const withdrawal = {};
                 if (meatDays > 0) {
-                    const endDate = new Date(eventDate);
-                    endDate.setDate(endDate.getDate() + meatDays);
-                    withdrawal.meat = { days: meatDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+                    withdrawal.meat = { days: meatDays, endDate: addDaysToTimestamp(eventDate, meatDays) };
                 }
                 if (dairyDays > 0) {
-                    const endDate = new Date(eventDate);
-                    endDate.setDate(endDate.getDate() + dairyDays);
-                    withdrawal.dairy = { days: dairyDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+                    withdrawal.dairy = { days: dairyDays, endDate: addDaysToTimestamp(eventDate, dairyDays) };
                 }
                 if (eggsDays > 0) {
-                    const endDate = new Date(eventDate);
-                    endDate.setDate(endDate.getDate() + eggsDays);
-                    withdrawal.eggs = { days: eggsDays, endDate: firebase.firestore.Timestamp.fromDate(endDate) };
+                    withdrawal.eggs = { days: eggsDays, endDate: addDaysToTimestamp(eventDate, eggsDays) };
                 }
                 
                 const recordRef = window.db.collection('healthRecords').doc();

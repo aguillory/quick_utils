@@ -20,8 +20,8 @@ firebase.auth().onAuthStateChanged((user) => {
 
 async function loadUserFarm() {
     try {
-        const farmDoc = await firebase.firestore()
-            .collection('farms')
+        // Use window.db standard
+        const farmDoc = await window.db.collection('farms')
             .doc(currentUser.uid)
             .get();
         
@@ -49,7 +49,7 @@ async function loadUserFarm() {
 
 async function loadSpecies() {
     try {
-        const speciesSnapshot = await firebase.firestore().collection('species').get();
+        const speciesSnapshot = await window.db.collection('species').get();
         allSpecies = [];
         const speciesSelect = document.getElementById('animalSpecies');
         const filterSelect = document.getElementById('speciesFilter');
@@ -71,8 +71,7 @@ async function loadSpecies() {
 
 async function loadAnimals() {
     try {
-        const animalsSnapshot = await firebase.firestore()
-            .collection('animals')
+        const animalsSnapshot = await window.db.collection('animals')
             .orderBy('createdAt', 'desc')
             .get();
         
@@ -87,7 +86,7 @@ async function loadAnimals() {
 
 async function loadAllFarms() {
     try {
-        const farmsSnapshot = await firebase.firestore().collection('farms').get();
+        const farmsSnapshot = await window.db.collection('farms').get();
         const select = document.getElementById('animalOwnerFarm');
         select.innerHTML = '';
         farmsSnapshot.forEach((doc) => {
@@ -138,6 +137,7 @@ function createAnimalCard(animal) {
         ? `<img src="${animal.photo}" alt="${animal.name}" class="animal-photo-img">`
         : `<div class="no-photo-placeholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f5f5f5;color:#ccc;"><i class="fas fa-paw"></i></div>`;
 
+    // Uses calculateAge from shared.js
     card.innerHTML = `
         <div class="animal-photo-wrapper">
             ${photoHtml}
@@ -164,26 +164,6 @@ function createAnimalCard(animal) {
     return card;
 }
 
-function calculateAge(birthDate) {
-    const birth = new Date(birthDate);
-    const today = new Date();
-    const months = (today.getFullYear() - birth.getFullYear()) * 12 + 
-                   (today.getMonth() - birth.getMonth());
-    
-    if (months < 12) {
-        return `${months} month${months !== 1 ? 's' : ''}`;
-    } else {
-        const years = Math.floor(months / 12);
-        return `${years} year${years !== 1 ? 's' : ''}`;
-    }
-}
-
-function formatDate(dateString) {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
 // === Modal Management ===
 const modal = document.getElementById('animalModal');
 const addAnimalBtn = document.getElementById('addAnimalBtn');
@@ -200,7 +180,7 @@ deleteBtn.onclick = async () => {
     if (!editingAnimalId) return;
     if (confirm('Are you sure you want to delete this animal? This action cannot be undone.')) {
         try {
-            await firebase.firestore().collection('animals').doc(editingAnimalId).delete();
+            await window.db.collection('animals').doc(editingAnimalId).delete();
             closeModal();
             loadAnimals().then(() => filterAnimals());
         } catch (error) {
@@ -210,39 +190,18 @@ deleteBtn.onclick = async () => {
     }
 };
 
-// Handle photo upload
-document.getElementById('animalPhotoFile').addEventListener('change', function(e) {
+// Handle photo upload - Uses processImageUpload from shared.js
+document.getElementById('animalPhotoFile').addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 2000000) {
-            alert('Image file size should be less than 2MB');
+        try {
+            const dataUrl = await processImageUpload(file);
+            document.getElementById('animalPhotoPreview').innerHTML = `<img src="${dataUrl}" alt="Photo preview" style="max-width: 200px; max-height: 200px; border-radius: 4px;">`;
+            document.getElementById('animalPhotoData').value = dataUrl;
+        } catch (error) {
+            alert(error.message);
             e.target.value = '';
-            return;
         }
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                let width = img.width;
-                let height = img.height;
-                const maxSize = 800;
-                if (width > height) {
-                    if (width > maxSize) { height = height * (maxSize / width); width = maxSize; }
-                } else {
-                    if (height > maxSize) { width = width * (maxSize / height); height = maxSize; }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-                const resizedImage = canvas.toDataURL('image/jpeg', 0.8);
-                document.getElementById('animalPhotoPreview').innerHTML = `<img src="${resizedImage}" alt="Photo preview" style="max-width: 200px; max-height: 200px; border-radius: 4px;">`;
-                document.getElementById('animalPhotoData').value = resizedImage;
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
     }
 });
 
@@ -315,7 +274,7 @@ function loadCustomFields(species) {
 
 async function loadParentOptions(species) {
     try {
-        const animalsSnapshot = await firebase.firestore().collection('animals').where('species', '==', species.id).get();
+        const animalsSnapshot = await window.db.collection('animals').where('species', '==', species.id).get();
         const sireSelect = document.getElementById('animalSire');
         const damSelect = document.getElementById('animalDam');
         sireSelect.innerHTML = '<option value="">Unknown</option>';
@@ -400,9 +359,9 @@ animalForm.addEventListener('submit', async (e) => {
     
     try {
         if (editingAnimalId) {
-            await firebase.firestore().collection('animals').doc(editingAnimalId).update(animalData);
+            await window.db.collection('animals').doc(editingAnimalId).update(animalData);
         } else {
-            await firebase.firestore().collection('animals').add(animalData);
+            await window.db.collection('animals').add(animalData);
         }
         closeModal();
         loadAnimals().then(() => filterAnimals());
@@ -413,10 +372,8 @@ animalForm.addEventListener('submit', async (e) => {
 });
 
 async function loadAnimalForEdit(animalId) {
-    // Logic from original file to pre-fill the form...
-    // (Consolidated for brevity as logic remains identical, just triggered by openModal)
     try {
-        const doc = await firebase.firestore().collection('animals').doc(animalId).get();
+        const doc = await window.db.collection('animals').doc(animalId).get();
         if (doc.exists) {
             const animal = doc.data();
             document.getElementById('animalName').value = animal.name;
@@ -472,7 +429,6 @@ async function loadAnimalForEdit(animalId) {
 }
 
 async function viewAnimalDetails(animalId) {
-    // This function is still used by the pencil button in the card
     openModal(animalId);
 }
 

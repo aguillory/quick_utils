@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export Stefani's Ledger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center font-sans text-slate-900">
+
+    <div id="app" class="w-full max-w-md p-8 bg-white rounded-xl shadow-lg text-center">
+        <h2 class="text-2xl font-bold mb-6 text-slate-800">Ledger CSV Export</h2>
+        
+        <div id="auth-section">
+            <p class="text-sm text-slate-600 mb-4">Please log in to authorize the export.</p>
+            <input id="login-password" type="password" placeholder="Password" class="w-full px-3 py-2 border border-slate-300 rounded-md mb-4 focus:ring-pink-500 focus:border-pink-500">
+            <button id="login-btn" class="w-full py-2 px-4 bg-pink-600 text-white rounded-md hover:bg-pink-700 font-medium transition">Log In</button>
+            <p id="error-msg" class="text-red-500 text-sm mt-2 hidden">Access Denied</p>
+        </div>
+
+        <div id="export-section" class="hidden">
+            <p class="text-sm text-emerald-600 mb-4 font-medium">Authenticated Successfully</p>
+            <button id="export-btn" class="w-full py-3 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-bold flex items-center justify-center gap-2 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                  <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                </svg>
+                Download CSV
+            </button>
+            <p id="export-status" class="text-sm text-slate-500 mt-4"></p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db, auth } from './scripts/connection.js'; 
+        import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const USER_EMAIL = "default@user.com";
+        const COLLECTION_NAME = "friend_debt_tracker";
+
+        const authSection = document.getElementById('auth-section');
+        const exportSection = document.getElementById('export-section');
+        const loginBtn = document.getElementById('login-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const errorMsg = document.getElementById('error-msg');
+        const exportStatus = document.getElementById('export-status');
+
+        // Watch authentication state
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                authSection.classList.add('hidden');
+                exportSection.classList.remove('hidden');
+            } else {
+                authSection.classList.remove('hidden');
+                exportSection.classList.add('hidden');
+            }
+        });
+
+        // Handle Login
+        loginBtn.addEventListener('click', async () => {
+            const pw = document.getElementById('login-password').value;
+            errorMsg.classList.add('hidden');
+            try { 
+                await signInWithEmailAndPassword(auth, USER_EMAIL, pw); 
+            } catch(err) { 
+                errorMsg.classList.remove('hidden');
+            }
+        });
+
+        // Trigger CSV Generation and Download
+        exportBtn.addEventListener('click', async () => {
+            try {
+                exportBtn.disabled = true;
+                exportBtn.classList.add('opacity-75', 'cursor-not-allowed');
+                exportStatus.innerText = "Fetching records...";
+
+                const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
+                const snapshot = await getDocs(q);
+                
+                if (snapshot.empty) {
+                    exportStatus.innerText = "No records found.";
+                    exportBtn.disabled = false;
+                    exportBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+                    return;
+                }
+
+                // Initialize CSV headers
+                let csvContent = "Category,Type,Description,Amount,Date,CreatedAt\n";
+                
+                // Process each document
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Escape quotes and wrap the description in quotes to prevent breaking CSV structure on commas
+                    const safeDescription = `"${(data.description || "").replace(/"/g, '""')}"`;
+                    
+                    const row = [
+                        data.category || "",
+                        data.type || "",
+                        safeDescription,
+                        data.amount || 0,
+                        data.date || "",
+                        data.createdAt || ""
+                    ].join(",");
+                    
+                    csvContent += row + "\n";
+                });
+
+                // Create a Blob and trigger the download
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", "stefani_ledger_export.csv");
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                exportStatus.innerText = `Successfully exported ${snapshot.size} records.`;
+                exportBtn.disabled = false;
+                exportBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+
+            } catch (error) {
+                console.error("Error exporting data: ", error);
+                exportStatus.innerText = "Error exporting data. Check console.";
+                exportStatus.classList.add('text-red-500');
+                exportBtn.disabled = false;
+                exportBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        });
+    </script>
+</body>
+</html>

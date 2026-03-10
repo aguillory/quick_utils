@@ -12,7 +12,7 @@ firebase.auth().onAuthStateChanged((user) => {
         const urlParams = new URLSearchParams(window.location.search);
         currentAnimalId = urlParams.get('id');
 
-        db.collection('farms').doc(currentUser.uid).get().then(doc => {
+        window.db.collection('farms').doc(currentUser.uid).get().then(doc => {
             if(doc.exists) currentFarmId = doc.id;
         });
 
@@ -28,7 +28,7 @@ firebase.auth().onAuthStateChanged((user) => {
 });
 
 async function loadInitialData() {
-    const speciesSnap = await db.collection('species').get();
+    const speciesSnap = await window.db.collection('species').get();
     allSpecies = speciesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     const speciesSelect = document.getElementById('animalSpecies');
@@ -44,7 +44,7 @@ async function loadInitialData() {
 
 async function loadAnimalDetails() {
     try {
-        const doc = await db.collection('animals').doc(currentAnimalId).get();
+        const doc = await window.db.collection('animals').doc(currentAnimalId).get();
         if (!doc.exists) {
             alert('Animal not found');
             return;
@@ -60,11 +60,11 @@ async function loadAnimalDetails() {
         document.getElementById('detailSpecies').textContent = species ? species.name : 'Unknown';
         document.getElementById('detailGender').textContent = data.gender || '-';
         document.getElementById('detailColor').textContent = data.color || '-';
-        document.getElementById('detailAge').textContent = data.birthDate ? calculateAge(data.birthDate) : '-';
+        document.getElementById('detailAge').textContent = calculateAge(data.birthDate); // Uses shared.js
         document.getElementById('detailTag').textContent = data.tagNumber || '-';
 
         if (data.ownerFarmId) {
-            const farmDoc = await db.collection('farms').doc(data.ownerFarmId).get();
+            const farmDoc = await window.db.collection('farms').doc(data.ownerFarmId).get();
             document.getElementById('detailOwner').textContent = farmDoc.exists ? farmDoc.data().farmName : 'Unknown Farm';
         } else {
             document.getElementById('detailOwner').textContent = data.ownerCustom || '-';
@@ -106,7 +106,7 @@ async function loadHealthHistory() {
     list.innerHTML = '<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading records...</div>';
 
     try {
-        const snapshot = await db.collection('healthRecords')
+        const snapshot = await window.db.collection('healthRecords')
             .where('animalId', '==', currentAnimalId)
             .orderBy('eventDate', 'desc')
             .get();
@@ -120,7 +120,7 @@ async function loadHealthHistory() {
         snapshot.forEach(doc => {
             const r = doc.data();
             const date = r.eventDate ? new Date(r.eventDate.toDate()).toLocaleDateString() : 'N/A';
-            const iconConfig = getEventIcon(r.eventType);
+            const iconConfig = getEventConfig(r.eventType); // Uses shared.js
             
             list.innerHTML += `
                 <div class="record-item">
@@ -146,7 +146,7 @@ function setupEventListeners() {
     document.getElementById('btnDeleteAnimal').addEventListener('click', async () => {
         if (confirm('Are you sure you want to delete this animal? THIS CANNOT BE UNDONE.')) {
             try {
-                await db.collection('animals').doc(currentAnimalId).delete();
+                await window.db.collection('animals').doc(currentAnimalId).delete();
                 window.location.href = 'animals.html';
             } catch (e) {
                 alert('Error deleting: ' + e.message);
@@ -179,7 +179,7 @@ function setupEventListeners() {
         if(photoData) updateData.photo = photoData;
 
         try {
-            await db.collection('animals').doc(currentAnimalId).update(updateData);
+            await window.db.collection('animals').doc(currentAnimalId).update(updateData);
             document.getElementById('animalModal').classList.remove('active');
             loadAnimalDetails();
         } catch(err) {
@@ -223,9 +223,10 @@ function setupEventListeners() {
         if(meatDays || dairyDays || eggsDays) {
             const date = new Date(document.getElementById('recordDate').value);
             withdrawal = {};
-            if(meatDays) withdrawal.meat = { days: meatDays, endDate: addDays(date, meatDays) };
-            if(dairyDays) withdrawal.dairy = { days: dairyDays, endDate: addDays(date, dairyDays) };
-            if(eggsDays) withdrawal.eggs = { days: eggsDays, endDate: addDays(date, eggsDays) };
+            // Using addDaysToTimestamp from shared.js
+            if(meatDays) withdrawal.meat = { days: meatDays, endDate: addDaysToTimestamp(date, meatDays) };
+            if(dairyDays) withdrawal.dairy = { days: dairyDays, endDate: addDaysToTimestamp(date, dairyDays) };
+            if(eggsDays) withdrawal.eggs = { days: eggsDays, endDate: addDaysToTimestamp(date, eggsDays) };
         }
 
         const recordData = {
@@ -244,12 +245,12 @@ function setupEventListeners() {
         };
 
         try {
-            const docRef = await db.collection('healthRecords').add(recordData);
+            const docRef = await window.db.collection('healthRecords').add(recordData);
             
             if(document.getElementById('recordScheduleFollowup').checked) {
                 const followDate = document.getElementById('followupDate').value;
                 if(followDate) {
-                    await db.collection('healthTasks').add({
+                    await window.db.collection('healthTasks').add({
                         animalId: currentAnimalId,
                         animalName: currentAnimalData.name,
                         farmId: currentFarmId,
@@ -294,7 +295,7 @@ function setupEventListeners() {
         };
 
         try {
-            await db.collection('healthTasks').add(taskData);
+            await window.db.collection('healthTasks').add(taskData);
             document.getElementById('taskModal').classList.remove('active');
             alert('Task scheduled!');
         } catch(err) {
@@ -302,13 +303,11 @@ function setupEventListeners() {
         }
     });
 
-    // Toggle Collapsibles (FIXED)
+    // Toggle Collapsibles
     document.querySelectorAll('.section-toggle').forEach(el => {
         el.addEventListener('click', function() {
             const target = document.getElementById(this.dataset.target);
-            // Toggle 'expanded' class for the slide animation
             target.classList.toggle('expanded');
-            // Rotate the chevron icon
             this.querySelector('.toggle-icon').classList.toggle('rotated');
         });
     });
@@ -326,53 +325,17 @@ function setupEventListeners() {
         });
     });
     
-    // Photo Upload
-    document.getElementById('animalPhotoFile').addEventListener('change', function(e) {
+    // Photo Upload - Uses processImageUpload from shared.js
+    document.getElementById('animalPhotoFile').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    let width = img.width, height = img.height, maxSize = 800;
-                    if (width > height) { if (width > maxSize) { height = height * (maxSize / width); width = maxSize; } } 
-                    else { if (height > maxSize) { width = width * (maxSize / height); height = maxSize; } }
-                    canvas.width = width; canvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                    document.getElementById('animalPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:150px">`;
-                    document.getElementById('animalPhotoData').value = dataUrl;
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
+            try {
+                const dataUrl = await processImageUpload(file);
+                document.getElementById('animalPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:150px">`;
+                document.getElementById('animalPhotoData').value = dataUrl;
+            } catch (error) {
+                alert(error.message);
+            }
         }
     });
-}
-
-function addDays(date, days) {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return firebase.firestore.Timestamp.fromDate(result);
-}
-
-function calculateAge(birthDate) {
-    const birth = new Date(birthDate);
-    const today = new Date();
-    const months = (today.getFullYear() - birth.getFullYear()) * 12 + (today.getMonth() - birth.getMonth());
-    if (months < 12) return `${months} month${months !== 1 ? 's' : ''}`;
-    const years = Math.floor(months / 12);
-    return `${years} year${years !== 1 ? 's' : ''}`;
-}
-
-function getEventIcon(type) {
-    const map = {
-        'Vaccination': { icon: 'fa-syringe', color: '#4A7C59' },
-        'Illness/Injury': { icon: 'fa-band-aid', color: '#E74C3C' },
-        'Deworming': { icon: 'fa-pills', color: '#E89C3A' },
-        'Veterinary Visit': { icon: 'fa-user-md', color: '#3498db' }
-    };
-    return map[type] || { icon: 'fa-notes-medical', color: '#8B6F47' };
 }
