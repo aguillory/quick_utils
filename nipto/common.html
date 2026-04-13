@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Nipto Dashboard</title>
+    <style>
+        :root {
+            --bg-main: #121212;
+            --bg-card: #1e1e1e;
+            --text-main: #e0e0e0;
+            --accent: #bb86fc;
+            --accent-hover: #9965f4;
+            --success: #03dac6;
+            --error: #cf6679;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--bg-card);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        input[type="datetime-local"] {
+            background-color: #2c2c2c;
+            color: var(--text-main);
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        #status {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .task-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            width: 100%;
+            max-width: 800px;
+        }
+        .task-btn {
+            background-color: var(--bg-card);
+            color: var(--text-main);
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 5px;
+        }
+        .task-btn:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .task-btn:active {
+            transform: translateY(0);
+        }
+        .task-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .task-btn.success {
+            border-color: var(--success);
+            color: var(--success);
+        }
+        .task-icon {
+            font-size: 24px;
+        }
+        
+        /* Modal Styles */
+        #pinModal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .modal-content input {
+            font-size: 24px;
+            letter-spacing: 5px;
+            text-align: center;
+            width: 150px;
+            padding: 10px;
+            margin: 20px 0;
+            background: #2c2c2c;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 6px;
+        }
+        .modal-content button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .modal-content button:hover {
+            background: var(--accent-hover);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="pinModal" style="display: none;">
+        <div class="modal-content">
+            <h2>Enter Dashboard PIN</h2>
+            <p>Please enter your 4-digit PIN to decrypt the API key.</p>
+            <input type="password" id="pinInput" maxlength="4" placeholder="••••">
+            <br>
+            <button onclick="savePin()">Unlock</button>
+            <div id="pinError" style="color: var(--error); margin-top: 10px; display: none;">Invalid PIN format</div>
+        </div>
+    </div>
+
+    <div class="header">
+        <h2>Household Tasks</h2>
+        <div class="controls">
+            <div>
+                <label for="taskDate">Log Date/Time: </label>
+                <input type="datetime-local" id="taskDate">
+            </div>
+            <div id="status">Ready</div>
+        </div>
+    </div>
+
+    <div class="task-grid" id="taskGrid">
+        </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // REPLACE THIS WITH YOUR ACTUAL USER UID FROM NIPTO
+        const ALYSSA_UID = "Llb9JjyTDvMnn8SJWfizXgthxl83"; 
+        const URL = "https://nipto.app/graphql";
+        const COOKIE_NAME = "nipto_api_key";
+        let API_TOKEN = "";
+
+        const TASKS = [
+            { name: "Milk goat", icon: "🐐", uid: "ZkiQmzZei25ddvxUK7Iu" },
+            { name: "Feed baby goat", icon: "🐐", uid: "VljwYXq5EXtWWxMe1q86" },
+            { name: "Let Donnie out", icon: "🐶", uid: "6O3fiiNqsLJWVOTXw1kX" },
+            { name: "Let Sofia out", icon: "🐶", uid: "bHxZqo9HmKNKdL3BDfzO" },
+            { name: "Let Sofia in", icon: "🐶", uid: "fPmUR71YmobZXNBzFaRq" },
+            { name: "Water Donnie", icon: "🐶", uid: "SuUkZuMxSNdJ7mokzqVJ" },
+            { name: "Water Sofia", icon: "🐶", uid: "umQGwgeQjD2eNSb27MSD" },
+            { name: "Feed Donnie", icon: "🐶", uid: "dLvjQVK7jiNJAqiFjDE4" },
+            { name: "Feed Sofia", icon: "🐶", uid: "66j4ReblR6dPWbNe8iPQ" },
+            { name: "Refill cat food", icon: "😺", uid: "Hz8FeEyLrx2S43erFZGn" },
+            { name: "Refill cat water", icon: "😺", uid: "jS9UZDtAqA0j4LKNQboD" },
+            { name: "Feed Kevin", icon: "🐖", uid: "uASAuUB1hAyIkLPbe7Cn" },
+            { name: "Empty Dishwasher", icon: "🍽️", uid: "IX6xdoeq1ycAYTY0woDD" },
+            { name: "Load Dishwasher and run it", icon: "🍽️", uid: "dCfP1Lmm4G0xneSq8KmO" },
+            { name: "Make Dinner", icon: "🍽️", uid: "skEcHTDOUnoxuQOVYjRe" },
+            { name: "Make lunch/small meal", icon: "🍽️", uid: "LeMiW69FEFOKmfwApHjv" },
+            { name: "Organize/put away items", icon: "🛠️", uid: "FxNNOQMk3hEvZDX4uEzj" },
+            { name: "Wash a load of laundry", icon: "👕", uid: "3f0dzsFnwYJnAXXxJYe9" },
+            { name: "Dry a load of laundry", icon: "👕", uid: "XmTvn2tHBbgsXrUKr87u" },
+            { name: "Gather laundry", icon: "👕", uid: "MxASRpVuaTHNbZM80dK2" },
+            { name: "Hang clothes on line", icon: "👕", uid: "B1gNNNq2CuALNGUrXaCn" },
+            { name: "Get clothes off line", icon: "👕", uid: "ZAbqOInmAdRcYex9zkR3" },
+            { name: "Take trash out of a can", icon: "🗑️", uid: "YCJV3ex1bKPzWdCpHym6" }
+        ];
+
+        // --- AUTH & COOKIE LOGIC ---
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
+
+        function decodeKey(pin) {
+            const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
+            const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
+            return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
+        }
+
+        function savePin() {
+            const pin = document.getElementById('pinInput').value;
+            if (pin.length !== 4) {
+                document.getElementById('pinError').style.display = 'block';
+                return;
+            }
+            
+            API_TOKEN = decodeKey(pin);
+            setCookie(COOKIE_NAME, API_TOKEN, 30); // Save for 30 days
+            document.getElementById('pinModal').style.display = 'none';
+        }
+
+        function checkAuth() {
+            const savedToken = getCookie(COOKIE_NAME);
+            if (savedToken) {
+                API_TOKEN = savedToken;
+            } else {
+                document.getElementById('pinModal').style.display = 'flex';
+            }
+        }
+
+        // --- DATE LOGIC ---
+        function formatForInput(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            const h = String(dateObj.getHours()).padStart(2, '0');
+            const min = String(dateObj.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${d}T${h}:${min}`;
+        }
+
+        function initDateLimits() {
+            const dateInput = document.getElementById('taskDate');
+            const now = new Date();
+            
+            // Calculate Monday 12:01 AM
+            const day = now.getDay();
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(now.setDate(diff));
+            monday.setHours(0, 1, 0, 0);
+
+            // Need fresh Date object for current time max limit
+            const current = new Date();
+
+            dateInput.min = formatForInput(monday);
+            dateInput.max = formatForInput(current);
+            dateInput.value = formatForInput(current);
+            
+            // Constantly update the max time to allow current time logging
+            setInterval(() => {
+                dateInput.max = formatForInput(new Date());
+            }, 60000);
+        }
+
+        // --- API & UI LOGIC ---
+        async function logTask(buttonElement, taskUid, taskName) {
+            if (buttonElement.classList.contains('success')) return;
+            if (!API_TOKEN) {
+                document.getElementById('pinModal').style.display = 'flex';
+                return;
+            }
+
+            const statusDiv = document.getElementById('status');
+            const dateInput = document.getElementById('taskDate');
+            
+            statusDiv.innerText = `Logging: ${taskName}...`;
+            statusDiv.style.color = 'var(--text-main)';
+            buttonElement.disabled = true;
+
+            const targetDate = new Date(dateInput.value);
+            const exactFormatString = targetDate.toISOString();
+
+            const MUTATION = `
+                mutation CreateActivity($done: String!, $doers: [String!], $date: Date) {
+                  createActivity(done: $done, doers: $doers, date: $date) {
+                    uid
+                  }
+                }`;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: MUTATION,
+                        variables: {
+                            done: taskUid,
+                            doers: [ALYSSA_UID],
+                            date: exactFormatString
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.errors) {
+                    throw new Error(data.errors[0].message || "GraphQL Error");
+                }
+
+                statusDiv.innerText = `Successfully logged: ${taskName}`;
+                statusDiv.style.color = 'var(--success)';
+                
+                buttonElement.classList.add('success');
+                buttonElement.innerHTML += '<br>✓ Logged';
+                
+                // Reset button state after 3 seconds
+                setTimeout(() => {
+                    buttonElement.classList.remove('success');
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = buttonElement.getAttribute('data-original-html');
+                    statusDiv.innerText = "Ready";
+                    statusDiv.style.color = 'var(--text-main)';
+                }, 3000);
+
+            } catch (error) {
+                statusDiv.innerText = `Error: ${error.message}`;
+                statusDiv.style.color = 'var(--error)';
+                buttonElement.disabled = false;
+                
+                // If token is invalid, clear cookie and reprompt
+                if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
+                    setCookie(COOKIE_NAME, "", -1);
+                    API_TOKEN = "";
+                    document.getElementById('pinModal').style.display = 'flex';
+                }
+            }
+        }
+
+        function renderTasks() {
+            const grid = document.getElementById('taskGrid');
+            TASKS.forEach(task => {
+                const btn = document.createElement('button');
+                btn.className = 'task-btn';
+                const innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span>`;
+                btn.innerHTML = innerHTML;
+                btn.setAttribute('data-original-html', innerHTML);
+                
+                btn.onclick = () => logTask(btn, task.uid, task.name);
+                grid.appendChild(btn);
+            });
+        }
+
+        // Initialize
+        checkAuth();
+        initDateLimits();
+        renderTasks();
+
+    </script>
+</body>
+</html>
