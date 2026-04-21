@@ -1,0 +1,208 @@
+/* nipto-shared.css */
+
+:root {
+    --primary: #4F46E5;
+    --primary-hover: #4338CA;
+    --success: #10B981;
+    --danger: #EF4444;
+    --bg-color: #F3F4F6;
+    --card-bg: #FFFFFF;
+    --text-main: #1F2937;
+    --text-muted: #6B7280;
+}
+
+body { 
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+    margin: 0; 
+    background-color: var(--bg-color); 
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding-top: 50px;
+}
+
+/* Typography */
+h1, h2 { 
+    margin-top: 0;
+    margin-bottom: 5px;
+    color: var(--text-main); 
+}
+
+h2 {
+    font-size: 28px;
+}
+
+p.subtitle {
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    font-size: 15px;
+}
+
+/* Layout Containers */
+.dashboard-container {
+    background: var(--card-bg);
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+    max-width: 600px;
+    width: 90%;
+    text-align: center;
+    position: relative;
+}
+
+.grid { 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 15px; 
+    margin-bottom: 30px;
+}
+
+/* Forms & Inputs */
+.user-select-container {
+    margin-bottom: 30px;
+}
+
+select {
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 2px solid #E5E7EB;
+    background-color: #F9FAFB;
+    color: var(--text-main);
+    outline: none;
+    cursor: pointer;
+}
+
+select:focus {
+    border-color: var(--primary);
+}
+
+/* Buttons */
+.time-btn, .task-btn { 
+    padding: 20px 10px; 
+    font-size: 16px; 
+    font-weight: 600;
+    cursor: pointer; 
+    border: 2px solid #E5E7EB; 
+    border-radius: 12px; 
+    background-color: var(--card-bg); 
+    color: var(--text-main);
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.time-btn:hover:not(:disabled), .task-btn:hover:not(:disabled) { 
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1);
+}
+
+.time-btn.success, .task-btn.success { 
+    background-color: var(--success); 
+    color: white; 
+    border-color: var(--success); 
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.time-btn.error, .task-btn.error { 
+    background-color: var(--danger); 
+    color: white; 
+    border-color: var(--danger); 
+}
+
+.reset-btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: transparent;
+    color: var(--text-muted);
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reset-btn:hover {
+    background-color: #F9FAFB;
+    color: var(--text-main);
+    border-color: #D1D5DB;
+}
+
+/* Utilities */
+#status { 
+    margin-top: 10px; 
+    font-size: 16px;
+    font-weight: 500; 
+    height: 24px; 
+    color: var(--text-muted);
+    transition: color 0.3s ease;
+}
+
+.divider {
+    height: 1px;
+    background-color: #E5E7EB;
+    margin: 30px 0;
+}
+
+/* Modal Styles */
+#pinModal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: var(--card-bg);
+    padding: 40px;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-content h2 { 
+    color: var(--text-main); 
+}
+
+.modal-content input {
+    font-size: 24px;
+    letter-spacing: 8px;
+    text-align: center;
+    width: 150px;
+    padding: 12px;
+    margin: 20px 0;
+    background: #F9FAFB;
+    color: var(--text-main);
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    outline: none;
+}
+
+.modal-content input:focus { 
+    border-color: var(--primary); 
+}
+
+.modal-content button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.modal-content button:hover {
+    background: var(--primary-hover);
+}

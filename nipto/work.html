@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nipto Work Logger</title>
+    <link rel="stylesheet" href="nipto-shared.css">
+</head>
+<body>
+
+    <div id="pinModal" style="display: none;">
+        <div class="modal-content">
+            <h2>Enter PIN</h2>
+            <p style="color: var(--text-muted);">Please enter your 4-digit PIN to unlock the logger.</p>
+            <input type="password" id="pinInput" maxlength="4" placeholder="••••">
+            <br>
+            <button onclick="savePin()">Unlock</button>
+            <div id="pinError" style="color: var(--danger); margin-top: 10px; display: none;">Invalid PIN format</div>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <h2>Work Hours Logger</h2>
+        <p class="subtitle">Click a time to log your task (past or future).</p>
+        
+        <div class="user-select-container">
+            <label for="userSelect" style="font-weight: 600; margin-right: 10px; color: var(--text-main);">Worker:</label>
+            <select id="userSelect">
+                </select>
+        </div>
+
+        <div class="grid">
+            <button class="time-btn" data-label="8:30 AM" onclick="logTask(this, 8, 30, '8:30 AM')">8:30</button>
+            <button class="time-btn" data-label="9:30 AM" onclick="logTask(this, 9, 30, '9:30 AM')">9:30</button>
+            <button class="time-btn" data-label="10:30 AM" onclick="logTask(this, 10, 30, '10:30 AM')">10:30</button>
+            <button class="time-btn" data-label="11:30 AM" onclick="logTask(this, 11, 30, '11:30 AM')">11:30</button>
+            <button class="time-btn" data-label="1:30 PM" onclick="logTask(this, 13, 30, '1:30 PM')">1:30</button>
+            <button class="time-btn" data-label="2:30 PM" onclick="logTask(this, 14, 30, '2:30 PM')">2:30</button>
+            <button class="time-btn" data-label="3:30 PM" onclick="logTask(this, 15, 30, '3:30 PM')">3:30</button>
+            <button class="time-btn" data-label="4:30 PM" onclick="logTask(this, 16, 30, '4:30 PM')">4:30</button>
+        </div>
+
+        <div id="status">Waiting for input...</div>
+
+        <div class="divider"></div>
+
+        <button class="reset-btn" onclick="resetBoard()">Reset Board for Tomorrow</button>
+    </div>
+
+    <script>
+        // ==========================================
+        // STATIC DATA & CONFIGURATION
+        // ==========================================
+        const USERS = [
+            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", email: "carrieleray@gmail.com" },
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa M", email: "alymcmurray@gmail.com" },
+            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn", email: "farmhandrocker@gmail.com" }
+        ];
+
+        const TASK_UID = "CP6LzbtWwKPkBWZRk2n8"; // Work @ Work (1hr) task UID
+        const URL = "https://nipto.app/graphql";
+        const COOKIE_NAME = "nipto_api_key";
+        let API_TOKEN = "";
+
+        const MUTATION = `
+        mutation CreateActivity($done: String!, $doers: [String!], $date: Date) {
+          createActivity(done: $done, doers: $doers, date: $date) {
+            uid
+            date
+          }
+        }`;
+
+        // ==========================================
+        // AUTH & COOKIE LOGIC
+        // ==========================================
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
+
+        function decodeKey(pin) {
+            const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
+            const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
+            return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
+        }
+
+        function savePin() {
+            const pin = document.getElementById('pinInput').value;
+            if (pin.length !== 4) {
+                document.getElementById('pinError').style.display = 'block';
+                return;
+            }
+            
+            API_TOKEN = decodeKey(pin);
+            setCookie(COOKIE_NAME, API_TOKEN, 30); // Save for 30 days
+            document.getElementById('pinModal').style.display = 'none';
+        }
+
+        function checkAuth() {
+            const savedToken = getCookie(COOKIE_NAME);
+            if (savedToken) {
+                API_TOKEN = savedToken;
+            } else {
+                document.getElementById('pinModal').style.display = 'flex';
+            }
+        }
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        function populateUsers() {
+            const select = document.getElementById('userSelect');
+            USERS.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid;
+                option.text = user.name;
+                // Default to Alyssa M based on previous hardcoded UID
+                if (user.uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        }
+
+        function getTodayStorageKey() {
+            const today = new Date();
+            return `nipto_logs_${today.getFullYear()}_${today.getMonth() + 1}_${today.getDate()}`;
+        }
+
+        window.onload = function() {
+            checkAuth();
+            populateUsers();
+
+            const todayKey = getTodayStorageKey();
+            const savedTasks = JSON.parse(localStorage.getItem(todayKey) || '[]');
+            
+            const buttons = document.querySelectorAll('.time-btn');
+            buttons.forEach(btn => {
+                if (savedTasks.includes(btn.dataset.label)) {
+                    btn.classList.add('success');
+                    btn.disabled = true;
+                    btn.innerText = `${btn.dataset.label} ✓`;
+                }
+            });
+        };
+
+        // ==========================================
+        // MAIN LOGIC
+        // ==========================================
+        async function logTask(buttonElement, hour, minute, timeLabel) {
+            const statusDiv = document.getElementById('status');
+            
+            if (!API_TOKEN) {
+                document.getElementById('pinModal').style.display = 'flex';
+                return;
+            }
+            
+            if (buttonElement.classList.contains('success')) return;
+
+            statusDiv.innerText = `Logging task for ${timeLabel}...`;
+            statusDiv.style.color = 'var(--text-main)';
+            buttonElement.disabled = true;
+
+            const targetDate = new Date();
+            targetDate.setHours(hour, minute, 0, 0);
+            const exactFormatString = targetDate.toISOString();
+            
+            const selectedUserUid = document.getElementById('userSelect').value;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: MUTATION,
+                        variables: {
+                            done: TASK_UID,
+                            doers: [selectedUserUid],
+                            date: exactFormatString 
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.errors) {
+                    throw new Error(data.errors[0].message);
+                }
+
+                // --- SAVE SUCCESS TO BROWSER ---
+                const todayKey = getTodayStorageKey();
+                const savedTasks = JSON.parse(localStorage.getItem(todayKey) || '[]');
+                if (!savedTasks.includes(timeLabel)) {
+                    savedTasks.push(timeLabel);
+                    localStorage.setItem(todayKey, JSON.stringify(savedTasks));
+                }
+
+                // Update UI
+                buttonElement.classList.remove('error');
+                buttonElement.classList.add('success');
+                buttonElement.innerText = `${timeLabel} ✓`;
+                statusDiv.innerText = `✅ Logged successfully for ${timeLabel}!`;
+                statusDiv.style.color = 'var(--success)';
+
+            } catch (error) {
+                buttonElement.disabled = false; 
+                buttonElement.classList.add('error');
+                
+                if (error.message === "Failed to fetch") {
+                    statusDiv.innerText = `❌ Error: Browser blocked the request.`;
+                } else {
+                    statusDiv.innerText = `❌ Error: ${error.message}`;
+                }
+                statusDiv.style.color = 'var(--danger)';
+                
+                // If token is invalid, clear cookie and reprompt
+                if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
+                    setCookie(COOKIE_NAME, "", -1);
+                    API_TOKEN = "";
+                    document.getElementById('pinModal').style.display = 'flex';
+                }
+            }
+        }
+
+        function resetBoard() {
+            localStorage.removeItem(getTodayStorageKey());
+
+            const buttons = document.querySelectorAll('.time-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('success', 'error');
+                btn.disabled = false;
+                btn.innerText = btn.dataset.label.split(' ')[0]; 
+            });
+            
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerText = "Board reset. Ready for a new day!";
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+    </script>
+</body>
+</html>
