@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Nipto Dashboard</title>
     <link rel="stylesheet" href="nipto-shared.css">
+
 </head>
 <body>
 
@@ -15,14 +16,25 @@
             <input type="password" id="pinInput" maxlength="4" placeholder="••••">
             <br>
             <button onclick="savePin()">Unlock</button>
-            <div id="pinError" style="color: var(--error); margin-top: 15px; display: none; font-size: 14px;">Invalid PIN format</div>
+            <div id="pinError" style="color: var(--danger); margin-top: 15px; display: none; font-size: 14px;">Invalid PIN format</div>
         </div>
     </div>
 
     <div class="header">
-        <h2>Household Tasks</h2>
+        <div class="dashboard-header-controls">
+            <div>
+                <h2 style="margin-bottom: 15px;">Household Tasks</h2>
+                <div class="user-select-container" style="margin-bottom: 0;">
+                    <label for="userSelect" style="font-weight: 600; margin-right: 10px;">Dashboard For:</label>
+                    <select id="userSelect" onchange="onUserChange()"></select>
+                </div>
+            </div>
+            <div>
+                <button id="editBtn" class="action-btn" onclick="toggleEditMode()">✏️ Edit Dashboard</button>
+            </div>
+        </div>
+
         <div class="controls-wrapper">
-            
             <div class="mode-toggle">
                 <button class="mode-btn active" id="btnLive" onclick="setMode('live')">Live Time</button>
                 <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Custom Time</button>
@@ -43,17 +55,21 @@
         </div>
     </div>
 
-    <div id="mainContainer">
-        </div>
+    <div id="mainContainer"></div>
 
     <script>
         // --- CONFIGURATION ---
-        const ALYSSA_UID = "Llb9JjyTDvMnn8SJWfizXgthxl83"; 
+        const USERS = [
+            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina" },
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa M" },
+            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn" }
+        ];
+
         const URL = "https://nipto.app/graphql";
         const COOKIE_NAME = "nipto_api_key";
         let API_TOKEN = "";
 
-        // Added 'category' to group tasks neatly
+        // Master list of available tasks
         const TASKS = [
             { name: "Milk goat", icon: "🐐", category: "Goats", uid: "ZkiQmzZei25ddvxUK7Iu" },
             { name: "Feed baby goat", icon: "🐐", category: "Goats", uid: "VljwYXq5EXtWWxMe1q86" },
@@ -80,7 +96,9 @@
             { name: "Take trash out of a can", icon: "🗑️", category: "Household", uid: "YCJV3ex1bKPzWdCpHym6" }
         ];
 
-        let currentMode = 'live'; // 'live' or 'custom'
+        let currentMode = 'live'; 
+        let isEditMode = false;
+        let tempEditPrefs = new Set(); // Holds selections during edit mode
 
         // --- AUTH & COOKIE LOGIC ---
         function getCookie(name) {
@@ -126,6 +144,80 @@
             }
         }
 
+        // --- USER & DASHBOARD PREFERENCES ---
+        function initUsers() {
+            const select = document.getElementById('userSelect');
+            USERS.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid;
+                option.text = user.name;
+                // Default to Alyssa
+                if (user.uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") option.selected = true;
+                select.appendChild(option);
+            });
+        }
+
+        function onUserChange() {
+            if (isEditMode) toggleEditMode(); // exit edit mode if they switch users
+            renderTasks();
+        }
+
+        function getActiveUserId() {
+            return document.getElementById('userSelect').value;
+        }
+
+        function getUserPreferences() {
+            const userId = getActiveUserId();
+            const saved = localStorage.getItem(`nipto_dash_${userId}`);
+            if (saved) {
+                return new Set(JSON.parse(saved));
+            }
+            // If first time, return ALL tasks so they have something to start with
+            return new Set(TASKS.map(t => t.uid));
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('editBtn');
+            const statusDiv = document.getElementById('status');
+
+            if (isEditMode) {
+                btn.innerText = "💾 Save Dashboard";
+                btn.classList.add('save-mode');
+                statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from this user's dashboard.";
+                statusDiv.style.color = "var(--primary)";
+                tempEditPrefs = getUserPreferences();
+            } else {
+                btn.innerText = "✏️ Edit Dashboard";
+                btn.classList.remove('save-mode');
+                // Save to local storage
+                localStorage.setItem(`nipto_dash_${getActiveUserId()}`, JSON.stringify(Array.from(tempEditPrefs)));
+                
+                if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
+                else statusDiv.innerText = "Ready (Using custom time above)";
+                statusDiv.style.color = "var(--text-main)";
+            }
+            renderTasks();
+        }
+
+        function handleTaskClick(btn, taskUid, taskName) {
+            if (isEditMode) {
+                // Toggle selection state
+                if (tempEditPrefs.has(taskUid)) {
+                    tempEditPrefs.delete(taskUid);
+                    btn.classList.remove('selected-pref');
+                    btn.classList.add('unselected-pref');
+                } else {
+                    tempEditPrefs.add(taskUid);
+                    btn.classList.add('selected-pref');
+                    btn.classList.remove('unselected-pref');
+                }
+            } else {
+                // Normal Logging behavior
+                logTask(btn, taskUid, taskName);
+            }
+        }
+
         // --- TIME LOGIC ---
         function formatForInput(dateObj) {
             const y = dateObj.getFullYear();
@@ -137,6 +229,7 @@
         }
 
         function setMode(mode) {
+            if (isEditMode) return; // Prevent changing time modes while editing
             currentMode = mode;
             const btnLive = document.getElementById('btnLive');
             const btnCustom = document.getElementById('btnCustom');
@@ -153,7 +246,6 @@
                 btnLive.classList.remove('active');
                 customBox.classList.add('visible');
                 
-                // Initialize input with current time if empty
                 const dateInput = document.getElementById('taskDate');
                 if (!dateInput.value) {
                     dateInput.value = formatForInput(new Date());
@@ -163,16 +255,14 @@
         }
 
         function setTimeOffset(minutes) {
-            // If they click a quick time, automatically switch to custom mode
             if (currentMode === 'live') setMode('custom');
-            
             const dateInput = document.getElementById('taskDate');
             const targetDate = new Date(); 
             targetDate.setMinutes(targetDate.getMinutes() + minutes);
             dateInput.value = formatForInput(targetDate);
         }
 
-        // --- API & UI LOGIC ---
+        // --- API LOGIC ---
         async function logTask(buttonElement, taskUid, taskName) {
             if (buttonElement.classList.contains('success')) return;
             if (!API_TOKEN) {
@@ -182,11 +272,11 @@
 
             const statusDiv = document.getElementById('status');
             buttonElement.disabled = true;
+            const targetUserId = getActiveUserId(); // Use the selected user!
 
-            // Determine what time to send based on current mode
             let targetDate;
             if (currentMode === 'live') {
-                targetDate = new Date(); // Gets the exact second the button was clicked
+                targetDate = new Date(); 
             } else {
                 const dateInput = document.getElementById('taskDate').value;
                 if (!dateInput) {
@@ -200,7 +290,6 @@
 
             statusDiv.innerText = `Logging: ${taskName}...`;
             statusDiv.style.color = 'var(--text-main)';
-            
             const exactFormatString = targetDate.toISOString();
 
             const MUTATION = `
@@ -221,17 +310,14 @@
                         query: MUTATION,
                         variables: {
                             done: taskUid,
-                            doers: [ALYSSA_UID],
+                            doers: [targetUserId], // Send the active user's UID here
                             date: exactFormatString
                         }
                     })
                 });
 
                 const data = await response.json();
-
-                if (data.errors) {
-                    throw new Error(data.errors[0].message || "GraphQL Error");
-                }
+                if (data.errors) throw new Error(data.errors[0].message || "GraphQL Error");
 
                 statusDiv.innerText = `Successfully logged: ${taskName}`;
                 statusDiv.style.color = 'var(--success)';
@@ -244,12 +330,8 @@
                     buttonElement.disabled = false;
                     buttonElement.innerHTML = buttonElement.getAttribute('data-original-html');
                     
-                    // Reset status text to match current mode
-                    if (currentMode === 'live') {
-                        statusDiv.innerText = "Ready (Using exact current time on click)";
-                    } else {
-                        statusDiv.innerText = "Ready (Using custom time above)";
-                    }
+                    if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
+                    else statusDiv.innerText = "Ready (Using custom time above)";
                     statusDiv.style.color = 'var(--text-main)';
                 }, 3000);
 
@@ -266,17 +348,27 @@
             }
         }
 
+        // --- RENDER LOGIC ---
         function renderTasks() {
             const container = document.getElementById('mainContainer');
+            container.innerHTML = ''; // clear current board
             
-            // Group tasks by category
-            const groupedTasks = TASKS.reduce((acc, task) => {
+            const userPrefs = getUserPreferences();
+            
+            // Filter tasks: If edit mode, show all. If view mode, show only preferred.
+            const visibleTasks = TASKS.filter(t => isEditMode || userPrefs.has(t.uid));
+
+            if (visibleTasks.length === 0 && !isEditMode) {
+                container.innerHTML = '<div class="empty-dashboard-msg">Your dashboard is empty. Click "Edit Dashboard" to add tasks!</div>';
+                return;
+            }
+
+            const groupedTasks = visibleTasks.reduce((acc, task) => {
                 if (!acc[task.category]) acc[task.category] = [];
                 acc[task.category].push(task);
                 return acc;
             }, {});
 
-            // Define order of categories
             const categoryOrder = ["Goats", "Dogs", "Cats", "Pigs", "Kitchen", "Laundry", "Household"];
 
             categoryOrder.forEach(category => {
@@ -296,11 +388,22 @@
                 groupedTasks[category].forEach(task => {
                     const btn = document.createElement('button');
                     btn.className = 'task-btn';
-                    const innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span>`;
-                    btn.innerHTML = innerHTML;
-                    btn.setAttribute('data-original-html', innerHTML);
                     
-                    btn.onclick = () => logTask(btn, task.uid, task.name);
+                    if (isEditMode) {
+                        btn.classList.add('edit-mode');
+                        if (tempEditPrefs.has(task.uid)) {
+                            btn.classList.add('selected-pref');
+                            btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span><span style="font-size:12px; margin-top:5px;">✅ Selected</span>`;
+                        } else {
+                            btn.classList.add('unselected-pref');
+                            btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span><span style="font-size:12px; margin-top:5px;">❌ Hidden</span>`;
+                        }
+                    } else {
+                        btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span>`;
+                    }
+                    
+                    btn.setAttribute('data-original-html', btn.innerHTML);
+                    btn.onclick = () => handleTaskClick(btn, task.uid, task.name);
                     grid.appendChild(btn);
                 });
 
@@ -310,6 +413,7 @@
         }
 
         // Initialize
+        initUsers();
         checkAuth();
         renderTasks();
 

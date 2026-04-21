@@ -330,3 +330,53 @@ select:focus, input[type="datetime-local"]:focus {
 }
 
 .modal-content button:hover { background: var(--primary-hover); }
+
+
+/* Dashboard-specific styles extending the shared CSS */
+        .dashboard-header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        .action-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .action-btn:hover { border-color: var(--primary); }
+        .action-btn.save-mode {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+        
+        /* Edit Mode Task Styles */
+        .task-btn.edit-mode {
+            cursor: pointer;
+            border-style: dashed;
+        }
+        .task-btn.edit-mode.selected-pref {
+            border-color: var(--success);
+            border-style: solid;
+            background-color: rgba(16, 185, 129, 0.1);
+        }
+        .task-btn.edit-mode.unselected-pref {
+            opacity: 0.4;
+            filter: grayscale(100%);
+        }
+        .empty-dashboard-msg {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px;
+            font-style: italic;
+        }
