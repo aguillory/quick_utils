@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Nipto Dashboard</title>
     <link rel="stylesheet" href="nipto-shared.css">
-
 </head>
 <body>
 
@@ -21,7 +20,7 @@
     </div>
 
     <div class="header">
-        <div class="dashboard-header-controls">
+        <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
                 <h2 style="margin-bottom: 15px;">Household Tasks</h2>
                 <div class="user-select-container" style="margin-bottom: 0;">
@@ -29,7 +28,9 @@
                     <select id="userSelect" onchange="onUserChange()"></select>
                 </div>
             </div>
-            <div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
+                <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks()" style="display: none; background-color: var(--secondary);">🔄 Sync Database</button>
+                <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
                 <button id="editBtn" class="action-btn" onclick="toggleEditMode()">✏️ Edit Dashboard</button>
             </div>
         </div>
@@ -51,11 +52,16 @@
                 </div>
             </div>
 
-            <div id="status">Ready (Using current exact time on click)</div>
+            <div id="status">Checking database...</div>
         </div>
     </div>
 
     <div id="mainContainer"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="firebase-config.js"></script>
 
     <script>
         // --- CONFIGURATION ---
@@ -66,58 +72,16 @@
         ];
 
         const URL = "https://nipto.app/graphql";
-        const COOKIE_NAME = "nipto_api_key";
         let API_TOKEN = "";
-
-        // Master list of available tasks
-        const TASKS = [
-            { name: "Milk goat", icon: "🐐", category: "Goats", uid: "ZkiQmzZei25ddvxUK7Iu" },
-            { name: "Feed baby goat", icon: "🐐", category: "Goats", uid: "VljwYXq5EXtWWxMe1q86" },
-            { name: "Let Donnie out", icon: "🐶", category: "Dogs", uid: "6O3fiiNqsLJWVOTXw1kX" },
-            { name: "Let Sofia out", icon: "🐶", category: "Dogs", uid: "bHxZqo9HmKNKdL3BDfzO" },
-            { name: "Let Sofia in", icon: "🐶", category: "Dogs", uid: "fPmUR71YmobZXNBzFaRq" },
-            { name: "Water Donnie", icon: "🐶", category: "Dogs", uid: "SuUkZuMxSNdJ7mokzqVJ" },
-            { name: "Water Sofia", icon: "🐶", category: "Dogs", uid: "umQGwgeQjD2eNSb27MSD" },
-            { name: "Feed Donnie", icon: "🐶", category: "Dogs", uid: "dLvjQVK7jiNJAqiFjDE4" },
-            { name: "Feed Sofia", icon: "🐶", category: "Dogs", uid: "66j4ReblR6dPWbNe8iPQ" },
-            { name: "Refill cat food", icon: "😺", category: "Cats", uid: "Hz8FeEyLrx2S43erFZGn" },
-            { name: "Refill cat water", icon: "😺", category: "Cats", uid: "jS9UZDtAqA0j4LKNQboD" },
-            { name: "Feed Kevin", icon: "🐖", category: "Pigs", uid: "uASAuUB1hAyIkLPbe7Cn" },
-            { name: "Empty Dishwasher", icon: "🍽️", category: "Kitchen", uid: "IX6xdoeq1ycAYTY0woDD" },
-            { name: "Load Dishwasher and run it", icon: "🍽️", category: "Kitchen", uid: "dCfP1Lmm4G0xneSq8KmO" },
-            { name: "Make Dinner", icon: "🍽️", category: "Kitchen", uid: "skEcHTDOUnoxuQOVYjRe" },
-            { name: "Make lunch/small meal", icon: "🍽️", category: "Kitchen", uid: "LeMiW69FEFOKmfwApHjv" },
-            { name: "Wash a load of laundry", icon: "👕", category: "Laundry", uid: "3f0dzsFnwYJnAXXxJYe9" },
-            { name: "Dry a load of laundry", icon: "👕", category: "Laundry", uid: "XmTvn2tHBbgsXrUKr87u" },
-            { name: "Gather laundry", icon: "👕", category: "Laundry", uid: "MxASRpVuaTHNbZM80dK2" },
-            { name: "Hang clothes on line", icon: "👕", category: "Laundry", uid: "B1gNNNq2CuALNGUrXaCn" },
-            { name: "Get clothes off line", icon: "👕", category: "Laundry", uid: "ZAbqOInmAdRcYex9zkR3" },
-            { name: "Organize/put away items", icon: "🛠️", category: "Household", uid: "FxNNOQMk3hEvZDX4uEzj" },
-            { name: "Take trash out of a can", icon: "🗑️", category: "Household", uid: "YCJV3ex1bKPzWdCpHym6" }
-        ];
+        
+        let TASKS = [];
 
         let currentMode = 'live'; 
         let isEditMode = false;
-        let tempEditPrefs = new Set(); // Holds selections during edit mode
+        let isViewAllMode = false; // Tracks if we are viewing the full database
+        let tempEditPrefs = new Set(); 
 
-        // --- AUTH & COOKIE LOGIC ---
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
-
-        function setCookie(name, value, days) {
-            let expires = "";
-            if (days) {
-                const date = new Date();
-                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-                expires = "; expires=" + date.toUTCString();
-            }
-            document.cookie = name + "=" + (value || "") + expires + "; path=/";
-        }
-
+        // --- AUTH & STORAGE LOGIC ---
         function decodeKey(pin) {
             const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
             const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
@@ -131,34 +95,46 @@
                 return;
             }
             API_TOKEN = decodeKey(pin);
-            setCookie(COOKIE_NAME, API_TOKEN, 30); 
+            localStorage.setItem("nipto_api_token", API_TOKEN); 
             document.getElementById('pinModal').style.display = 'none';
+            loadTasksFromFirestore();
         }
 
         function checkAuth() {
-            const savedToken = getCookie(COOKIE_NAME);
+            const savedToken = localStorage.getItem("nipto_api_token");
             if (savedToken) {
                 API_TOKEN = savedToken;
+                loadTasksFromFirestore();
             } else {
                 document.getElementById('pinModal').style.display = 'flex';
+                document.getElementById('status').innerText = "Awaiting PIN login...";
             }
         }
 
         // --- USER & DASHBOARD PREFERENCES ---
         function initUsers() {
             const select = document.getElementById('userSelect');
+            const lastUser = localStorage.getItem("nipto_last_user");
+
             USERS.forEach(user => {
                 const option = document.createElement('option');
                 option.value = user.uid;
                 option.text = user.name;
-                // Default to Alyssa
-                if (user.uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") option.selected = true;
+                
+                if (lastUser && user.uid === lastUser) {
+                    option.selected = true;
+                } else if (!lastUser && user.uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") {
+                    option.selected = true;
+                }
+                
                 select.appendChild(option);
             });
         }
 
         function onUserChange() {
-            if (isEditMode) toggleEditMode(); // exit edit mode if they switch users
+            const selectedUid = document.getElementById('userSelect').value;
+            localStorage.setItem("nipto_last_user", selectedUid);
+            if (isEditMode) toggleEditMode(); 
             renderTasks();
         }
 
@@ -168,41 +144,118 @@
 
         function getUserPreferences() {
             const userId = getActiveUserId();
-            const saved = localStorage.getItem(`nipto_dash_${userId}`);
-            if (saved) {
-                return new Set(JSON.parse(saved));
-            }
-            // If first time, return ALL tasks so they have something to start with
-            return new Set(TASKS.map(t => t.uid));
+            const prefs = new Set();
+            TASKS.forEach(t => {
+                if (t.dashboardUsers && t.dashboardUsers.includes(userId)) {
+                    prefs.add(t.uid);
+                }
+            });
+            return prefs;
         }
 
-        function toggleEditMode() {
-            isEditMode = !isEditMode;
-            const btn = document.getElementById('editBtn');
+        function toggleViewAll() {
+            if (isEditMode) return; // Disable while editing
+            
+            isViewAllMode = !isViewAllMode;
+            const btn = document.getElementById('viewAllBtn');
             const statusDiv = document.getElementById('status');
 
-            if (isEditMode) {
-                btn.innerText = "💾 Save Dashboard";
-                btn.classList.add('save-mode');
-                statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from this user's dashboard.";
-                statusDiv.style.color = "var(--primary)";
-                tempEditPrefs = getUserPreferences();
+            if (isViewAllMode) {
+                btn.innerText = "🏠 View My Dashboard";
+                statusDiv.innerText = "Viewing ALL Tasks";
             } else {
-                btn.innerText = "✏️ Edit Dashboard";
-                btn.classList.remove('save-mode');
-                // Save to local storage
-                localStorage.setItem(`nipto_dash_${getActiveUserId()}`, JSON.stringify(Array.from(tempEditPrefs)));
-                
+                btn.innerText = "🔍 View All Tasks";
                 if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
                 else statusDiv.innerText = "Ready (Using custom time above)";
-                statusDiv.style.color = "var(--text-main)";
             }
             renderTasks();
         }
 
+        async function toggleEditMode() {
+            const btn = document.getElementById('editBtn');
+            const syncBtn = document.getElementById('syncNiptoBtn');
+            const viewAllBtn = document.getElementById('viewAllBtn');
+            const statusDiv = document.getElementById('status');
+
+            if (!isEditMode) {
+                // ENTERING EDIT MODE
+                isEditMode = true;
+                btn.innerText = "💾 Save Dashboard";
+                btn.classList.add('save-mode');
+                syncBtn.style.display = 'inline-block'; 
+                viewAllBtn.style.display = 'none'; // Hide View All while editing
+                statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from this user's dashboard.";
+                statusDiv.style.color = "var(--primary)";
+                
+                // Force exit View All mode if they were in it
+                if (isViewAllMode) {
+                    isViewAllMode = false;
+                    viewAllBtn.innerText = "🔍 View All Tasks";
+                }
+                
+                tempEditPrefs = getUserPreferences();
+                renderTasks();
+            } else {
+                // EXITING & SAVING EDIT MODE
+                btn.innerText = "Saving...";
+                btn.disabled = true;
+                syncBtn.disabled = true;
+                
+                await savePreferencesToFirestore();
+
+                isEditMode = false;
+                btn.innerText = "✏️ Edit Dashboard";
+                btn.classList.remove('save-mode');
+                btn.disabled = false;
+                syncBtn.style.display = 'none'; 
+                viewAllBtn.style.display = 'inline-block'; // Bring back View All button
+                syncBtn.disabled = false;
+                
+                if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
+                else statusDiv.innerText = "Ready (Using custom time above)";
+                statusDiv.style.color = "var(--text-main)";
+                renderTasks();
+            }
+        }
+
+        async function savePreferencesToFirestore() {
+            const userId = getActiveUserId();
+            let batch = window.db.batch();
+            let hasChanges = false;
+
+            TASKS.forEach(task => {
+                const wantsItOnDash = tempEditPrefs.has(task.uid);
+                const hasItCurrently = task.dashboardUsers && task.dashboardUsers.includes(userId);
+                
+                if (wantsItOnDash !== hasItCurrently) {
+                    hasChanges = true;
+                    let newUsersList = task.dashboardUsers ? [...task.dashboardUsers] : [];
+                    
+                    if (wantsItOnDash) {
+                        newUsersList.push(userId);
+                    } else {
+                        newUsersList = newUsersList.filter(id => id !== userId);
+                    }
+                    
+                    task.dashboardUsers = newUsersList;
+                    
+                    const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+                    batch.update(docRef, { dashboardUsers: newUsersList });
+                }
+            });
+
+            if (hasChanges) {
+                try {
+                    await batch.commit();
+                } catch (error) {
+                    console.error("Error saving preferences to Firebase:", error);
+                    alert("Failed to save dashboard preferences.");
+                }
+            }
+        }
+
         function handleTaskClick(btn, taskUid, taskName) {
             if (isEditMode) {
-                // Toggle selection state
                 if (tempEditPrefs.has(taskUid)) {
                     tempEditPrefs.delete(taskUid);
                     btn.classList.remove('selected-pref');
@@ -213,10 +266,114 @@
                     btn.classList.remove('unselected-pref');
                 }
             } else {
-                // Normal Logging behavior
                 logTask(btn, taskUid, taskName);
             }
         }
+
+        // --- FIRESTORE / NIPTO API SYNC ---
+        async function loadTasksFromFirestore() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerText = "Loading tasks from database...";
+            try {
+                const snapshot = await window.db.collection('nipto_tasks').get();
+                TASKS = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        uid: doc.id,
+                        name: data.name,
+                        icon: data.group || "📌", // Use Nipto group as the icon
+                        category: data.group || "📌", // Use Nipto group as the category grouping
+                        dashboardUsers: data.dashboardUsers || [] 
+                    };
+                });
+                
+                if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
+                else statusDiv.innerText = "Ready (Using custom time above)";
+                
+                renderTasks();
+            } catch (error) {
+                statusDiv.innerText = "Error loading database: " + error.message;
+                statusDiv.style.color = "var(--danger)";
+            }
+        }
+
+        async function syncNiptoTasks() {
+            const statusDiv = document.getElementById('status');
+            const syncBtn = document.getElementById('syncNiptoBtn');
+
+            if (!API_TOKEN) {
+                alert("Please log in first.");
+                return;
+            }
+
+            syncBtn.disabled = true;
+            syncBtn.innerText = "Syncing...";
+            statusDiv.innerText = "Fetching live tasks from Nipto...";
+            statusDiv.style.color = "var(--primary)";
+
+            const QUERY = `
+                query GetTasks {
+                  tasks {
+                    uid
+                    group
+                    name
+                    value
+                  }
+                }
+            `;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: QUERY })
+                });
+
+                const jsonData = await response.json();
+                if (jsonData.errors) throw new Error(jsonData.errors[0].message);
+
+                const tasks = jsonData.data.tasks;
+                if (!tasks || tasks.length === 0) throw new Error("No tasks returned.");
+
+                statusDiv.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
+
+                let batch = window.db.batch();
+                let operationCount = 0;
+
+                for (const task of tasks) {
+                    const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+                    batch.set(docRef, task, { merge: true });
+                    operationCount++;
+
+                    if (operationCount === 490) {
+                        await batch.commit();
+                        batch = window.db.batch(); 
+                        operationCount = 0;
+                    }
+                }
+
+                if (operationCount > 0) {
+                    await batch.commit();
+                }
+
+                statusDiv.innerText = `Database Synced! Reloading dashboard...`;
+                statusDiv.style.color = "var(--success)";
+                
+                await loadTasksFromFirestore();
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = `Sync Error: ${error.message}`;
+                statusDiv.style.color = "var(--danger)";
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.innerText = "🔄 Sync Database";
+            }
+        }
+
 
         // --- TIME LOGIC ---
         function formatForInput(dateObj) {
@@ -229,7 +386,7 @@
         }
 
         function setMode(mode) {
-            if (isEditMode) return; // Prevent changing time modes while editing
+            if (isEditMode) return; 
             currentMode = mode;
             const btnLive = document.getElementById('btnLive');
             const btnCustom = document.getElementById('btnCustom');
@@ -262,7 +419,7 @@
             dateInput.value = formatForInput(targetDate);
         }
 
-        // --- API LOGIC ---
+        // --- API LOGGING LOGIC ---
         async function logTask(buttonElement, taskUid, taskName) {
             if (buttonElement.classList.contains('success')) return;
             if (!API_TOKEN) {
@@ -272,7 +429,7 @@
 
             const statusDiv = document.getElementById('status');
             buttonElement.disabled = true;
-            const targetUserId = getActiveUserId(); // Use the selected user!
+            const targetUserId = getActiveUserId(); 
 
             let targetDate;
             if (currentMode === 'live') {
@@ -310,7 +467,7 @@
                         query: MUTATION,
                         variables: {
                             done: taskUid,
-                            doers: [targetUserId], // Send the active user's UID here
+                            doers: [targetUserId], 
                             date: exactFormatString
                         }
                     })
@@ -330,7 +487,8 @@
                     buttonElement.disabled = false;
                     buttonElement.innerHTML = buttonElement.getAttribute('data-original-html');
                     
-                    if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
+                    if (isViewAllMode) statusDiv.innerText = "Viewing ALL Tasks";
+                    else if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
                     else statusDiv.innerText = "Ready (Using custom time above)";
                     statusDiv.style.color = 'var(--text-main)';
                 }, 3000);
@@ -341,7 +499,7 @@
                 buttonElement.disabled = false;
                 
                 if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
-                    setCookie(COOKIE_NAME, "", -1);
+                    localStorage.removeItem("nipto_api_token");
                     API_TOKEN = "";
                     document.getElementById('pinModal').style.display = 'flex';
                 }
@@ -351,32 +509,32 @@
         // --- RENDER LOGIC ---
         function renderTasks() {
             const container = document.getElementById('mainContainer');
-            container.innerHTML = ''; // clear current board
+            container.innerHTML = ''; 
             
             const userPrefs = getUserPreferences();
             
-            // Filter tasks: If edit mode, show all. If view mode, show only preferred.
-            const visibleTasks = TASKS.filter(t => isEditMode || userPrefs.has(t.uid));
+            // Filter logic: Show if in Edit Mode OR View All Mode OR if user prefers it
+            const visibleTasks = TASKS.filter(t => isEditMode || isViewAllMode || userPrefs.has(t.uid));
 
             if (visibleTasks.length === 0 && !isEditMode) {
-                container.innerHTML = '<div class="empty-dashboard-msg">Your dashboard is empty. Click "Edit Dashboard" to add tasks!</div>';
+                container.innerHTML = '<div class="empty-dashboard-msg" style="text-align: center; margin-top: 40px;">Your dashboard is empty. Click "Edit Dashboard" to add tasks!</div>';
                 return;
             }
 
+            // Group directly by the Nipto group (which is the emoji)
             const groupedTasks = visibleTasks.reduce((acc, task) => {
                 if (!acc[task.category]) acc[task.category] = [];
                 acc[task.category].push(task);
                 return acc;
             }, {});
 
-            const categoryOrder = ["Goats", "Dogs", "Cats", "Pigs", "Kitchen", "Laundry", "Household"];
+            const categories = Object.keys(groupedTasks).sort();
 
-            categoryOrder.forEach(category => {
-                if (!groupedTasks[category]) return;
-
+            categories.forEach(category => {
                 const section = document.createElement('div');
                 section.className = 'category-section';
 
+                // The header will literally just be the Emoji 
                 const header = document.createElement('h3');
                 header.className = 'category-header';
                 header.innerText = category;
@@ -393,13 +551,13 @@
                         btn.classList.add('edit-mode');
                         if (tempEditPrefs.has(task.uid)) {
                             btn.classList.add('selected-pref');
-                            btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span><span style="font-size:12px; margin-top:5px;">✅ Selected</span>`;
+                            btn.innerHTML = `<span>${task.name}</span><span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
                         } else {
                             btn.classList.add('unselected-pref');
-                            btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span><span style="font-size:12px; margin-top:5px;">❌ Hidden</span>`;
+                            btn.innerHTML = `<span>${task.name}</span><span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
                         }
                     } else {
-                        btn.innerHTML = `<span class="task-icon">${task.icon}</span><span>${task.name}</span>`;
+                        btn.innerHTML = `<span>${task.name}</span>`;
                     }
                     
                     btn.setAttribute('data-original-html', btn.innerHTML);
@@ -415,7 +573,6 @@
         // Initialize
         initUsers();
         checkAuth();
-        renderTasks();
 
     </script>
 </body>
