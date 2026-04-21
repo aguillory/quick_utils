@@ -1,5 +1,6 @@
-/* nipto-shared.css */
-
+/* ==========================================
+   GLOBAL VARIABLES & RESET
+   ========================================== */
 :root {
     --primary: #4F46E5;
     --primary-hover: #4338CA;
@@ -9,6 +10,7 @@
     --card-bg: #FFFFFF;
     --text-main: #1F2937;
     --text-muted: #6B7280;
+    --border-color: #E5E7EB;
 }
 
 body { 
@@ -20,38 +22,149 @@ body {
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    padding-top: 50px;
+    padding: 40px 20px;
+    box-sizing: border-box;
 }
 
-/* Typography */
-h1, h2 { 
+h1, h2, h3 { 
     margin-top: 0;
-    margin-bottom: 5px;
     color: var(--text-main); 
 }
 
-h2 {
-    font-size: 28px;
-}
+h2 { font-size: 28px; margin-bottom: 5px; }
+p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
 
-p.subtitle {
-    color: var(--text-muted);
-    margin-bottom: 20px;
-    font-size: 15px;
-}
-
-/* Layout Containers */
+/* ==========================================
+   CONTAINERS & LAYOUT
+   ========================================== */
+/* Centered narrow container (for Task Logger & Sync) */
 .dashboard-container {
     background: var(--card-bg);
     padding: 40px;
     border-radius: 16px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
     max-width: 600px;
-    width: 90%;
+    width: 100%;
     text-align: center;
     position: relative;
+    box-sizing: border-box;
 }
 
+/* Wider header block (for Main Dashboard) */
+.header {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    max-width: 800px;
+    margin-bottom: 30px;
+    box-sizing: border-box;
+}
+
+/* Main content wrapper (for Main Dashboard categories) */
+#mainContainer {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+/* ==========================================
+   MAIN DASHBOARD SPECIFICS (common.html)
+   ========================================== */
+.controls-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+/* Custom Time / Live Time Toggles */
+.mode-toggle {
+    display: flex;
+    gap: 5px;
+    background: var(--bg-color);
+    padding: 5px;
+    border-radius: 10px;
+    width: fit-content;
+}
+
+.mode-btn {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-weight: 600;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.mode-btn.active {
+    background: var(--card-bg);
+    color: var(--primary);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.custom-time-container {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    background: #F9FAFB;
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.custom-time-container.visible {
+    display: flex;
+}
+
+.quick-times {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.qt-btn {
+    padding: 6px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-main);
+    transition: all 0.2s;
+}
+
+.qt-btn:hover { background: var(--border-color); }
+
+/* Category Headers */
+.category-section {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.category-header {
+    font-size: 20px;
+    color: var(--text-main);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 8px;
+    margin: 0;
+}
+
+/* Grids */
+.task-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 15px;
+}
+
+/* 4-column strict grid (for Task Logger) */
 .grid { 
     display: grid; 
     grid-template-columns: repeat(4, 1fr); 
@@ -59,45 +172,40 @@ p.subtitle {
     margin-bottom: 30px;
 }
 
-/* Forms & Inputs */
-.user-select-container {
-    margin-bottom: 30px;
-}
-
-select {
-    padding: 10px;
-    font-size: 16px;
-    border-radius: 8px;
-    border: 2px solid #E5E7EB;
-    background-color: #F9FAFB;
-    color: var(--text-main);
-    outline: none;
-    cursor: pointer;
-}
-
-select:focus {
-    border-color: var(--primary);
-}
-
-/* Buttons */
+/* ==========================================
+   BUTTONS & INPUTS
+   ========================================== */
+/* Generic Task / Time Button Styles */
 .time-btn, .task-btn { 
     padding: 20px 10px; 
     font-size: 16px; 
     font-weight: 600;
     cursor: pointer; 
-    border: 2px solid #E5E7EB; 
+    border: 2px solid var(--border-color); 
     border-radius: 12px; 
     background-color: var(--card-bg); 
     color: var(--text-main);
     transition: all 0.2s ease-in-out;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
 }
+
+.task-icon { font-size: 26px; }
 
 .time-btn:hover:not(:disabled), .task-btn:hover:not(:disabled) { 
     border-color: var(--primary);
     color: var(--primary);
     transform: translateY(-2px);
     box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1);
+}
+
+.time-btn:active:not(:disabled), .task-btn:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .time-btn.success, .task-btn.success { 
@@ -115,13 +223,32 @@ select:focus {
     border-color: var(--danger); 
 }
 
+/* Forms */
+.user-select-container { margin-bottom: 30px; }
+
+select, input[type="datetime-local"] {
+    padding: 10px;
+    font-size: 15px;
+    border-radius: 8px;
+    border: 2px solid var(--border-color);
+    background-color: #F9FAFB;
+    color: var(--text-main);
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+}
+
+select:focus, input[type="datetime-local"]:focus {
+    border-color: var(--primary);
+}
+
 .reset-btn {
     padding: 12px 24px;
     font-size: 14px;
     font-weight: 600;
     background-color: transparent;
     color: var(--text-muted);
-    border: 2px solid #E5E7EB;
+    border: 2px solid var(--border-color);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
@@ -133,27 +260,30 @@ select:focus {
     border-color: #D1D5DB;
 }
 
-/* Utilities */
+/* ==========================================
+   UTILITIES & STATUS
+   ========================================== */
 #status { 
-    margin-top: 10px; 
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 500; 
-    height: 24px; 
     color: var(--text-muted);
     transition: color 0.3s ease;
+    min-height: 22px;
 }
 
 .divider {
     height: 1px;
-    background-color: #E5E7EB;
+    background-color: var(--border-color);
     margin: 30px 0;
 }
 
-/* Modal Styles */
+/* ==========================================
+   PIN MODAL
+   ========================================== */
 #pinModal {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.6);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -167,10 +297,8 @@ select:focus {
     border-radius: 16px;
     text-align: center;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-}
-
-.modal-content h2 { 
-    color: var(--text-main); 
+    max-width: 400px;
+    width: 90%;
 }
 
 .modal-content input {
@@ -182,14 +310,12 @@ select:focus {
     margin: 20px 0;
     background: #F9FAFB;
     color: var(--text-main);
-    border: 2px solid #E5E7EB;
+    border: 2px solid var(--border-color);
     border-radius: 8px;
     outline: none;
 }
 
-.modal-content input:focus { 
-    border-color: var(--primary); 
-}
+.modal-content input:focus { border-color: var(--primary); }
 
 .modal-content button {
     background: var(--primary);
@@ -203,6 +329,4 @@ select:focus {
     transition: background 0.2s;
 }
 
-.modal-content button:hover {
-    background: var(--primary-hover);
-}
+.modal-content button:hover { background: var(--primary-hover); }
