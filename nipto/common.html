@@ -100,8 +100,14 @@
             loadTasksFromFirestore();
         }
 
-        function checkAuth() {
-            const savedToken = localStorage.getItem("nipto_api_token");
+// Example using Anonymous Auth
+function checkAuth() {
+    const savedToken = localStorage.getItem("nipto_api_token");
+    
+    // Ensure Firebase is logged in before doing anything
+    window.firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+            // Firebase is ready. Now check Nipto API.
             if (savedToken) {
                 API_TOKEN = savedToken;
                 loadTasksFromFirestore();
@@ -109,7 +115,15 @@
                 document.getElementById('pinModal').style.display = 'flex';
                 document.getElementById('status').innerText = "Awaiting PIN login...";
             }
+        } else {
+            // Sign in silently
+            window.firebase.auth().signInAnonymously().catch((error) => {
+                console.error("Firebase Auth Error:", error);
+                document.getElementById('status').innerText = "Database Auth Failed.";
+            });
         }
+    });
+}
 
         // --- USER & DASHBOARD PREFERENCES ---
         function initUsers() {
