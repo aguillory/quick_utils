@@ -43,7 +43,6 @@
             Minus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
             Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
             Book: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`,
-            Home: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
             CreditCard: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>`
         };
 
@@ -54,8 +53,7 @@
             loginError: '',
             data: { 
                 ledger: { b: 0, h: [] }, 
-                rent: { b: 0, h: [] }, 
-                cc: { b: 0, paid: 0, h: [] } 
+                cc: { b: 0, paid: 0, interest: 0, stefaniPaid: 0, h: [] } 
             }
         };
 
@@ -179,15 +177,15 @@
 
         const renderApp = () => `
             <div class="bg-pink-900 text-white pb-24 pt-8 px-4 shadow-xl">
-                <div class="max-w-6xl mx-auto">
+                <div class="max-w-4xl mx-auto">
                     <h1 class="text-2xl font-bold flex items-center gap-2 mb-2">
                         Stefani's Ledgers
                     </h1>
-                    <p class="text-pink-200 text-sm">Track shared expenses, rent, and credit cards.</p>
+                    <p class="text-pink-200 text-sm">Track shared expenses and credit cards.</p>
                 </div>
             </div>
 
-            <div class="max-w-6xl mx-auto px-4 -mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="max-w-4xl mx-auto px-4 -mt-16 grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 ${renderCard('The Ledger', Icons.Book, 'She Owes You', state.data.ledger.b, `
                     <div class="flex gap-2">
@@ -210,33 +208,16 @@
                     </div>
                 `)}
 
-                ${renderCard("Mom's Rent", Icons.Home, 'Outstanding Rent', state.data.rent.b, `
-                    <input type="text" id="rent-desc" placeholder="Month (e.g. October Rent)" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
-                    <div class="flex gap-2">
-                        <input type="number" id="rent-amount" placeholder="Amount" step="0.01" class="flex-grow px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-pink-500">
-                        <input type="date" id="rent-date" class="w-32 px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-600">
+                ${renderCard('Credit Card', Icons.CreditCard, 'Stefani Owes:', state.data.cc.b, `
+                    <div class="text-center text-xs text-slate-500 flex flex-col gap-1">
+                        <div>Alyssa's monthly payment totals: <strong class="text-slate-700">${formatCurrency(state.data.cc.paid)}</strong></div>
+                        <div>Total interest charges: <strong class="text-slate-700">${formatCurrency(state.data.cc.interest)}</strong></div>
+                        <div>Stefani's total payments: <strong class="text-slate-700">${formatCurrency(state.data.cc.stefaniPaid)}</strong></div>
                     </div>
-
-                    <div class="grid grid-cols-2 gap-2">
-                        <button onclick="Ledger.addTransaction('rent', 'charge', 'rent-desc', 'rent-amount', 'rent-date')" class="flex items-center justify-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 py-2 rounded-md font-bold text-sm transition">
-                            ${Icons.Plus} Charge
-                        </button>
-                        <button onclick="Ledger.addTransaction('rent', 'payment', 'rent-desc', 'rent-amount', 'rent-date')" class="flex items-center justify-center gap-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-md font-bold text-sm transition">
-                            ${Icons.Minus} Payment
-                        </button>
-                    </div>
-
-                    <div class="mt-4 border-t border-slate-100 pt-2 flex-grow overflow-y-auto max-h-60 custom-scrollbar">
-                        ${renderHistory(state.data.rent.h)}
-                    </div>
-                `)}
-
-                ${renderCard('Credit Card', Icons.CreditCard, 'She Owes You', state.data.cc.b, `
-                    <div class="text-center text-xs text-slate-400 mb-2">You paid bank: <strong class="text-slate-700">${formatCurrency(state.data.cc.paid)}</strong></div>
                     
                     <select id="cc-type" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-500">
                         <option value="interest">📈 Interest/Fee (Increases Debt)</option>
-                        <option value="payment">💰 She Paid Me (Decreases Debt)</option>
+                        <option value="payment">💸 She Paid Me (Decreases Debt)</option>
                         <option value="bank_payment">🏦 I Paid Bank (Tracking Only)</option>
                     </select>
 
@@ -286,7 +267,7 @@
                 // Real-time listener
                 const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
                 onSnapshot(q, (snapshot) => {
-                    const d = { ledger: { b: 0, h: [] }, rent: { b: 0, h: [] }, cc: { b: 0, paid: 0, h: [] } };
+                    const d = { ledger: { b: 0, h: [] }, cc: { b: 0, paid: 0, interest: 0, stefaniPaid: 0, h: [] } };
                     
                     snapshot.forEach(doc => {
                         const t = doc.data(); t.id = doc.id;
@@ -295,14 +276,15 @@
                             if (t.type === 'payment') d.ledger.b -= t.amount;
                             d.ledger.h.push(t);
                         }
-                        if (t.category === 'rent') {
-                            if (t.type === 'charge') d.rent.b += t.amount;
-                            if (t.type === 'payment') d.rent.b -= t.amount;
-                            d.rent.h.push(t);
-                        }
                         if (t.category === 'cc') {
-                            if (t.type === 'interest' || t.type === 'charge') d.cc.b += t.amount;
-                            else if (t.type === 'payment') d.cc.b -= t.amount;
+                            if (t.type === 'interest' || t.type === 'charge') {
+                                d.cc.b += t.amount;
+                                if (t.type === 'interest') d.cc.interest += t.amount;
+                            }
+                            else if (t.type === 'payment') {
+                                d.cc.b -= t.amount;
+                                d.cc.stefaniPaid += t.amount;
+                            }
                             else if (t.type === 'bank_payment') d.cc.paid += t.amount;
                             d.cc.h.push(t);
                         }
@@ -312,7 +294,6 @@
                     render();
                 }, (error) => {
                     console.error("Firebase Error:", error);
-                    // If permissions fail, we might need to handle logout or error display
                 });
             } else {
                 render();
