@@ -30,7 +30,7 @@
         .user-toggle.active {
             border-color: var(--primary);
             box-shadow: 0 4px 8px rgba(79, 70, 229, 0.15);
-            background-color: #F8FAFC; /* Very light tint */
+            background-color: #F8FAFC; 
             transform: translateY(-2px);
         }
 
@@ -47,24 +47,70 @@
             margin-bottom: 5px;
         }
 
-        .user-toggle.active .user-name {
-            color: var(--primary);
+        .user-toggle.active .user-name { color: var(--primary); }
+        .user-points { font-size: 16px; font-weight: bold; color: var(--text-muted); }
+        .user-toggle.active .user-points { color: var(--primary); }
+
+        .dashboard-header-controls { align-items: center !important; }
+
+        /* --- NEW LAYOUT STYLES --- */
+        .page-wrapper {
+            display: flex;
+            gap: 30px;
+            width: 100%;
+            max-width: 1100px;
+            align-items: flex-start;
         }
 
-        .user-points {
-            font-size: 16px;
-            font-weight: bold;
-            color: var(--text-muted);
+        .main-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
         }
 
-        .user-toggle.active .user-points {
-            color: var(--primary);
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            height: fit-content;
+            max-height: 85vh;
+            overflow-y: auto;
+            position: sticky;
+            top: 40px;
         }
 
-        /* Adjust header controls for new layout */
-        .dashboard-header-controls {
-            align-items: center !important;
+        .sidebar h3 {
+            font-size: 18px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
         }
+
+        .history-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #f3f4f6;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .history-item:last-child { border-bottom: none; }
+        
+        .history-task-name { font-weight: 600; font-size: 14px; color: var(--text-main); }
+        .history-details { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+        
+        .history-user-NMRQaRQbvCwBaJbiMFId { color: #3B82F6; font-weight: bold; } /* Ayden color */
+        .history-user-RMNUTP8VOHD9PDzNjf0g { color: #10B981; font-weight: bold; } /* DJ color */
+        
+        .empty-history { color: var(--text-muted); font-size: 14px; font-style: italic; text-align: center; margin-top: 20px;}
+
+        /* Override main container max-width since it's now in a flex wrapper */
+        #mainContainer, .header { max-width: 100% !important; }
     </style>
 </head>
 <body>
@@ -80,35 +126,48 @@
         </div>
     </div>
 
-    <div class="header">
-        <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
+    <div class="page-wrapper">
         
-        <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: center;">
-            
-            <div class="user-toggle-container">
-                <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
-                    <div class="user-name">Ayden</div>
-                    <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
-                </div>
-                
-                <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
-                    <div class="user-name">DJ</div>
-                    <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
-                <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks()" style="display: none; background-color: var(--secondary); font-size: 20px; padding: 5px 12px;" title="Sync Database">🔄</button>
-                <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="font-size: 20px; padding: 5px 12px;">✏️</button>
+        <div class="sidebar">
+            <h3>This Week's Activity</h3>
+            <div id="historyContainer">
+                <div class="empty-history">Loading history...</div>
             </div>
         </div>
 
-        <div class="controls-wrapper">
-            <div id="status" style="text-align: center; font-weight: bold; min-height: 22px;"></div>
+        <div class="main-column">
+            
+            <div class="header" style="margin-bottom: 0;">
+                <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
+                
+                <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: center;">
+                    
+                    <div class="user-toggle-container">
+                        <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                            <div class="user-name">Ayden</div>
+                            <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                        </div>
+                        
+                        <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                            <div class="user-name">DJ</div>
+                            <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
+                        <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks()" style="display: none; background-color: var(--secondary); font-size: 20px; padding: 5px 12px;" title="Sync Database">🔄</button>
+                        <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="font-size: 20px; padding: 5px 12px;">✏️</button>
+                    </div>
+                </div>
+
+                <div class="controls-wrapper">
+                    <div id="status" style="text-align: center; font-weight: bold; min-height: 22px;"></div>
+                </div>
+            </div>
+
+            <div id="mainContainer"></div>
         </div>
     </div>
-
-    <div id="mainContainer"></div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -199,7 +258,6 @@
             });
         }
 
-        // We check if either boy has the task to consider it "shared" on this board
         function getSharedPreferences() {
             const prefs = new Set();
             TASKS.forEach(t => {
@@ -216,7 +274,6 @@
             const statusDiv = document.getElementById('status');
 
             if (!isEditMode) {
-                // ENTERING EDIT MODE
                 isEditMode = true;
                 btn.innerText = "💾";
                 btn.classList.add('save-mode');
@@ -227,7 +284,6 @@
                 tempEditPrefs = getSharedPreferences();
                 renderTasks();
             } else {
-                // EXITING & SAVING EDIT MODE
                 btn.innerText = "⏳";
                 btn.disabled = true;
                 syncBtn.disabled = true;
@@ -246,7 +302,6 @@
             }
         }
 
-        // Saves tasks to BOTH boys so they perfectly share the board
         async function savePreferencesToFirestore() {
             let batch = window.db.batch();
             let hasChanges = false;
@@ -274,12 +329,8 @@
             });
 
             if (hasChanges) {
-                try {
-                    await batch.commit();
-                } catch (error) {
-                    console.error("Error saving preferences to Firebase:", error);
-                    alert("Failed to save dashboard preferences.");
-                }
+                try { await batch.commit(); } 
+                catch (error) { console.error("Error saving preferences to Firebase:", error); alert("Failed to save dashboard preferences."); }
             }
         }
 
@@ -314,7 +365,6 @@
                         dashboardUsers: data.dashboardUsers || [] 
                     };
                 });
-                
                 renderTasks();
             } catch (error) {
                 const statusDiv = document.getElementById('status');
@@ -327,34 +377,19 @@
             const statusDiv = document.getElementById('status');
             const syncBtn = document.getElementById('syncNiptoBtn');
 
-            if (!API_TOKEN) {
-                alert("Please log in first.");
-                return;
-            }
+            if (!API_TOKEN) { alert("Please log in first."); return; }
 
             syncBtn.disabled = true;
             syncBtn.innerText = "⏳";
             statusDiv.innerText = "Fetching live tasks from Nipto...";
             statusDiv.style.color = "var(--primary)";
 
-            const QUERY = `
-                query GetTasks {
-                  tasks {
-                    uid
-                    group
-                    name
-                    value
-                  }
-                }
-            `;
+            const QUERY = `query GetTasks { tasks { uid group name value } }`;
 
             try {
                 const response = await fetch(URL, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': API_TOKEN, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: QUERY })
                 });
 
@@ -364,7 +399,7 @@
                 const tasks = jsonData.data.tasks;
                 if (!tasks || tasks.length === 0) throw new Error("No tasks returned.");
 
-                statusDiv.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
+                statusDiv.innerText = `Found ${tasks.length} live tasks. Syncing...`;
 
                 let batch = window.db.batch();
                 let operationCount = 0;
@@ -381,9 +416,7 @@
                     }
                 }
 
-                if (operationCount > 0) {
-                    await batch.commit();
-                }
+                if (operationCount > 0) await batch.commit();
 
                 statusDiv.innerText = `Database Synced!`;
                 statusDiv.style.color = "var(--success)";
@@ -404,13 +437,14 @@
         async function fetchWeeklyPoints() {
             if (!API_TOKEN) return;
 
+            // Added task { name } to the query so we can build the history
             const QUERY = `
                 {
                     activities {
                         uid
                         date
                         user { uid }
-                        task { value }
+                        task { name value } 
                     }
                 }
             `;
@@ -418,10 +452,7 @@
             try {
                 const response = await fetch(URL, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': API_TOKEN, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: QUERY })
                 });
 
@@ -432,6 +463,7 @@
                 if (!activities) throw new Error("No activities data found.");
 
                 let points = { "NMRQaRQbvCwBaJbiMFId": 0, "RMNUTP8VOHD9PDzNjf0g": 0 };
+                let thisWeekActivities = [];
 
                 // Determine Monday start
                 const now = new Date();
@@ -442,10 +474,16 @@
                 startOfWeek.setHours(0, 0, 0, 0);
 
                 activities.forEach(activity => {
+                    // Only process if it belongs to one of the boys
                     if (activity.user && points[activity.user.uid] !== undefined) {
                         const activityDate = new Date(activity.date);
                         if (activityDate >= startOfWeek) {
                             points[activity.user.uid] += (activity.task && activity.task.value) ? activity.task.value : 0;
+                            // Add to history array
+                            thisWeekActivities.push({
+                                ...activity,
+                                parsedDate: activityDate
+                            });
                         }
                     }
                 });
@@ -453,54 +491,74 @@
                 document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = points['NMRQaRQbvCwBaJbiMFId'] + " pts";
                 document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = points['RMNUTP8VOHD9PDzNjf0g'] + " pts";
 
+                // Render the sidebar history
+                renderHistory(thisWeekActivities);
+
             } catch (error) {
-                console.error("Error fetching points:", error);
+                console.error("Error fetching points/history:", error);
                 document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = "Error";
                 document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = "Error";
+                document.getElementById('historyContainer').innerHTML = "<div class='empty-history'>Error loading history.</div>";
             }
+        }
+
+        // --- NEW: RENDER SIDEBAR HISTORY ---
+        function renderHistory(activities) {
+            const container = document.getElementById('historyContainer');
+            container.innerHTML = '';
+
+            if (activities.length === 0) {
+                container.innerHTML = '<div class="empty-history">No tasks done yet this week.</div>';
+                return;
+            }
+
+            // Sort most recent first
+            activities.sort((a, b) => b.parsedDate - a.parsedDate);
+
+            // Time formatting options
+            const timeOptions = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
+
+            activities.forEach(act => {
+                const userName = USERS.find(u => u.uid === act.user.uid)?.name || "Unknown";
+                const taskName = act.task ? act.task.name : "Deleted Task";
+                const taskValue = act.task ? act.task.value : 0;
+                const formattedTime = act.parsedDate.toLocaleDateString(undefined, timeOptions);
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'history-item';
+                
+                itemDiv.innerHTML = `
+                    <div class="history-task-name">${taskName}</div>
+                    <div class="history-details">
+                        <span class="history-user-${act.user.uid}">${userName} (+${taskValue})</span>
+                        <span>${formattedTime}</span>
+                    </div>
+                `;
+                container.appendChild(itemDiv);
+            });
         }
 
         async function logTask(buttonElement, taskUid, taskName) {
             if (buttonElement.classList.contains('success')) return;
-            if (!API_TOKEN) {
-                document.getElementById('pinModal').style.display = 'flex';
-                return;
-            }
+            if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
 
             const statusDiv = document.getElementById('status');
             buttonElement.disabled = true;
 
             const targetDate = new Date(); 
             const exactFormatString = targetDate.toISOString();
-
-            // Find active user's name for status message
             const activeUserName = USERS.find(u => u.uid === activeUserId).name;
 
             statusDiv.innerText = `Logging: ${taskName} for ${activeUserName}...`;
             statusDiv.style.color = 'var(--text-main)';
 
-            const MUTATION = `
-                mutation CreateActivity($done: String!, $doers: [String!], $date: Date) {
-                  createActivity(done: $done, doers: $doers, date: $date) {
-                    uid
-                  }
-                }`;
+            const MUTATION = `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`;
 
             try {
                 const response = await fetch(URL, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        query: MUTATION,
-                        variables: {
-                            done: taskUid,
-                            doers: [activeUserId], 
-                            date: exactFormatString
-                        }
-                    })
+                    headers: { 'Authorization': API_TOKEN, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: MUTATION, variables: { done: taskUid, doers: [activeUserId], date: exactFormatString } })
                 });
 
                 const data = await response.json();
@@ -512,6 +570,7 @@
                 buttonElement.classList.add('success');
                 buttonElement.innerHTML += '<br><span style="font-size:12px;">✓ Logged</span>';
                 
+                // Fetch points and history again to update sidebar and totals
                 fetchWeeklyPoints();
 
                 setTimeout(() => {
@@ -536,13 +595,12 @@
             }
         }
 
-        // --- RENDER LOGIC ---
+        // --- RENDER MAIN TASKS ---
         function renderTasks() {
             const container = document.getElementById('mainContainer');
             container.innerHTML = ''; 
             
             const userPrefs = getSharedPreferences();
-            
             const visibleTasks = TASKS.filter(t => isEditMode || userPrefs.has(t.uid));
 
             if (visibleTasks.length === 0 && !isEditMode) {
