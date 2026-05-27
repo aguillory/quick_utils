@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kids Nipto Dashboard</title>
+    <link rel="stylesheet" href="nipto-shared.css">
+    <style>
+        /* Custom styles for the dual-user toggle */
+        .user-toggle-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 5px;
+            width: 100%;
+        }
+
+        .user-toggle {
+            flex: 1;
+            padding: 15px;
+            border-radius: 12px;
+            border: 2px solid var(--border-color);
+            background: var(--card-bg);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            user-select: none;
+        }
+
+        .user-toggle.active {
+            border-color: var(--primary);
+            box-shadow: 0 4px 8px rgba(79, 70, 229, 0.15);
+            background-color: #F8FAFC; /* Very light tint */
+            transform: translateY(-2px);
+        }
+
+        .user-toggle.inactive {
+            opacity: 0.5;
+            filter: grayscale(100%);
+            background: #F3F4F6;
+        }
+
+        .user-name {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-bottom: 5px;
+        }
+
+        .user-toggle.active .user-name {
+            color: var(--primary);
+        }
+
+        .user-points {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+
+        .user-toggle.active .user-points {
+            color: var(--primary);
+        }
+
+        /* Adjust header controls for new layout */
+        .dashboard-header-controls {
+            align-items: center !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="pinModal" style="display: none;">
+        <div class="modal-content">
+            <h2>Enter Dashboard PIN</h2>
+            <p style="font-size: 14px; color: #aaa;">Please enter your 4-digit PIN to decrypt the API key.</p>
+            <input type="password" id="pinInput" maxlength="4" placeholder="••••">
+            <br>
+            <button onclick="savePin()">Unlock</button>
+            <div id="pinError" style="color: var(--danger); margin-top: 15px; display: none; font-size: 14px;">Invalid PIN format</div>
+        </div>
+    </div>
+
+    <div class="header">
+        <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
+        
+        <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: center;">
+            
+            <div class="user-toggle-container">
+                <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                    <div class="user-name">Ayden</div>
+                    <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                </div>
+                
+                <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                    <div class="user-name">DJ</div>
+                    <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
+                <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks()" style="display: none; background-color: var(--secondary); font-size: 20px; padding: 5px 12px;" title="Sync Database">🔄</button>
+                <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="font-size: 20px; padding: 5px 12px;">✏️</button>
+            </div>
+        </div>
+
+        <div class="controls-wrapper">
+            <div id="status" style="text-align: center; font-weight: bold; min-height: 22px;"></div>
+        </div>
+    </div>
+
+    <div id="mainContainer"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="firebase-config.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const USERS = [
+            { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden" },
+            { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ" }
+        ];
+
+        const URL = "https://nipto.app/graphql";
+        let API_TOKEN = "";
+        
+        let TASKS = [];
+        let isEditMode = false;
+        let tempEditPrefs = new Set(); 
+        let activeUserId = "NMRQaRQbvCwBaJbiMFId";
+
+        // --- AUTH & STORAGE LOGIC ---
+        function decodeKey(pin) {
+            const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
+            const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
+            return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
+        }
+
+        function savePin() {
+            const pin = document.getElementById('pinInput').value;
+            if (pin.length !== 4) {
+                document.getElementById('pinError').style.display = 'block';
+                return;
+            }
+            API_TOKEN = decodeKey(pin);
+            localStorage.setItem("nipto_api_token", API_TOKEN); 
+            document.getElementById('pinModal').style.display = 'none';
+            loadTasksFromFirestore();
+            fetchWeeklyPoints();
+        }
+
+        function checkAuth() {
+            const savedToken = localStorage.getItem("nipto_api_token");
+            
+            window.firebase.auth().onAuthStateChanged((user) => {
+                if (user) {
+                    if (savedToken) {
+                        API_TOKEN = savedToken;
+                        loadTasksFromFirestore();
+                        fetchWeeklyPoints();
+                    } else {
+                        document.getElementById('pinModal').style.display = 'flex';
+                    }
+                } else {
+                    window.firebase.auth().signInAnonymously().catch((error) => {
+                        console.error("Firebase Auth Error:", error);
+                        document.getElementById('status').innerText = "Database Auth Failed.";
+                    });
+                }
+            });
+        }
+
+        // --- USER & DASHBOARD PREFERENCES ---
+        function initUsers() {
+            const lastUser = localStorage.getItem("nipto_kids_last_user");
+            if (lastUser && USERS.find(u => u.uid === lastUser)) {
+                setActiveUser(lastUser);
+            } else {
+                setActiveUser(USERS[0].uid);
+            }
+        }
+
+        function setActiveUser(uid) {
+            if (isEditMode) return; 
+            
+            activeUserId = uid;
+            localStorage.setItem("nipto_kids_last_user", uid);
+            
+            USERS.forEach(user => {
+                const el = document.getElementById(`toggle-${user.uid}`);
+                if (user.uid === uid) {
+                    el.classList.add('active');
+                    el.classList.remove('inactive');
+                } else {
+                    el.classList.add('inactive');
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        // We check if either boy has the task to consider it "shared" on this board
+        function getSharedPreferences() {
+            const prefs = new Set();
+            TASKS.forEach(t => {
+                if (t.dashboardUsers && (t.dashboardUsers.includes("NMRQaRQbvCwBaJbiMFId") || t.dashboardUsers.includes("RMNUTP8VOHD9PDzNjf0g"))) {
+                    prefs.add(t.uid);
+                }
+            });
+            return prefs;
+        }
+
+        async function toggleEditMode() {
+            const btn = document.getElementById('editBtn');
+            const syncBtn = document.getElementById('syncNiptoBtn');
+            const statusDiv = document.getElementById('status');
+
+            if (!isEditMode) {
+                // ENTERING EDIT MODE
+                isEditMode = true;
+                btn.innerText = "💾";
+                btn.classList.add('save-mode');
+                syncBtn.style.display = 'inline-block';
+                statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from the shared dashboard.";
+                statusDiv.style.color = "var(--primary)";
+                
+                tempEditPrefs = getSharedPreferences();
+                renderTasks();
+            } else {
+                // EXITING & SAVING EDIT MODE
+                btn.innerText = "⏳";
+                btn.disabled = true;
+                syncBtn.disabled = true;
+                
+                await savePreferencesToFirestore();
+
+                isEditMode = false;
+                btn.innerText = "✏️";
+                btn.classList.remove('save-mode');
+                btn.disabled = false;
+                syncBtn.style.display = 'none';
+                syncBtn.disabled = false;
+                
+                statusDiv.innerText = "";
+                renderTasks();
+            }
+        }
+
+        // Saves tasks to BOTH boys so they perfectly share the board
+        async function savePreferencesToFirestore() {
+            let batch = window.db.batch();
+            let hasChanges = false;
+
+            TASKS.forEach(task => {
+                const wantsItOnDash = tempEditPrefs.has(task.uid);
+                const currentlyHasIt = task.dashboardUsers && (task.dashboardUsers.includes("NMRQaRQbvCwBaJbiMFId") || task.dashboardUsers.includes("RMNUTP8VOHD9PDzNjf0g"));
+                
+                if (wantsItOnDash !== currentlyHasIt) {
+                    hasChanges = true;
+                    let newUsersList = task.dashboardUsers ? [...task.dashboardUsers] : [];
+                    
+                    if (wantsItOnDash) {
+                        if (!newUsersList.includes("NMRQaRQbvCwBaJbiMFId")) newUsersList.push("NMRQaRQbvCwBaJbiMFId");
+                        if (!newUsersList.includes("RMNUTP8VOHD9PDzNjf0g")) newUsersList.push("RMNUTP8VOHD9PDzNjf0g");
+                    } else {
+                        newUsersList = newUsersList.filter(id => id !== "NMRQaRQbvCwBaJbiMFId" && id !== "RMNUTP8VOHD9PDzNjf0g");
+                    }
+                    
+                    task.dashboardUsers = newUsersList;
+                    
+                    const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+                    batch.update(docRef, { dashboardUsers: newUsersList });
+                }
+            });
+
+            if (hasChanges) {
+                try {
+                    await batch.commit();
+                } catch (error) {
+                    console.error("Error saving preferences to Firebase:", error);
+                    alert("Failed to save dashboard preferences.");
+                }
+            }
+        }
+
+        function handleTaskClick(btn, taskUid, taskName) {
+            if (isEditMode) {
+                if (tempEditPrefs.has(taskUid)) {
+                    tempEditPrefs.delete(taskUid);
+                    btn.classList.remove('selected-pref');
+                    btn.classList.add('unselected-pref');
+                } else {
+                    tempEditPrefs.add(taskUid);
+                    btn.classList.add('selected-pref');
+                    btn.classList.remove('unselected-pref');
+                }
+            } else {
+                logTask(btn, taskUid, taskName);
+            }
+        }
+
+        // --- FIRESTORE / API LOGIC ---
+        async function loadTasksFromFirestore() {
+            try {
+                const snapshot = await window.db.collection('nipto_tasks').get();
+                TASKS = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        uid: doc.id,
+                        name: data.name,
+                        value: data.value || 0,
+                        icon: data.group || "📌", 
+                        category: data.group || "📌", 
+                        dashboardUsers: data.dashboardUsers || [] 
+                    };
+                });
+                
+                renderTasks();
+            } catch (error) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerText = "Error loading database: " + error.message;
+                statusDiv.style.color = "var(--danger)";
+            }
+        }
+
+        async function syncNiptoTasks() {
+            const statusDiv = document.getElementById('status');
+            const syncBtn = document.getElementById('syncNiptoBtn');
+
+            if (!API_TOKEN) {
+                alert("Please log in first.");
+                return;
+            }
+
+            syncBtn.disabled = true;
+            syncBtn.innerText = "⏳";
+            statusDiv.innerText = "Fetching live tasks from Nipto...";
+            statusDiv.style.color = "var(--primary)";
+
+            const QUERY = `
+                query GetTasks {
+                  tasks {
+                    uid
+                    group
+                    name
+                    value
+                  }
+                }
+            `;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: QUERY })
+                });
+
+                const jsonData = await response.json();
+                if (jsonData.errors) throw new Error(jsonData.errors[0].message);
+
+                const tasks = jsonData.data.tasks;
+                if (!tasks || tasks.length === 0) throw new Error("No tasks returned.");
+
+                statusDiv.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
+
+                let batch = window.db.batch();
+                let operationCount = 0;
+
+                for (const task of tasks) {
+                    const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+                    batch.set(docRef, task, { merge: true });
+                    operationCount++;
+
+                    if (operationCount === 490) {
+                        await batch.commit();
+                        batch = window.db.batch(); 
+                        operationCount = 0;
+                    }
+                }
+
+                if (operationCount > 0) {
+                    await batch.commit();
+                }
+
+                statusDiv.innerText = `Database Synced!`;
+                statusDiv.style.color = "var(--success)";
+                
+                await loadTasksFromFirestore();
+                setTimeout(() => { if(isEditMode) statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from the shared dashboard."; else statusDiv.innerText = ""; }, 3000);
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = `Sync Error: ${error.message}`;
+                statusDiv.style.color = "var(--danger)";
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.innerText = "🔄";
+            }
+        }
+
+        async function fetchWeeklyPoints() {
+            if (!API_TOKEN) return;
+
+            const QUERY = `
+                {
+                    activities {
+                        uid
+                        date
+                        user { uid }
+                        task { value }
+                    }
+                }
+            `;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: QUERY })
+                });
+
+                const jsonData = await response.json();
+                if (jsonData.errors) throw new Error(jsonData.errors[0].message);
+
+                const activities = jsonData.data.activities;
+                if (!activities) throw new Error("No activities data found.");
+
+                let points = { "NMRQaRQbvCwBaJbiMFId": 0, "RMNUTP8VOHD9PDzNjf0g": 0 };
+
+                // Determine Monday start
+                const now = new Date();
+                const dayOfWeek = now.getDay(); 
+                const distanceToStart = dayOfWeek === 0 ? 6 : dayOfWeek - 1; 
+                
+                const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToStart);
+                startOfWeek.setHours(0, 0, 0, 0);
+
+                activities.forEach(activity => {
+                    if (activity.user && points[activity.user.uid] !== undefined) {
+                        const activityDate = new Date(activity.date);
+                        if (activityDate >= startOfWeek) {
+                            points[activity.user.uid] += (activity.task && activity.task.value) ? activity.task.value : 0;
+                        }
+                    }
+                });
+
+                document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = points['NMRQaRQbvCwBaJbiMFId'] + " pts";
+                document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = points['RMNUTP8VOHD9PDzNjf0g'] + " pts";
+
+            } catch (error) {
+                console.error("Error fetching points:", error);
+                document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = "Error";
+                document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = "Error";
+            }
+        }
+
+        async function logTask(buttonElement, taskUid, taskName) {
+            if (buttonElement.classList.contains('success')) return;
+            if (!API_TOKEN) {
+                document.getElementById('pinModal').style.display = 'flex';
+                return;
+            }
+
+            const statusDiv = document.getElementById('status');
+            buttonElement.disabled = true;
+
+            const targetDate = new Date(); 
+            const exactFormatString = targetDate.toISOString();
+
+            // Find active user's name for status message
+            const activeUserName = USERS.find(u => u.uid === activeUserId).name;
+
+            statusDiv.innerText = `Logging: ${taskName} for ${activeUserName}...`;
+            statusDiv.style.color = 'var(--text-main)';
+
+            const MUTATION = `
+                mutation CreateActivity($done: String!, $doers: [String!], $date: Date) {
+                  createActivity(done: $done, doers: $doers, date: $date) {
+                    uid
+                  }
+                }`;
+
+            try {
+                const response = await fetch(URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_TOKEN,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: MUTATION,
+                        variables: {
+                            done: taskUid,
+                            doers: [activeUserId], 
+                            date: exactFormatString
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                if (data.errors) throw new Error(data.errors[0].message || "GraphQL Error");
+
+                statusDiv.innerText = `Successfully logged for ${activeUserName}!`;
+                statusDiv.style.color = 'var(--success)';
+                
+                buttonElement.classList.add('success');
+                buttonElement.innerHTML += '<br><span style="font-size:12px;">✓ Logged</span>';
+                
+                fetchWeeklyPoints();
+
+                setTimeout(() => {
+                    buttonElement.classList.remove('success');
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = buttonElement.getAttribute('data-original-html');
+                    
+                    statusDiv.innerText = "";
+                    statusDiv.style.color = 'var(--text-main)';
+                }, 3000);
+
+            } catch (error) {
+                statusDiv.innerText = `Error: ${error.message}`;
+                statusDiv.style.color = 'var(--danger)';
+                buttonElement.disabled = false;
+                
+                if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
+                    localStorage.removeItem("nipto_api_token");
+                    API_TOKEN = "";
+                    document.getElementById('pinModal').style.display = 'flex';
+                }
+            }
+        }
+
+        // --- RENDER LOGIC ---
+        function renderTasks() {
+            const container = document.getElementById('mainContainer');
+            container.innerHTML = ''; 
+            
+            const userPrefs = getSharedPreferences();
+            
+            const visibleTasks = TASKS.filter(t => isEditMode || userPrefs.has(t.uid));
+
+            if (visibleTasks.length === 0 && !isEditMode) {
+                container.innerHTML = '<div class="empty-dashboard-msg" style="text-align: center; margin-top: 40px; color: var(--text-muted);">Your dashboard is empty. Click the pencil icon to add tasks!</div>';
+                return;
+            }
+
+            const groupedTasks = visibleTasks.reduce((acc, task) => {
+                if (!acc[task.category]) acc[task.category] = [];
+                acc[task.category].push(task);
+                return acc;
+            }, {});
+
+            const categories = Object.keys(groupedTasks).sort();
+
+            categories.forEach(category => {
+                const section = document.createElement('div');
+                section.className = 'category-section';
+
+                const header = document.createElement('h3');
+                header.className = 'category-header';
+                header.innerText = category;
+                section.appendChild(header);
+
+                const grid = document.createElement('div');
+                grid.className = 'task-grid';
+
+                groupedTasks[category].forEach(task => {
+                    const btn = document.createElement('button');
+                    btn.className = 'task-btn';
+                    
+                    const taskContentHtml = `<span>${task.name}</span><span style="display:block; margin-top:5px; font-weight:bold; color:var(--primary); font-size:13px;">${task.value} pts</span>`;
+
+                    if (isEditMode) {
+                        btn.classList.add('edit-mode');
+                        if (tempEditPrefs.has(task.uid)) {
+                            btn.classList.add('selected-pref');
+                            btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
+                        } else {
+                            btn.classList.add('unselected-pref');
+                            btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
+                        }
+                    } else {
+                        btn.innerHTML = taskContentHtml;
+                    }
+                    
+                    btn.setAttribute('data-original-html', btn.innerHTML);
+                    btn.onclick = () => handleTaskClick(btn, task.uid, task.name);
+                    grid.appendChild(btn);
+                });
+
+                section.appendChild(grid);
+                container.appendChild(section);
+            });
+        }
+
+        // Initialize
+        initUsers();
+        checkAuth();
+
+    </script>
+</body>
+</html>
