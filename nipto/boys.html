@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kids Nipto Dashboard</title>
+    <title>Nipto Dashboard</title>
     <link rel="stylesheet" href="nipto-shared.css">
     <style>
         /* Custom styles for the dual-user toggle */
         .user-toggle-container {
             display: flex;
             gap: 15px;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
             width: 100%;
         }
 
@@ -51,9 +51,21 @@
         .user-points { font-size: 16px; font-weight: bold; color: var(--text-muted); }
         .user-toggle.active .user-points { color: var(--primary); }
 
-        .dashboard-header-controls { align-items: center !important; }
+        /* Adult Points Bar */
+        .adult-points-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            background: #F8FAFC;
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
 
-        /* --- NEW LAYOUT STYLES --- */
+        /* --- LAYOUT STYLES --- */
         .page-wrapper {
             display: flex;
             gap: 30px;
@@ -69,7 +81,7 @@
             gap: 30px;
         }
 
-        /* Sidebar Styles */
+        /* Sidebar & History Styles */
         .sidebar {
             width: 280px;
             flex-shrink: 0;
@@ -86,11 +98,41 @@
 
         .sidebar h3 {
             font-size: 18px;
-            border-bottom: 2px solid var(--border-color);
-            padding-bottom: 10px;
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        /* History Toggle Controls */
+        .history-toggle {
+            display: flex;
+            gap: 5px;
+            background: #F3F4F6;
+            padding: 4px;
+            border-radius: 8px;
             margin-bottom: 15px;
         }
 
+        .ht-btn {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .ht-btn.active {
+            background: var(--card-bg);
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        /* History Feed Items */
         .history-item {
             padding: 12px 0;
             border-bottom: 1px solid #f3f4f6;
@@ -104,13 +146,17 @@
         .history-task-name { font-weight: 600; font-size: 14px; color: var(--text-main); }
         .history-details { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
         
-        .history-user-NMRQaRQbvCwBaJbiMFId { color: #3B82F6; font-weight: bold; } /* Ayden color */
-        .history-user-RMNUTP8VOHD9PDzNjf0g { color: #10B981; font-weight: bold; } /* DJ color */
+        /* Activity Stream User Colors */
+        .history-user-NMRQaRQbvCwBaJbiMFId { color: #3B82F6; font-weight: bold; } /* Ayden: Blue */
+        .history-user-RMNUTP8VOHD9PDzNjf0g { color: #10B981; font-weight: bold; } /* DJ: Green */
+        .history-user-other { color: #8B5CF6; font-weight: bold; } /* Everyone Else: Purple */
         
         .empty-history { color: var(--text-muted); font-size: 14px; font-style: italic; text-align: center; margin-top: 20px;}
 
-        /* Override main container max-width since it's now in a flex wrapper */
         #mainContainer, .header { max-width: 100% !important; }
+
+        /* Hide status div completely when empty so no weird gaps/lines appear */
+        #status:empty { display: none; }
     </style>
 </head>
 <body>
@@ -130,6 +176,12 @@
         
         <div class="sidebar">
             <h3>This Week's Activity</h3>
+            
+            <div class="history-toggle">
+                <button class="ht-btn active" id="htBoys" onclick="setHistoryView('boys')">Just Boys</button>
+                <button class="ht-btn" id="htEveryone" onclick="setHistoryView('everyone')">Everyone</button>
+            </div>
+
             <div id="historyContainer">
                 <div class="empty-history">Loading history...</div>
             </div>
@@ -140,17 +192,25 @@
             <div class="header" style="margin-bottom: 0;">
                 <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
                 
-                <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: none !important; padding-bottom: 0 !important; margin-bottom: 10px !important;">
                     
-                    <div class="user-toggle-container">
-                        <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
-                            <div class="user-name">Ayden</div>
-                            <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                    <div style="flex: 1;">
+                        <div class="user-toggle-container">
+                            <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                                <div class="user-name">Ayden</div>
+                                <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                            </div>
+                            
+                            <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                                <div class="user-name">DJ</div>
+                                <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+                            </div>
                         </div>
-                        
-                        <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
-                            <div class="user-name">DJ</div>
-                            <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+
+                        <div class="adult-points-container">
+                            <div id="points-Llb9JjyTDvMnn8SJWfizXgthxl83"><span style="color: var(--text-main);">Alyssa:</span> <span style="color: var(--primary);">-- pts</span></div>
+                            <div id="points-cHnAKABalRf0gETPsDt9EiJLyZd2"><span style="color: var(--text-main);">Devyn:</span> <span style="color: var(--primary);">-- pts</span></div>
+                            <div id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2"><span style="color: var(--text-main);">Carrina:</span> <span style="color: var(--primary);">-- pts</span></div>
                         </div>
                     </div>
 
@@ -160,8 +220,8 @@
                     </div>
                 </div>
 
-                <div class="controls-wrapper">
-                    <div id="status" style="text-align: center; font-weight: bold; min-height: 22px;"></div>
+                <div class="controls-wrapper" style="margin-top: 5px;">
+                    <div id="status" style="text-align: center; font-weight: bold; min-height: 0;"></div>
                 </div>
             </div>
 
@@ -176,10 +236,19 @@
 
     <script>
         // --- CONFIGURATION ---
-        const USERS = [
+        const BOYS = [
             { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden" },
             { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ" }
         ];
+
+        const ADULTS = [
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa" },
+            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn" },
+            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina" }
+        ];
+
+        // Combined array so the history stream knows everyone's names and point calculations capture everyone
+        const ALL_USERS = [...BOYS, ...ADULTS];
 
         const URL = "https://nipto.app/graphql";
         let API_TOKEN = "";
@@ -188,6 +257,10 @@
         let isEditMode = false;
         let tempEditPrefs = new Set(); 
         let activeUserId = "NMRQaRQbvCwBaJbiMFId";
+
+        // Global state for the history stream
+        let allWeekActivities = [];
+        let historyViewMode = 'boys'; 
 
         // --- AUTH & STORAGE LOGIC ---
         function decodeKey(pin) {
@@ -233,10 +306,10 @@
         // --- USER & DASHBOARD PREFERENCES ---
         function initUsers() {
             const lastUser = localStorage.getItem("nipto_kids_last_user");
-            if (lastUser && USERS.find(u => u.uid === lastUser)) {
+            if (lastUser && BOYS.find(u => u.uid === lastUser)) {
                 setActiveUser(lastUser);
             } else {
-                setActiveUser(USERS[0].uid);
+                setActiveUser(BOYS[0].uid);
             }
         }
 
@@ -246,7 +319,7 @@
             activeUserId = uid;
             localStorage.setItem("nipto_kids_last_user", uid);
             
-            USERS.forEach(user => {
+            BOYS.forEach(user => {
                 const el = document.getElementById(`toggle-${user.uid}`);
                 if (user.uid === uid) {
                     el.classList.add('active');
@@ -437,13 +510,12 @@
         async function fetchWeeklyPoints() {
             if (!API_TOKEN) return;
 
-            // Added task { name } to the query so we can build the history
             const QUERY = `
                 {
                     activities {
                         uid
                         date
-                        user { uid }
+                        user { uid name }
                         task { name value } 
                     }
                 }
@@ -462,8 +534,11 @@
                 const activities = jsonData.data.activities;
                 if (!activities) throw new Error("No activities data found.");
 
-                let points = { "NMRQaRQbvCwBaJbiMFId": 0, "RMNUTP8VOHD9PDzNjf0g": 0 };
-                let thisWeekActivities = [];
+                // Initialize points for everyone
+                let points = {};
+                ALL_USERS.forEach(u => points[u.uid] = 0);
+                
+                allWeekActivities = []; 
 
                 // Determine Monday start
                 const now = new Date();
@@ -474,55 +549,86 @@
                 startOfWeek.setHours(0, 0, 0, 0);
 
                 activities.forEach(activity => {
-                    // Only process if it belongs to one of the boys
-                    if (activity.user && points[activity.user.uid] !== undefined) {
-                        const activityDate = new Date(activity.date);
-                        if (activityDate >= startOfWeek) {
+                    const activityDate = new Date(activity.date);
+                    if (activityDate >= startOfWeek) {
+                        // Add points to everyone's totals
+                        if (activity.user && points[activity.user.uid] !== undefined) {
                             points[activity.user.uid] += (activity.task && activity.task.value) ? activity.task.value : 0;
-                            // Add to history array
-                            thisWeekActivities.push({
-                                ...activity,
-                                parsedDate: activityDate
-                            });
+                        }
+                        
+                        allWeekActivities.push({
+                            ...activity,
+                            parsedDate: activityDate
+                        });
+                    }
+                });
+
+                // Update UI for ALL users
+                ALL_USERS.forEach(user => {
+                    const el = document.getElementById(`points-${user.uid}`);
+                    if (el) {
+                        if (BOYS.find(b => b.uid === user.uid)) {
+                            el.innerText = points[user.uid] + " pts";
+                        } else {
+                            el.innerHTML = `<span style="color: var(--text-main);">${user.name}:</span> <span style="color: var(--primary);">${points[user.uid]} pts</span>`;
                         }
                     }
                 });
 
-                document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = points['NMRQaRQbvCwBaJbiMFId'] + " pts";
-                document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = points['RMNUTP8VOHD9PDzNjf0g'] + " pts";
-
-                // Render the sidebar history
-                renderHistory(thisWeekActivities);
+                // Refresh the stream based on current toggle state
+                updateHistoryDisplay();
 
             } catch (error) {
                 console.error("Error fetching points/history:", error);
-                document.getElementById('points-NMRQaRQbvCwBaJbiMFId').innerText = "Error";
-                document.getElementById('points-RMNUTP8VOHD9PDzNjf0g').innerText = "Error";
                 document.getElementById('historyContainer').innerHTML = "<div class='empty-history'>Error loading history.</div>";
             }
         }
 
-        // --- NEW: RENDER SIDEBAR HISTORY ---
+        // --- NEW: HISTORY TOGGLE LOGIC ---
+        function setHistoryView(mode) {
+            historyViewMode = mode;
+            document.getElementById('htBoys').classList.toggle('active', mode === 'boys');
+            document.getElementById('htEveryone').classList.toggle('active', mode === 'everyone');
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            let filteredActivities = allWeekActivities;
+            
+            if (historyViewMode === 'boys') {
+                filteredActivities = allWeekActivities.filter(act => 
+                    act.user && (act.user.uid === "NMRQaRQbvCwBaJbiMFId" || act.user.uid === "RMNUTP8VOHD9PDzNjf0g")
+                );
+            }
+            
+            renderHistory(filteredActivities);
+        }
+
         function renderHistory(activities) {
             const container = document.getElementById('historyContainer');
             container.innerHTML = '';
 
             if (activities.length === 0) {
-                container.innerHTML = '<div class="empty-history">No tasks done yet this week.</div>';
+                container.innerHTML = '<div class="empty-history">No tasks found.</div>';
                 return;
             }
 
             // Sort most recent first
             activities.sort((a, b) => b.parsedDate - a.parsedDate);
 
-            // Time formatting options
             const timeOptions = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
 
             activities.forEach(act => {
-                const userName = USERS.find(u => u.uid === act.user.uid)?.name || "Unknown";
+                // Check ALL_USERS to ensure proper name rendering even for adults
+                const knownUser = ALL_USERS.find(u => u.uid === (act.user && act.user.uid));
+                const userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Unknown User");
+                
                 const taskName = act.task ? act.task.name : "Deleted Task";
                 const taskValue = act.task ? act.task.value : 0;
                 const formattedTime = act.parsedDate.toLocaleDateString(undefined, timeOptions);
+
+                const isBoy = act.user && (act.user.uid === "NMRQaRQbvCwBaJbiMFId" || act.user.uid === "RMNUTP8VOHD9PDzNjf0g");
+                const userColorClass = isBoy ? `history-user-${act.user.uid}` : 'history-user-other';
 
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'history-item';
@@ -530,7 +636,7 @@
                 itemDiv.innerHTML = `
                     <div class="history-task-name">${taskName}</div>
                     <div class="history-details">
-                        <span class="history-user-${act.user.uid}">${userName} (+${taskValue})</span>
+                        <span class="${userColorClass}">${userName} (+${taskValue})</span>
                         <span>${formattedTime}</span>
                     </div>
                 `;
@@ -547,7 +653,7 @@
 
             const targetDate = new Date(); 
             const exactFormatString = targetDate.toISOString();
-            const activeUserName = USERS.find(u => u.uid === activeUserId).name;
+            const activeUserName = BOYS.find(u => u.uid === activeUserId).name;
 
             statusDiv.innerText = `Logging: ${taskName} for ${activeUserName}...`;
             statusDiv.style.color = 'var(--text-main)';
@@ -570,7 +676,6 @@
                 buttonElement.classList.add('success');
                 buttonElement.innerHTML += '<br><span style="font-size:12px;">✓ Logged</span>';
                 
-                // Fetch points and history again to update sidebar and totals
                 fetchWeeklyPoints();
 
                 setTimeout(() => {
