@@ -61,18 +61,46 @@ async function syncNiptoTasks() {
 
         statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
 
-        // 2. Populate the Firebase database
+        // 1. Create a Set of all the incoming active task IDs for fast comparison
+        const activeNiptoTaskIds = new Set(tasks.map(task => task.uid));
+
+        // 2. Fetch all current tasks from your Firebase database
+        const firebaseSnapshot = await window.db.collection('nipto_tasks').get();
+        
+        // 3. Find the tasks in Firebase that are NO LONGER in the Nipto API response
+        const uidsToDelete = [];
+        firebaseSnapshot.forEach(doc => {
+            if (!activeNiptoTaskIds.has(doc.id)) {
+                uidsToDelete.push(doc.id);
+            }
+        });
+
+        // 4. Populate the Firebase database (Upserts & Deletions)
         let batch = window.db.batch();
         let operationCount = 0;
         let totalSynced = 0;
+        let totalDeleted = 0;
 
+        // Upsert active tasks
         for (const task of tasks) {
             const docRef = window.db.collection('nipto_tasks').doc(task.uid);
-            
-            // Set with merge: true overwrites existing data or adds new documents
             batch.set(docRef, task, { merge: true });
             operationCount++;
             totalSynced++;
+
+            if (operationCount === 490) {
+                await batch.commit();
+                batch = window.db.batch(); 
+                operationCount = 0;
+            }
+        }
+
+        // Delete orphaned tasks
+        for (const orphanId of uidsToDelete) {
+            const docRef = window.db.collection('nipto_tasks').doc(orphanId);
+            batch.delete(docRef);
+            operationCount++;
+            totalDeleted++;
 
             if (operationCount === 490) {
                 await batch.commit();
@@ -85,7 +113,7 @@ async function syncNiptoTasks() {
             await batch.commit();
         }
 
-        statusText.innerText = `Success! ${totalSynced} live Nipto tasks synced to Firebase.`;
+        statusText.innerText = `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`;
         statusText.style.color = "#03dac6";
         document.getElementById('pinInput').value = ''; // Clear PIN for security
 
