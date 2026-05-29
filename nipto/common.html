@@ -14,7 +14,7 @@
             <p style="font-size: 14px; color: #aaa;">Please enter your 4-digit PIN to decrypt the API key.</p>
             <input type="password" id="pinInput" maxlength="4" placeholder="••••">
             <br>
-            <button onclick="savePin()">Unlock</button>
+            <button onclick="savePin(loadTasksFromFirestore)">Unlock</button>
             <div id="pinError" style="color: var(--danger); margin-top: 15px; display: none; font-size: 14px;">Invalid PIN format</div>
         </div>
     </div>
@@ -29,7 +29,7 @@
                 </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
-                <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks()" style="display: none; background-color: var(--secondary);">🔄 Sync Database</button>
+                <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);">🔄 Sync Database</button>
                 <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
                 <button id="editBtn" class="action-btn" onclick="toggleEditMode()">✏️ Edit Dashboard</button>
             </div>
@@ -62,6 +62,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="firebase-config.js"></script>
+    
+    <script src="nipto-shared.js"></script>
 
     <script>
         // --- CONFIGURATION ---
@@ -71,59 +73,12 @@
             { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn" }
         ];
 
-        const URL = "https://nipto.app/graphql";
-        let API_TOKEN = "";
-        
         let TASKS = [];
 
         let currentMode = 'live'; 
         let isEditMode = false;
-        let isViewAllMode = false; // Tracks if we are viewing the full database
+        let isViewAllMode = false;
         let tempEditPrefs = new Set(); 
-
-        // --- AUTH & STORAGE LOGIC ---
-        function decodeKey(pin) {
-            const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
-            const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
-            return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
-        }
-
-        function savePin() {
-            const pin = document.getElementById('pinInput').value;
-            if (pin.length !== 4) {
-                document.getElementById('pinError').style.display = 'block';
-                return;
-            }
-            API_TOKEN = decodeKey(pin);
-            localStorage.setItem("nipto_api_token", API_TOKEN); 
-            document.getElementById('pinModal').style.display = 'none';
-            loadTasksFromFirestore();
-        }
-
-// Example using Anonymous Auth
-function checkAuth() {
-    const savedToken = localStorage.getItem("nipto_api_token");
-    
-    // Ensure Firebase is logged in before doing anything
-    window.firebase.auth().onAuthStateChanged((user) => {
-        if (user) {
-            // Firebase is ready. Now check Nipto API.
-            if (savedToken) {
-                API_TOKEN = savedToken;
-                loadTasksFromFirestore();
-            } else {
-                document.getElementById('pinModal').style.display = 'flex';
-                document.getElementById('status').innerText = "Awaiting PIN login...";
-            }
-        } else {
-            // Sign in silently
-            window.firebase.auth().signInAnonymously().catch((error) => {
-                console.error("Firebase Auth Error:", error);
-                document.getElementById('status').innerText = "Database Auth Failed.";
-            });
-        }
-    });
-}
 
         // --- USER & DASHBOARD PREFERENCES ---
         function initUsers() {
@@ -168,7 +123,7 @@ function checkAuth() {
         }
 
         function toggleViewAll() {
-            if (isEditMode) return; // Disable while editing
+            if (isEditMode) return;
             
             isViewAllMode = !isViewAllMode;
             const btn = document.getElementById('viewAllBtn');
@@ -192,16 +147,14 @@ function checkAuth() {
             const statusDiv = document.getElementById('status');
 
             if (!isEditMode) {
-                // ENTERING EDIT MODE
                 isEditMode = true;
                 btn.innerText = "💾 Save Dashboard";
                 btn.classList.add('save-mode');
                 syncBtn.style.display = 'inline-block'; 
-                viewAllBtn.style.display = 'none'; // Hide View All while editing
+                viewAllBtn.style.display = 'none';
                 statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from this user's dashboard.";
                 statusDiv.style.color = "var(--primary)";
                 
-                // Force exit View All mode if they were in it
                 if (isViewAllMode) {
                     isViewAllMode = false;
                     viewAllBtn.innerText = "🔍 View All Tasks";
@@ -210,7 +163,6 @@ function checkAuth() {
                 tempEditPrefs = getUserPreferences();
                 renderTasks();
             } else {
-                // EXITING & SAVING EDIT MODE
                 btn.innerText = "Saving...";
                 btn.disabled = true;
                 syncBtn.disabled = true;
@@ -222,7 +174,7 @@ function checkAuth() {
                 btn.classList.remove('save-mode');
                 btn.disabled = false;
                 syncBtn.style.display = 'none'; 
-                viewAllBtn.style.display = 'inline-block'; // Bring back View All button
+                viewAllBtn.style.display = 'inline-block';
                 syncBtn.disabled = false;
                 
                 if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
@@ -284,7 +236,7 @@ function checkAuth() {
             }
         }
 
-        // --- FIRESTORE / NIPTO API SYNC ---
+        // --- FIRESTORE LOGIC ---
         async function loadTasksFromFirestore() {
             const statusDiv = document.getElementById('status');
             statusDiv.innerText = "Loading tasks from database...";
@@ -295,8 +247,8 @@ function checkAuth() {
                     return {
                         uid: doc.id,
                         name: data.name,
-                        icon: data.group || "📌", // Use Nipto group as the icon
-                        category: data.group || "📌", // Use Nipto group as the category grouping
+                        icon: data.group || "📌",
+                        category: data.group || "📌",
                         dashboardUsers: data.dashboardUsers || [] 
                     };
                 });
@@ -310,84 +262,6 @@ function checkAuth() {
                 statusDiv.style.color = "var(--danger)";
             }
         }
-
-        async function syncNiptoTasks() {
-            const statusDiv = document.getElementById('status');
-            const syncBtn = document.getElementById('syncNiptoBtn');
-
-            if (!API_TOKEN) {
-                alert("Please log in first.");
-                return;
-            }
-
-            syncBtn.disabled = true;
-            syncBtn.innerText = "Syncing...";
-            statusDiv.innerText = "Fetching live tasks from Nipto...";
-            statusDiv.style.color = "var(--primary)";
-
-            const QUERY = `
-                query GetTasks {
-                  tasks {
-                    uid
-                    group
-                    name
-                    value
-                  }
-                }
-            `;
-
-            try {
-                const response = await fetch(URL, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ query: QUERY })
-                });
-
-                const jsonData = await response.json();
-                if (jsonData.errors) throw new Error(jsonData.errors[0].message);
-
-                const tasks = jsonData.data.tasks;
-                if (!tasks || tasks.length === 0) throw new Error("No tasks returned.");
-
-                statusDiv.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
-
-                let batch = window.db.batch();
-                let operationCount = 0;
-
-                for (const task of tasks) {
-                    const docRef = window.db.collection('nipto_tasks').doc(task.uid);
-                    batch.set(docRef, task, { merge: true });
-                    operationCount++;
-
-                    if (operationCount === 490) {
-                        await batch.commit();
-                        batch = window.db.batch(); 
-                        operationCount = 0;
-                    }
-                }
-
-                if (operationCount > 0) {
-                    await batch.commit();
-                }
-
-                statusDiv.innerText = `Database Synced! Reloading dashboard...`;
-                statusDiv.style.color = "var(--success)";
-                
-                await loadTasksFromFirestore();
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = `Sync Error: ${error.message}`;
-                statusDiv.style.color = "var(--danger)";
-            } finally {
-                syncBtn.disabled = false;
-                syncBtn.innerText = "🔄 Sync Database";
-            }
-        }
-
 
         // --- TIME LOGIC ---
         function formatForInput(dateObj) {
@@ -452,7 +326,7 @@ function checkAuth() {
                 const dateInput = document.getElementById('taskDate').value;
                 if (!dateInput) {
                     statusDiv.innerText = "Error: Please select a valid custom date/time.";
-                    statusDiv.style.color = 'var(--error)';
+                    statusDiv.style.color = 'var(--danger)';
                     buttonElement.disabled = false;
                     return;
                 }
@@ -471,24 +345,12 @@ function checkAuth() {
                 }`;
 
             try {
-                const response = await fetch(URL, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        query: MUTATION,
-                        variables: {
-                            done: taskUid,
-                            doers: [targetUserId], 
-                            date: exactFormatString
-                        }
-                    })
+                // Uses the new fetchNipto wrapper function
+                await fetchNipto(MUTATION, {
+                    done: taskUid,
+                    doers: [targetUserId], 
+                    date: exactFormatString
                 });
-
-                const data = await response.json();
-                if (data.errors) throw new Error(data.errors[0].message || "GraphQL Error");
 
                 statusDiv.innerText = `Successfully logged: ${taskName}`;
                 statusDiv.style.color = 'var(--success)';
@@ -509,14 +371,8 @@ function checkAuth() {
 
             } catch (error) {
                 statusDiv.innerText = `Error: ${error.message}`;
-                statusDiv.style.color = 'var(--error)';
+                statusDiv.style.color = 'var(--danger)';
                 buttonElement.disabled = false;
-                
-                if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
-                    localStorage.removeItem("nipto_api_token");
-                    API_TOKEN = "";
-                    document.getElementById('pinModal').style.display = 'flex';
-                }
             }
         }
 
@@ -526,8 +382,6 @@ function checkAuth() {
             container.innerHTML = ''; 
             
             const userPrefs = getUserPreferences();
-            
-            // Filter logic: Show if in Edit Mode OR View All Mode OR if user prefers it
             const visibleTasks = TASKS.filter(t => isEditMode || isViewAllMode || userPrefs.has(t.uid));
 
             if (visibleTasks.length === 0 && !isEditMode) {
@@ -535,7 +389,6 @@ function checkAuth() {
                 return;
             }
 
-            // Group directly by the Nipto group (which is the emoji)
             const groupedTasks = visibleTasks.reduce((acc, task) => {
                 if (!acc[task.category]) acc[task.category] = [];
                 acc[task.category].push(task);
@@ -548,7 +401,6 @@ function checkAuth() {
                 const section = document.createElement('div');
                 section.className = 'category-section';
 
-                // The header will literally just be the Emoji 
                 const header = document.createElement('h3');
                 header.className = 'category-header';
                 header.innerText = category;
@@ -586,7 +438,8 @@ function checkAuth() {
 
         // Initialize
         initUsers();
-        checkAuth();
+        // Updated to use the shared checkAuth and pass the local loading function
+        checkAuth(loadTasksFromFirestore);
 
     </script>
 </body>

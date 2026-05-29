@@ -35,9 +35,8 @@ h2 { font-size: 28px; margin-bottom: 5px; }
 p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
 
 /* ==========================================
-   CONTAINERS & LAYOUT
+   CONTAINERS & LAYOUT (STANDARD)
    ========================================== */
-/* Centered narrow container (for Task Logger & Sync) */
 .dashboard-container {
     background: var(--card-bg);
     padding: 40px;
@@ -50,7 +49,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     box-sizing: border-box;
 }
 
-/* Wider header block (for Main Dashboard) */
 .header {
     background: var(--card-bg);
     padding: 30px;
@@ -62,7 +60,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     box-sizing: border-box;
 }
 
-/* Main content wrapper (for Main Dashboard categories) */
 #mainContainer {
     width: 100%;
     max-width: 800px;
@@ -70,6 +67,9 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     flex-direction: column;
     gap: 30px;
 }
+
+/* Hide status div completely when empty so no weird gaps/lines appear */
+#status:empty { display: none; }
 
 /* ==========================================
    MAIN DASHBOARD SPECIFICS (common.html)
@@ -81,7 +81,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     margin-top: 15px;
 }
 
-/* Custom Time / Live Time Toggles */
 .mode-toggle {
     display: flex;
     gap: 5px;
@@ -119,15 +118,9 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     border: 1px solid var(--border-color);
 }
 
-.custom-time-container.visible {
-    display: flex;
-}
+.custom-time-container.visible { display: flex; }
 
-.quick-times {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
+.quick-times { display: flex; gap: 10px; flex-wrap: wrap; }
 
 .qt-btn {
     padding: 6px 12px;
@@ -143,11 +136,7 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
 .qt-btn:hover { background: var(--border-color); }
 
 /* Category Headers */
-.category-section {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
+.category-section { display: flex; flex-direction: column; gap: 15px; }
 
 .category-header {
     font-size: 20px;
@@ -164,7 +153,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     gap: 15px;
 }
 
-/* 4-column strict grid (for Task Logger) */
 .grid { 
     display: grid; 
     grid-template-columns: repeat(4, 1fr); 
@@ -175,7 +163,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
 /* ==========================================
    BUTTONS & INPUTS
    ========================================== */
-/* Generic Task / Time Button Styles */
 .time-btn, .task-btn { 
     padding: 20px 10px; 
     font-size: 16px; 
@@ -204,9 +191,7 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1);
 }
 
-.time-btn:active:not(:disabled), .task-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
+.time-btn:active:not(:disabled), .task-btn:active:not(:disabled) { transform: translateY(0); }
 
 .time-btn.success, .task-btn.success { 
     background-color: var(--success); 
@@ -223,7 +208,6 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 15px; }
     border-color: var(--danger); 
 }
 
-/* Forms */
 .user-select-container { margin-bottom: 30px; }
 
 select, input[type="datetime-local"] {
@@ -238,9 +222,7 @@ select, input[type="datetime-local"] {
     cursor: pointer;
 }
 
-select:focus, input[type="datetime-local"]:focus {
-    border-color: var(--primary);
-}
+select:focus, input[type="datetime-local"]:focus { border-color: var(--primary); }
 
 .reset-btn {
     padding: 12px 24px;
@@ -260,9 +242,6 @@ select:focus, input[type="datetime-local"]:focus {
     border-color: #D1D5DB;
 }
 
-/* ==========================================
-   UTILITIES & STATUS
-   ========================================== */
 #status { 
     font-size: 15px;
     font-weight: 500; 
@@ -271,11 +250,7 @@ select:focus, input[type="datetime-local"]:focus {
     min-height: 22px;
 }
 
-.divider {
-    height: 1px;
-    background-color: var(--border-color);
-    margin: 30px 0;
-}
+.divider { height: 1px; background-color: var(--border-color); margin: 30px 0; }
 
 /* ==========================================
    PIN MODAL
@@ -331,52 +306,222 @@ select:focus, input[type="datetime-local"]:focus {
 
 .modal-content button:hover { background: var(--primary-hover); }
 
+/* ==========================================
+   EDIT MODE & SYNC STYLES
+   ========================================== */
+.dashboard-header-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
 
-/* Dashboard-specific styles extending the shared CSS */
-        .dashboard-header-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            flex-wrap: wrap;
-            gap: 15px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 20px;
-        }
-        .action-btn {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            background: var(--card-bg);
-            color: var(--text-main);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .action-btn:hover { border-color: var(--primary); }
-        .action-btn.save-mode {
-            background: var(--success);
-            color: white;
-            border-color: var(--success);
-        }
-        
-        /* Edit Mode Task Styles */
-        .task-btn.edit-mode {
-            cursor: pointer;
-            border-style: dashed;
-        }
-        .task-btn.edit-mode.selected-pref {
-            border-color: var(--success);
-            border-style: solid;
-            background-color: rgba(16, 185, 129, 0.1);
-        }
-        .task-btn.edit-mode.unselected-pref {
-            opacity: 0.4;
-            filter: grayscale(100%);
-        }
-        .empty-dashboard-msg {
-            text-align: center;
-            color: var(--text-muted);
-            padding: 40px;
-            font-style: italic;
-        }
+.action-btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 2px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-main);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover { border-color: var(--primary); }
+.action-btn.save-mode {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.task-btn.edit-mode { cursor: pointer; border-style: dashed; }
+.task-btn.edit-mode.selected-pref {
+    border-color: var(--success);
+    border-style: solid;
+    background-color: rgba(16, 185, 129, 0.1);
+}
+.task-btn.edit-mode.unselected-pref { opacity: 0.4; filter: grayscale(100%); }
+.empty-dashboard-msg { text-align: center; color: var(--text-muted); padding: 40px; font-style: italic; }
+
+/* ==========================================
+   BOYS DASHBOARD SPECIFICS (boys.html)
+   ========================================== */
+/* Scoped width overrides to protect common.html layout */
+.page-wrapper #mainContainer, 
+.page-wrapper .header { 
+    max-width: 100% !important; 
+}
+
+.page-wrapper {
+    display: flex;
+    gap: 30px;
+    width: 100%;
+    max-width: 1100px;
+    align-items: flex-start;
+}
+
+.main-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    height: fit-content;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: sticky;
+    top: 40px;
+}
+
+.sidebar h3 { font-size: 18px; margin-top: 0; margin-bottom: 12px; color: var(--text-main); }
+
+.history-toggle {
+    display: flex;
+    gap: 5px;
+    background: #F3F4F6;
+    padding: 4px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.ht-btn {
+    flex: 1;
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: all 0.2s;
+}
+
+.ht-btn.active {
+    background: var(--card-bg);
+    color: var(--primary);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.history-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.history-item-content { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.history-item:last-child { border-bottom: none; }
+.history-task-name { font-weight: 600; font-size: 14px; color: var(--text-main); }
+.history-details { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+
+.delete-activity-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--danger, #ef4444);
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    opacity: 0.4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-activity-btn:hover { opacity: 1; background: #fee2e2; }
+
+.history-user-NMRQaRQbvCwBaJbiMFId { color: #3B82F6; font-weight: bold; } /* Ayden */
+.history-user-RMNUTP8VOHD9PDzNjf0g { color: #10B981; font-weight: bold; } /* DJ */
+.history-user-other { color: #8B5CF6; font-weight: bold; } /* Adults */
+.empty-history { color: var(--text-muted); font-size: 14px; font-style: italic; text-align: center; margin-top: 20px;}
+
+/* User Toggle Styles */
+.user-toggle-container {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.user-toggle {
+    position: relative; 
+    flex: 1;
+    padding: 15px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
+    background: var(--card-bg);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    user-select: none;
+}
+
+.user-name { font-size: 22px; font-weight: 800; color: var(--text-main); margin-bottom: 5px; }
+.user-points { font-size: 16px; font-weight: bold; color: var(--text-muted); }
+.user-toggle.active .user-name, .user-toggle.active .user-points { color: var(--primary); }
+
+.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active {
+    border-color: #3B82F6;
+    background-color: #EFF6FF;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    transform: translateY(-2px);
+}
+.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active .user-name,
+.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active .user-points { color: #3B82F6; }
+
+.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active {
+    border-color: #10B981;
+    background-color: #ECFDF5;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    transform: translateY(-2px);
+}
+.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active .user-name,
+.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active .user-points { color: #10B981; }
+
+.user-toggle.inactive { opacity: 0.5; filter: grayscale(100%); background: #F3F4F6; }
+
+/* The Crown Animation */
+.leader-crown {
+    font-size: 28px;
+    position: absolute;
+    top: -18px;
+    right: -10px;
+    transform: rotate(15deg);
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+    animation: bounce 2s infinite ease-in-out;
+    pointer-events: none;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0) rotate(15deg); }
+    50% { transform: translateY(-6px) rotate(15deg); }
+}
+
+.adult-points-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    background: #F8FAFC;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 600;
+}

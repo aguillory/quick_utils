@@ -14,7 +14,7 @@
             <p style="color: var(--text-muted);">Please enter your 4-digit PIN to unlock the logger.</p>
             <input type="password" id="pinInput" maxlength="4" placeholder="••••">
             <br>
-            <button onclick="savePin()">Unlock</button>
+            <button onclick="savePin(initBoard)">Unlock</button>
             <div id="pinError" style="color: var(--danger); margin-top: 10px; display: none;">Invalid PIN format</div>
         </div>
     </div>
@@ -47,6 +47,13 @@
         <button class="reset-btn" onclick="resetBoard()">Reset Board for Tomorrow</button>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="firebase-config.js"></script>
+    
+    <script src="nipto-shared.js"></script>
+
     <script>
         // ==========================================
         // STATIC DATA & CONFIGURATION
@@ -58,9 +65,6 @@
         ];
 
         const TASK_UID = "CP6LzbtWwKPkBWZRk2n8"; // Work @ Work (1hr) task UID
-        const URL = "https://nipto.app/graphql";
-        const COOKIE_NAME = "nipto_api_key";
-        let API_TOKEN = "";
 
         const MUTATION = `
         mutation CreateActivity($done: String!, $doers: [String!], $date: Date) {
@@ -71,57 +75,11 @@
         }`;
 
         // ==========================================
-        // AUTH & COOKIE LOGIC
-        // ==========================================
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
-
-        function setCookie(name, value, days) {
-            let expires = "";
-            if (days) {
-                const date = new Date();
-                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-                expires = "; expires=" + date.toUTCString();
-            }
-            document.cookie = name + "=" + (value || "") + expires + "; path=/";
-        }
-
-        function decodeKey(pin) {
-            const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
-            const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
-            return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
-        }
-
-        function savePin() {
-            const pin = document.getElementById('pinInput').value;
-            if (pin.length !== 4) {
-                document.getElementById('pinError').style.display = 'block';
-                return;
-            }
-            
-            API_TOKEN = decodeKey(pin);
-            setCookie(COOKIE_NAME, API_TOKEN, 30); // Save for 30 days
-            document.getElementById('pinModal').style.display = 'none';
-        }
-
-        function checkAuth() {
-            const savedToken = getCookie(COOKIE_NAME);
-            if (savedToken) {
-                API_TOKEN = savedToken;
-            } else {
-                document.getElementById('pinModal').style.display = 'flex';
-            }
-        }
-
-        // ==========================================
         // INITIALIZATION
         // ==========================================
         function populateUsers() {
             const select = document.getElementById('userSelect');
+            select.innerHTML = ''; // Clear out to prevent duplicates if called twice
             USERS.forEach(user => {
                 const option = document.createElement('option');
                 option.value = user.uid;
@@ -139,8 +97,7 @@
             return `nipto_logs_${today.getFullYear()}_${today.getMonth() + 1}_${today.getDate()}`;
         }
 
-        window.onload = function() {
-            checkAuth();
+        function initBoard() {
             populateUsers();
 
             const todayKey = getTodayStorageKey();
@@ -154,6 +111,11 @@
                     btn.innerText = `${btn.dataset.label} ✓`;
                 }
             });
+        }
+
+        window.onload = function() {
+            // Uses the standardized shared authentication
+            checkAuth(initBoard);
         };
 
         // ==========================================
@@ -162,7 +124,8 @@
         async function logTask(buttonElement, hour, minute, timeLabel) {
             const statusDiv = document.getElementById('status');
             
-            if (!API_TOKEN) {
+            // Check auth token before trying to log
+            if (!localStorage.getItem("nipto_api_token")) {
                 document.getElementById('pinModal').style.display = 'flex';
                 return;
             }
@@ -180,27 +143,12 @@
             const selectedUserUid = document.getElementById('userSelect').value;
 
             try {
-                const response = await fetch(URL, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': API_TOKEN,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        query: MUTATION,
-                        variables: {
-                            done: TASK_UID,
-                            doers: [selectedUserUid],
-                            date: exactFormatString 
-                        }
-                    })
+                // Uses the new shared wrapper function
+                await fetchNipto(MUTATION, {
+                    done: TASK_UID,
+                    doers: [selectedUserUid],
+                    date: exactFormatString 
                 });
-
-                const data = await response.json();
-
-                if (data.errors) {
-                    throw new Error(data.errors[0].message);
-                }
 
                 // --- SAVE SUCCESS TO BROWSER ---
                 const todayKey = getTodayStorageKey();
@@ -227,13 +175,6 @@
                     statusDiv.innerText = `❌ Error: ${error.message}`;
                 }
                 statusDiv.style.color = 'var(--danger)';
-                
-                // If token is invalid, clear cookie and reprompt
-                if (error.message.toLowerCase().includes("unauthorized") || error.message.toLowerCase().includes("token")) {
-                    setCookie(COOKIE_NAME, "", -1);
-                    API_TOKEN = "";
-                    document.getElementById('pinModal').style.display = 'flex';
-                }
             }
         }
 
