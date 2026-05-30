@@ -254,7 +254,7 @@
         // ========================================================
         // By default, Nipto considers the week to start on Monday at midnight.
         // If your app resets on a different day or time, update this:
-        const NIPTO_RESET_DAY = 0;  // 0 = Sunday, 1 = Monday
+        const NIPTO_RESET_DAY = 1;  // 0 = Sunday, 1 = Monday
         const NIPTO_RESET_HOUR = 0; // 0 = Midnight, 18 = 6 PM, etc.
         // ========================================================
 
@@ -446,16 +446,16 @@
         async function fetchWeeklyPoints() {
             if (!API_TOKEN) return;
             
-            const QUERY = `
-                {
-                    activities {
-                        uid
-                        date
-                        user { uid name }
-                        task { name value } 
-                    }
+           const QUERY = `
+            {
+                activities {
+                    uid
+                    date
+                    user { uid name }
+                    task { name value } 
                 }
-            `;
+            }
+        `;
 
             try {
                 const data = await fetchNipto(QUERY);
@@ -463,40 +463,27 @@
                 
                 if (!activities) throw new Error("No activities data found.");
 
-                let points = {};
+               let points = {};
                 ALL_USERS.forEach(u => points[u.uid] = 0);
                 allWeekActivities = []; 
 
-                // Dynamic Start of Week Calculation based on the configuration variables
-                const now = new Date();
-                const startOfWeek = new Date(now);
-                
-                const dayOfWeek = startOfWeek.getDay();
-                let distanceToStart = dayOfWeek - NIPTO_RESET_DAY;
-                if (distanceToStart < 0) distanceToStart += 7; 
-                
-                if (distanceToStart === 0 && startOfWeek.getHours() < NIPTO_RESET_HOUR) {
-                    distanceToStart = 7;
-                }
+                // Nipto's API already perfectly pre-filters the 'activities' array 
+                // for the current week based on your App settings. 
+                // We completely skip local timezone filtering and just sum the data!
 
-                startOfWeek.setDate(startOfWeek.getDate() - distanceToStart);
-                startOfWeek.setHours(NIPTO_RESET_HOUR, 0, 0, 0);
                 activities.forEach(activity => {
-                    const activityDate = new Date(activity.date);
-                    if (activityDate >= startOfWeek) {
-                        // Nipto API already provides the exact awarded points for this activity record
-                        let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
+                    // Nipto natively returns the exact awarded/split points in task.value
+                    let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
 
-                        if (activity.user && points[activity.user.uid] !== undefined) {
-                            points[activity.user.uid] += awardedPts;
-                        }
-
-                        allWeekActivities.push({
-                            ...activity,
-                            parsedDate: activityDate,
-                            awardedPts: awardedPts 
-                        });
+                    if (activity.user && points[activity.user.uid] !== undefined) {
+                        points[activity.user.uid] += awardedPts;
                     }
+
+                    allWeekActivities.push({
+                        ...activity,
+                        parsedDate: new Date(activity.date),
+                        awardedPts: awardedPts 
+                    });
                 });
 
                 BOYS.forEach(user => {
