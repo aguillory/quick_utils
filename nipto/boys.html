@@ -481,23 +481,11 @@
 
                 startOfWeek.setDate(startOfWeek.getDate() - distanceToStart);
                 startOfWeek.setHours(NIPTO_RESET_HOUR, 0, 0, 0);
-
-                let activityGroups = {};
                 activities.forEach(activity => {
                     const activityDate = new Date(activity.date);
                     if (activityDate >= startOfWeek) {
-                        const key = activity.date + "_" + (activity.task ? activity.task.name : "deleted");
-                        if (!activityGroups[key]) activityGroups[key] = [];
-                        activityGroups[key].push(activity);
-                    }
-                });
-
-                Object.values(activityGroups).forEach(group => {
-                    const numDoers = group.length;
-                    
-                    group.forEach(activity => {
-                        let baseVal = (activity.task && activity.task.value) ? activity.task.value : 0;
-                        let awardedPts = Math.ceil(baseVal / numDoers); 
+                        // Nipto API already provides the exact awarded points for this activity record
+                        let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
 
                         if (activity.user && points[activity.user.uid] !== undefined) {
                             points[activity.user.uid] += awardedPts;
@@ -505,10 +493,10 @@
 
                         allWeekActivities.push({
                             ...activity,
-                            parsedDate: new Date(activity.date),
+                            parsedDate: activityDate,
                             awardedPts: awardedPts 
                         });
-                    });
+                    }
                 });
 
                 BOYS.forEach(user => {
