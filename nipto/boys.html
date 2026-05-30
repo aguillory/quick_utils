@@ -986,9 +986,33 @@
 
             const linkedTaskSelect = document.getElementById('choreLinkedTask');
             linkedTaskSelect.innerHTML = '<option value="">-- Select Linked Nipto Task --</option>';
-            const sortedTasks = [...TASKS].sort((a,b) => a.name.localeCompare(b.name));
-            sortedTasks.forEach(t => {
-                linkedTaskSelect.innerHTML += `<option value="${t.uid}">${t.name} (${t.value} pts)</option>`;
+            
+            // Hardcoded array of assigned tasks using exact UIDs from the database
+            const assignedTasks = [
+                { uid: "4qN36U3lrNdyjFet2vcU", name: "Assigned task 5pt" },
+                { uid: "mDjzDiyY340KyT3Jz9Bu", name: "Assigned task 10pt" },
+                { uid: "8AfJBroeX8WLoweUOLS7", name: "Assigned task 15pt" },
+                { uid: "KYo9RbEjVEdYqCjFel3r", name: "Assigned task 20pt" },
+                { uid: "8yFI2WkhWPWSadC71aBh", name: "Assigned task 25pt" },
+                { uid: "xbOFuoSk6ytwL8mFPYjP", name: "Assigned task 30pt" },
+                { uid: "se46JFOXJ5D2fnn2OuBF", name: "Assigned task 35pt" },
+                { uid: "wu9NL07y73WjitJbOE82", name: "Assigned task 40pts" },
+                { uid: "nANasHvsuyJIU268y9ZP", name: "Assigned tasks 45pts" },
+                { uid: "ytu1De3mqoLrv0lH9ogy", name: "Assigned task 50pts" },
+                { uid: "UHWcbLzvgPQZTqWeAHOc", name: "Assigned task 55pts" },
+                { uid: "JKhirXLr9JISujzN0IYP", name: "Assigned task 60pts" },
+                { uid: "3krVyfDmAUKjH8IOKd5b", name: "Assigned task 65pts" },
+                { uid: "7OENuScaDaWPIzY113Dp", name: "Assigned task 70pts" },
+                { uid: "c3IAuz9JmGdsuvZczz23", name: "Assigned task 75pts" },
+                { uid: "ZBMLBATMU9gawKzK9JTw", name: "Assigned task 80pts" },
+                { uid: "kwbNsqaR0kW2muJItNZz", name: "Assigned task 85pts" },
+                { uid: "RNvfDqXomBi10jyV8p16", name: "Assigned task 90pts" },
+                { uid: "ppiTVnZU7vMmrGFFLZWx", name: "Assigned task 95pts" },
+                { uid: "z7z76pKMz1xlVS2yAd0G", name: "Assigned task 100pts" }
+            ];
+
+            assignedTasks.forEach(t => {
+                linkedTaskSelect.innerHTML += `<option value="${t.uid}">${t.name}</option>`;
             });
         }
 
