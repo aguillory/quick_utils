@@ -15,7 +15,7 @@
     /* Shared User Colors */
     --user-ayden: #3B82F6;
     --user-dj: #10B981;
-    --user-alyssa: #2563EB; /* Deep Blue */
+    --user-alyssa: #00848A; /* Deep Blue */
     --user-devyn: #EF4444;  /* Red */
     --user-carrina: #8B5CF6; /* Purple */
 }
@@ -174,7 +174,12 @@ h2 { font-size: 28px; margin-bottom: 5px; }
         overflow-x: hidden; 
     }
 
-    .task-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+    .task-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+    gap: 15px; 
+    padding: 4px; /* This gives the hover animation and shadows room to pop out */
+}
     .task-btn { font-size: 13px !important; padding: 12px 6px !important; min-height: 60px; }
     .task-btn .pin-task-btn { font-size: 13px !important; top: 2px !important; right: 2px !important; }
     .header { padding: 20px 15px; }
@@ -388,7 +393,7 @@ select:focus, input[type="datetime-local"]:focus { border-color: var(--primary);
 .collapsible-header:hover { color: var(--primary); }
 .toggle-icon { font-size: 14px; color: var(--text-muted); transition: transform 0.3s ease; }
 .toggle-icon.collapsed { transform: rotate(-90deg); }
-.collapsible-content { display: block; overflow: hidden; }
+.collapsible-content { display: block; overflow: visible; }
 .collapsible-content.collapsed { display: none; }
 
 /* ==========================================

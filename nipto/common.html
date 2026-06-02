@@ -3,10 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Nipto Dashboard</title>
+    <title>Unified Nipto Dashboard</title>
     <link rel="stylesheet" href="nipto-shared.css">
+    <style>
+        /* Floating Active User Indicator */
+        #floating-user-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            padding: 12px 20px;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            font-size: 15px;
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .floating-avatar-group { display: flex; gap: 5px; }
+        .floating-avatar { padding: 4px 10px; border-radius: 20px; color: white; font-size: 13px; }
+
+        /* Together Checkbox Drawer */
+        #together-drawer {
+            display: none;
+            background: #F8FAFC;
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: -5px;
+            margin-bottom: 15px;
+            animation: fadeInDown 0.2s ease-out;
+        }
+        #together-drawer.visible { display: flex; flex-direction: column; gap: 10px; }
+        .together-checkboxes { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }
+        .together-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--card-bg);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+        .together-label:hover { border-color: var(--text-muted); }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Unified Toggles Layout */
+        .user-toggle { padding: 10px; flex: 1; min-width: 100px; }
+        .user-toggle .user-name { font-size: 18px; }
+        .user-toggle .user-points { font-size: 14px; }
+        
+        /* Specific User Toggle Colors (using variables from shared css) */
+        .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active { border-color: var(--user-alyssa); background-color: rgba(37, 99, 235, 0.05); }
+        .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active .user-name, .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active .user-points { color: var(--user-alyssa); }
+        
+        .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active { border-color: var(--user-devyn); background-color: rgba(239, 68, 68, 0.05); }
+        .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active .user-name, .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active .user-points { color: var(--user-devyn); }
+        
+        .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active { border-color: var(--user-carrina); background-color: rgba(139, 92, 246, 0.05); }
+        .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-name, .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-points { color: var(--user-carrina); }
+
+    </style>
 </head>
 <body>
+
+    <!-- PIN MODAL -->
     <div id="pinModal" style="display: none;">
         <div class="modal-content">
             <h2>Enter Dashboard PIN</h2>
@@ -18,65 +93,127 @@
         </div>
     </div>
 
+    <!-- FLOATING INDICATOR -->
+    <div id="floating-user-indicator">
+        <span style="color: var(--text-muted); font-size: 13px;">Logging tasks for:</span>
+        <div class="floating-avatar-group" id="floating-avatars"></div>
+    </div>
+
     <div class="page-wrapper">
         
+        <!-- LEFT SIDEBAR: HISTORY -->
         <div class="sidebar left-sidebar">
-            <h3 class="collapsible-header" onclick="toggleSection('activity-content', 'activity-icon', 'nipto_activity_collapsed')">
+            <h3 class="collapsible-header" onclick="toggleSection('activity-content', 'activity-icon', 'nipto_boys_act_collapsed')">
                 This Week's Activity <span class="toggle-icon" id="activity-icon">▼</span>
             </h3>
             <div id="activity-content" class="collapsible-content">
+                <div class="history-toggle">
+                    <button class="ht-btn active" id="htBoys" onclick="setHistoryView('boys')">Just Boys</button>
+                    <button class="ht-btn" id="htEveryone" onclick="setHistoryView('everyone')">Everyone</button>
+                </div>
                 <div id="historyContainer">
                     <div class="empty-history">Loading history...</div>
                 </div>
             </div>
         </div>
 
+        <!-- CENTER HEADER: CONTROLS & LEADERBOARD -->
         <div class="header">
-            <div class="dashboard-header-controls">
-                <div style="flex: 1;">
-                    <h2 style="margin-bottom: 15px;">Household Tasks</h2>
-                    <div class="user-select-container" style="margin-bottom: 15px;">
-                        <label for="userSelect" style="font-weight: 600; margin-right: 10px;">Dashboard For:</label>
-                        <select id="userSelect" onchange="onUserChange()"></select>
-                    </div>
-                    
-                    <div id="leaderboard-container" class="adult-points-container">
-                        Loading rankings...
-                    </div>
-                </div>
+            <div class="dashboard-header-controls" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Household Dashboard</h2>
                 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
-                    <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);">🔄 Sync DB</button>
-                    <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All</button>
-                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()">✏️ Edit Dashboard</button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄</button>
+                    <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
+                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
                 </div>
             </div>
 
-            <div class="controls-wrapper">
-                <div class="mode-toggle">
-                    <button class="mode-btn active" id="btnLive" onclick="setMode('live')">Live Time</button>
-                    <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Custom Time</button>
+            <!-- Time Controls -->
+            <div class="controls-wrapper" style="margin-top: 0; margin-bottom: 25px;">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <div style="font-weight: bold; color: var(--text-main); font-size: 15px;">When was the task completed?</div>
+                    <div class="mode-toggle" style="margin: 0;">
+                        <button class="mode-btn active" id="btnLive" onclick="setMode('live')">Now</button>
+                        <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Earlier</button>
+                    </div>
                 </div>
 
                 <div class="custom-time-container" id="customTimeBox">
-                    <div class="quick-times">
-                        <button class="qt-btn" onclick="setTimeOffset(-15)">-15m</button>
-                        <button class="qt-btn" onclick="setTimeOffset(-60)">-1h</button>
-                        <button class="qt-btn" onclick="setTimeOffset(-1440)">Yesterday</button>
-                    </div>
-                    <div class="date-input-group">
+                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                         <input type="datetime-local" id="taskDate">
+                        <div class="quick-times">
+                            <button class="qt-btn" onclick="setTimeOffset(-15)">-15m</button>
+                            <button class="qt-btn" onclick="setTimeOffset(-60)">-1h</button>
+                            <button class="qt-btn" onclick="setTimeOffset(-1440)">-1 Day</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Status indicator primarily for successful/failed logs -->
+                <div id="status" style="margin: 0; font-weight: bold; min-height: 0;"></div>
+            </div>
+
+            <!-- User Toggles -->
+            <div style="text-align: center; font-weight: 800; margin-bottom: 10px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px;">
+                <!-- Kids Row -->
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                    <div class="user-toggle active" style="max-width: 250px;" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                        <div class="user-name">Ayden</div>
+                        <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                    </div>
+                    <div class="user-toggle inactive" style="max-width: 250px;" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                        <div class="user-name">DJ</div>
+                        <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+                    </div>
+                </div>
+                
+                <!-- Adults Row -->
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-Llb9JjyTDvMnn8SJWfizXgthxl83" onclick="setActiveUser('Llb9JjyTDvMnn8SJWfizXgthxl83')">
+                        <div class="user-name">Alyssa</div>
+                        <div class="user-points" id="points-Llb9JjyTDvMnn8SJWfizXgthxl83">-- pts</div>
+                    </div>
+                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-cHnAKABalRf0gETPsDt9EiJLyZd2" onclick="setActiveUser('cHnAKABalRf0gETPsDt9EiJLyZd2')">
+                        <div class="user-name">Devyn</div>
+                        <div class="user-points" id="points-cHnAKABalRf0gETPsDt9EiJLyZd2">-- pts</div>
+                    </div>
+                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2" onclick="setActiveUser('2pxnC1oGlZbLQLmu9UJJVPYOEmZ2')">
+                        <div class="user-name">Carrina</div>
+                        <div class="user-points" id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2">-- pts</div>
                     </div>
                 </div>
 
-                <div id="status">Checking database...</div>
+                <!-- Together Row -->
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                    <div class="user-toggle inactive" style="max-width: 300px;" id="toggle-together" onclick="toggleTogetherMode()">
+                        <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
+                        <div class="user-points" style="font-size: 11px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Together Custom Split Drawer -->
+            <div id="together-drawer">
+                <div style="text-align: center; font-size: 13px; font-weight: bold; color: var(--text-muted); margin-bottom: 5px;">Select everyone who helped:</div>
+                <div class="together-checkboxes" id="together-checkbox-container">
+                    <!-- Checkboxes injected by JS -->
+                </div>
+            </div>
+
+            <!-- Leaderboard -->
+            <div id="leaderboard-container" class="adult-points-container" style="margin-top: 10px;">
+                Loading rankings...
             </div>
         </div>
 
+        <!-- CENTER CONTENT: MAIN TASKS -->
         <div class="main-content">
             <div id="mainContainer"></div>
         </div>
         
+        <!-- RIGHT SIDEBAR: PINNED & ASSIGNED -->
         <div class="right-sidebar">
             <div class="widget-panel">
                 <h4 class="collapsible-header" onclick="toggleSection('pinned-content', 'pin-icon', 'nipto_pin_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
@@ -92,13 +229,34 @@
                     📋 Assigned Tasks <span class="toggle-icon" id="assign-icon">▼</span>
                 </h4>
                 <div id="assigned-content" class="collapsible-content">
-                    <div id="choresContainer">Loading chores...</div>
+                    <div id="choresContainer"></div>
+                    
+                    <div id="addTaskSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <button id="showAddTaskBtn" class="action-btn" onclick="promptAddTask()" style="width: 100%;">➕ Create Custom Task</button>
+                        
+                        <div id="addTaskForm" style="display: none; background: #f9fafb; padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-top: 10px; flex-direction: column; gap: 10px;">
+                            <input type="text" id="choreTitle" placeholder="Task Title" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                            <textarea id="choreDesc" placeholder="Description & Details..." rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-family: inherit; resize: vertical;"></textarea>
+                            
+                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To:</label>
+                            <div id="choreAssignees" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+
+                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted); margin-top: 5px;">Link Nipto Task:</label>
+                            <select id="choreLinkedTask" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;"></select>
+
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button class="action-btn save-mode" onclick="saveNewChore()" style="flex: 1;">Save</button>
+                                <button class="action-btn" onclick="cancelAddTask()" style="flex: 1;">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
     </div>
 
+    <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -107,147 +265,278 @@
 
     <script>
         // --- CONFIGURATION ---
-        const DASHBOARD_USERS = [
-            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina" },
-            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa M" },
-            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn" }
-        ];
-        
         const ALL_USERS = [
-            ...DASHBOARD_USERS,
-            { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden" },
-            { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ" }
+            { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden", color: "var(--user-ayden)" },
+            { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ", color: "var(--user-dj)" },
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa", color: "var(--user-alyssa)" },
+            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn", color: "var(--user-devyn)" },
+            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", color: "var(--user-carrina)" }
         ];
 
         let TASKS = [];
         let CUSTOM_CHORES = [];
         let allWeekActivities = [];
         
-        let currentMode = 'live'; 
         let isEditMode = false;
         let isViewAllMode = false;
         let tempEditPrefs = new Set(); 
+        let hasEnteredTaskPin = false; 
 
-        // --- INIT & USER PREFERENCES ---
+        // Core State Management
+        let activeUsers = ["NMRQaRQbvCwBaJbiMFId"]; // Array of active UIDs
+        let isTogetherMode = false;
+        let currentSplitDivisor = 1;
+        let historyViewMode = 'boys'; 
+        let currentMode = 'live'; // Time mode
+
+        // --- INIT & USER STATE LOGIC ---
         function initUsers() {
-            const select = document.getElementById('userSelect');
-            const lastUser = localStorage.getItem("nipto_last_user");
-
-            DASHBOARD_USERS.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.uid;
-                option.text = user.name;
-                
-                if (lastUser && user.uid === lastUser) {
-                    option.selected = true;
-                } else if (!lastUser && user.uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") {
-                    option.selected = true;
-                }
-                
-                select.appendChild(option);
-            });
+            populateTogetherCheckboxes();
+            const stored = localStorage.getItem("nipto_merged_users");
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed.isTogetherMode) {
+                        setTogetherState(parsed.users);
+                    } else if (parsed.users && parsed.users.length === 1) {
+                        setActiveUser(parsed.users[0], true);
+                    } else {
+                        setActiveUser(ALL_USERS[0].uid, true);
+                    }
+                } catch (e) { setActiveUser(ALL_USERS[0].uid, true); }
+            } else {
+                setActiveUser(ALL_USERS[0].uid, true);
+            }
         }
 
-        function onUserChange() {
-            const selectedUid = document.getElementById('userSelect').value;
-            localStorage.setItem("nipto_last_user", selectedUid);
-            if (isEditMode) toggleEditMode(); 
+        function saveUserState() {
+            localStorage.setItem("nipto_merged_users", JSON.stringify({
+                isTogetherMode: isTogetherMode,
+                users: activeUsers
+            }));
+        }
+
+        function updateFloatingIndicator() {
+            const container = document.getElementById('floating-avatars');
+            const indBox = document.getElementById('floating-user-indicator');
+            container.innerHTML = '';
             
+            if (activeUsers.length === 0) {
+                container.innerHTML = '<span class="floating-avatar" style="background: var(--danger);">No one selected!</span>';
+                indBox.style.borderColor = 'var(--danger)';
+                return;
+            }
+
+            let borderColors = [];
+            activeUsers.forEach(uid => {
+                const user = ALL_USERS.find(u => u.uid === uid);
+                if (user) {
+                    borderColors.push(user.color);
+                    container.innerHTML += `<div class="floating-avatar" style="background: ${user.color};">${user.name}</div>`;
+                }
+            });
+
+            indBox.style.borderColor = isTogetherMode ? 'var(--text-muted)' : borderColors[0];
+        }
+
+        function setActiveUser(uid, skipSave = false) {
+            if (isEditMode) {
+                alert("Please save your dashboard edits before switching users.");
+                return;
+            }
+            
+            isTogetherMode = false;
+            activeUsers = [uid];
+            currentSplitDivisor = 1;
+            
+            document.getElementById('together-drawer').classList.remove('visible');
+
+            ALL_USERS.forEach(user => {
+                const el = document.getElementById(`toggle-${user.uid}`);
+                if (user.uid === uid) {
+                    el.classList.add('active');
+                    el.classList.remove('inactive');
+                } else {
+                    el.classList.add('inactive');
+                    el.classList.remove('active');
+                }
+            });
+            
+            const togEl = document.getElementById('toggle-together');
+            togEl.classList.add('inactive');
+            togEl.classList.remove('active');
+
+            if(!skipSave) saveUserState();
+            updateFloatingIndicator();
             renderTasks();
             renderPinnedTasks();
             renderChores();
         }
 
-        function getActiveUserId() {
-            return document.getElementById('userSelect').value;
+        function toggleTogetherMode() {
+            if (isEditMode) {
+                alert("You cannot edit the dashboard while in 'Together' mode. Please select a specific person to edit their dashboard.");
+                return;
+            }
+
+            isTogetherMode = true;
+            
+            // If turning it on and activeUsers only has 1 person, default check Ayden & DJ
+            if (activeUsers.length <= 1) {
+                activeUsers = ["NMRQaRQbvCwBaJbiMFId", "RMNUTP8VOHD9PDzNjf0g"];
+                updateTogetherCheckboxes();
+            }
+
+            ALL_USERS.forEach(user => {
+                const el = document.getElementById(`toggle-${user.uid}`);
+                el.classList.add('inactive');
+                el.classList.remove('active');
+            });
+
+            const togEl = document.getElementById('toggle-together');
+            togEl.classList.remove('inactive');
+            togEl.classList.add('active');
+
+            document.getElementById('together-drawer').classList.add('visible');
+            
+            processTogetherSelection(true);
+        }
+
+        function setTogetherState(uids) {
+            activeUsers = uids;
+            updateTogetherCheckboxes();
+            toggleTogetherMode();
+        }
+
+        function populateTogetherCheckboxes() {
+            const container = document.getElementById('together-checkbox-container');
+            container.innerHTML = '';
+            ALL_USERS.forEach(u => {
+                container.innerHTML += `
+                    <label class="together-label" style="border-left: 4px solid ${u.color};">
+                        <input type="checkbox" value="${u.uid}" class="t-check" onchange="processTogetherSelection()">
+                        ${u.name}
+                    </label>
+                `;
+            });
+        }
+
+        function updateTogetherCheckboxes() {
+            document.querySelectorAll('.t-check').forEach(cb => {
+                cb.checked = activeUsers.includes(cb.value);
+            });
+        }
+
+        function processTogetherSelection(skipSave = false) {
+            const checkboxes = document.querySelectorAll('.t-check:checked');
+            activeUsers = Array.from(checkboxes).map(cb => cb.value);
+            currentSplitDivisor = Math.max(1, activeUsers.length);
+            
+            if(!skipSave) saveUserState();
+            updateFloatingIndicator();
+            renderTasks();
+            renderPinnedTasks();
+        }
+
+
+        // --- DASHBOARD VIEW & EDITING ---
+        function toggleViewAll() {
+            if (isEditMode) return;
+            isViewAllMode = !isViewAllMode;
+            const btn = document.getElementById('viewAllBtn');
+            if (isViewAllMode) {
+                btn.innerText = "🏠 View My Dashboard";
+                btn.style.backgroundColor = "var(--text-muted)";
+                btn.style.color = "white";
+            } else {
+                btn.innerText = "🔍 View All Tasks";
+                btn.style.backgroundColor = "";
+                btn.style.color = "";
+            }
+            renderTasks();
         }
 
         function getUserPreferences() {
-            const userId = getActiveUserId();
             const prefs = new Set();
+            const targetUid = activeUsers[0]; 
             TASKS.forEach(t => {
-                if (t.dashboardUsers && t.dashboardUsers.includes(userId)) {
+                if (t.dashboardUsers && t.dashboardUsers.includes(targetUid)) {
                     prefs.add(t.uid);
                 }
             });
             return prefs;
         }
 
-        // --- DASHBOARD EDITING ---
-        function toggleViewAll() {
-            if (isEditMode) return;
-            isViewAllMode = !isViewAllMode;
-            const btn = document.getElementById('viewAllBtn');
-            const statusDiv = document.getElementById('status');
-
-            if (isViewAllMode) {
-                btn.innerText = "🏠 View My Dashboard";
-                statusDiv.innerText = "Viewing ALL Tasks";
-            } else {
-                btn.innerText = "🔍 View All Tasks";
-                statusDiv.innerText = currentMode === 'live' ? "Ready (Using exact current time on click)" : "Ready (Using custom time above)";
-            }
-            renderTasks();
-        }
-
         async function toggleEditMode() {
+            if (isTogetherMode) {
+                alert("Please select a specific person's button (e.g., Ayden, Alyssa) before clicking Edit Dashboard.");
+                return;
+            }
+
             const btn = document.getElementById('editBtn');
             const syncBtn = document.getElementById('syncNiptoBtn');
-            const viewAllBtn = document.getElementById('viewAllBtn');
             const statusDiv = document.getElementById('status');
+            const viewAllBtn = document.getElementById('viewAllBtn');
 
             if (!isEditMode) {
                 isEditMode = true;
                 btn.innerText = "💾 Save Dashboard";
                 btn.classList.add('save-mode');
-                syncBtn.style.display = 'inline-block'; 
+                syncBtn.style.display = 'inline-block';
                 viewAllBtn.style.display = 'none';
-                statusDiv.innerText = "EDIT MODE: Click tasks to add/remove them from this user's dashboard.";
+                statusDiv.innerText = `EDIT MODE: Modifying dashboard for ${ALL_USERS.find(u=>u.uid === activeUsers[0]).name}`;
                 statusDiv.style.color = "var(--primary)";
                 
-                if (isViewAllMode) {
-                    isViewAllMode = false;
-                    viewAllBtn.innerText = "🔍 View All Tasks";
-                }
-                
                 tempEditPrefs = getUserPreferences();
+                hasEnteredTaskPin = false; 
+                document.getElementById('addTaskSection').style.display = 'block';
+
+                if (isViewAllMode) toggleViewAll();
+
                 renderTasks();
+                renderChores();
             } else {
-                btn.innerText = "Saving...";
+                btn.innerText = "⏳ Saving...";
                 btn.disabled = true;
                 syncBtn.disabled = true;
                 
                 await savePreferencesToFirestore();
 
                 isEditMode = false;
+                hasEnteredTaskPin = false; 
                 btn.innerText = "✏️ Edit Dashboard";
                 btn.classList.remove('save-mode');
                 btn.disabled = false;
-                syncBtn.style.display = 'none'; 
-                viewAllBtn.style.display = 'inline-block';
+                syncBtn.style.display = 'none';
                 syncBtn.disabled = false;
+                viewAllBtn.style.display = 'inline-block';
                 
-                statusDiv.innerText = currentMode === 'live' ? "Ready (Using exact current time on click)" : "Ready (Using custom time above)";
+                statusDiv.innerText = "";
                 statusDiv.style.color = "var(--text-main)";
+
+                document.getElementById('addTaskSection').style.display = 'none';
+                cancelAddTask();
+
                 renderTasks();
+                renderChores();
             }
         }
 
         async function savePreferencesToFirestore() {
-            const userId = getActiveUserId();
+            const targetUid = activeUsers[0];
             let batch = window.db.batch();
             let hasChanges = false;
 
             TASKS.forEach(task => {
                 const wantsItOnDash = tempEditPrefs.has(task.uid);
-                const hasItCurrently = task.dashboardUsers && task.dashboardUsers.includes(userId);
+                const hasItCurrently = task.dashboardUsers && task.dashboardUsers.includes(targetUid);
                 
                 if (wantsItOnDash !== hasItCurrently) {
                     hasChanges = true;
                     let newUsersList = task.dashboardUsers ? [...task.dashboardUsers] : [];
                     
-                    if (wantsItOnDash) newUsersList.push(userId);
-                    else newUsersList = newUsersList.filter(id => id !== userId);
+                    if (wantsItOnDash) newUsersList.push(targetUid);
+                    else newUsersList = newUsersList.filter(id => id !== targetUid);
                     
                     task.dashboardUsers = newUsersList;
                     
@@ -258,14 +547,12 @@
 
             if (hasChanges) {
                 try { await batch.commit(); } 
-                catch (error) { console.error(error); alert("Failed to save dashboard preferences."); }
+                catch (error) { console.error("Error saving preferences:", error); alert("Failed to save dashboard."); }
             }
         }
 
         // --- FIRESTORE LOGIC ---
         async function loadTasksFromFirestore() {
-            const statusDiv = document.getElementById('status');
-            statusDiv.innerText = "Loading tasks from database...";
             try {
                 const snapshot = await window.db.collection('nipto_tasks').get();
                 TASKS = snapshot.docs.map(doc => {
@@ -274,204 +561,21 @@
                         uid: doc.id,
                         name: data.name,
                         value: data.value || 0,
-                        icon: data.group || "📌",
-                        category: data.group || "📌",
+                        icon: data.group || "📌", 
+                        category: data.group || "📌", 
                         dashboardUsers: data.dashboardUsers || [],
-                        pinnedUsers: data.pinnedUsers || [] 
+                        pinnedUsers: data.pinnedUsers || []
                     };
                 });
-                
-                statusDiv.innerText = currentMode === 'live' ? "Ready (Using exact current time on click)" : "Ready (Using custom time above)";
                 renderTasks();
                 renderPinnedTasks();
             } catch (error) {
+                const statusDiv = document.getElementById('status');
                 statusDiv.innerText = "Error loading database: " + error.message;
                 statusDiv.style.color = "var(--danger)";
             }
         }
 
-        async function loadChoresFromFirestore() {
-            try {
-                const snapshot = await window.db.collection('custom_chores').get();
-                CUSTOM_CHORES = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-                renderChores();
-            } catch (error) {
-                console.error("Error loading assigned chores:", error);
-            }
-        }
-
-        // --- PINNED TASKS LOGIC ---
-        async function togglePinTask(taskUid) {
-            const task = TASKS.find(t => t.uid === taskUid);
-            if (!task) return;
-
-            const userId = getActiveUserId();
-            let pinned = task.pinnedUsers ? [...task.pinnedUsers] : [];
-
-            if (pinned.includes(userId)) pinned = pinned.filter(id => id !== userId);
-            else pinned.push(userId);
-
-            task.pinnedUsers = pinned;
-            renderTasks();
-            renderPinnedTasks();
-
-            try {
-                await window.db.collection('nipto_tasks').doc(taskUid).update({ pinnedUsers: pinned });
-            } catch (error) {
-                console.error("Error updating pin:", error);
-            }
-        }
-
-        function renderPinnedTasks() {
-            const container = document.getElementById('pinnedContainer');
-            container.innerHTML = '';
-            
-            const userId = getActiveUserId();
-            const myPinnedTasks = TASKS.filter(t => t.pinnedUsers && t.pinnedUsers.includes(userId));
-
-            if (myPinnedTasks.length === 0) {
-                container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No pinned tasks.</div>';
-                return;
-            }
-
-            myPinnedTasks.forEach(task => {
-                const card = document.createElement('div');
-                card.className = 'chore-card';
-                card.innerHTML = `
-                    <div class="chore-header">
-                        <div class="chore-title-area">
-                            <div class="chore-title">📌 ${task.name}</div>
-                        </div>
-                        <div class="chore-actions">
-                            <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">✅</button>
-                            <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">❌</button>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        async function logPinnedTask(btnElement, taskUid, taskName) {
-            const success = await logTask(btnElement, taskUid, taskName);
-            if (success) {
-                await togglePinTask(taskUid);
-            }
-        }
-
-
-        // --- ASSIGNED TASKS (CHORES) LOGIC ---
-        function renderChores() {
-            const container = document.getElementById('choresContainer');
-            container.innerHTML = '';
-            
-            const userId = getActiveUserId();
-            let visibleChores = CUSTOM_CHORES.filter(c => c.assignees && c.assignees.includes(userId));
-            visibleChores.sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1);
-
-            if (visibleChores.length === 0) {
-                container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No assigned tasks.</div>';
-                return;
-            }
-
-            visibleChores.forEach(chore => {
-                const linkedTask = TASKS.find(t => t.uid === chore.linkedNiptoTask);
-                const displayPoints = linkedTask && linkedTask.value > 0 ? linkedTask.value : '?';
-
-                const card = document.createElement('div');
-                card.className = `chore-card ${chore.completed ? 'completed' : ''}`;
-                
-                let actionHtml = '';
-                if (chore.completed) {
-                    let uidsJson = JSON.stringify(chore.completedActivityUids || []);
-                    uidsJson = uidsJson.replace(/"/g, '&quot;'); 
-                    let legacyUid = chore.completedActivityUid || "null";
-                    actionHtml = `<button class="chore-btn undo-btn" onclick="undoChore('${chore.uid}', '${legacyUid}', '${uidsJson}')" title="Undo Complete">↩️</button>`;
-                } else {
-                    actionHtml = `<button class="chore-btn complete-btn" onclick="completeChore('${chore.uid}', '${chore.linkedNiptoTask}')" title="Mark Complete">✅</button>`;
-                }
-
-                let completedUiHtml = '';
-                if (chore.completed && chore.completedInfo) {
-                    const formattedDate = new Date(chore.completedInfo.date).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    completedUiHtml = `<div class="chore-completion-info"><b>✓ Logged by:</b> ${chore.completedInfo.names}<br><b>🕒 When:</b> ${formattedDate}</div>`;
-                }
-
-                card.innerHTML = `
-                    <div class="chore-header">
-                        <div class="chore-title-area" onclick="document.getElementById('desc-${chore.uid}').classList.toggle('open'); document.getElementById('icon-${chore.uid}').classList.toggle('open');">
-                            <div class="chore-title">${chore.title} <span class="chore-expand-icon" id="icon-${chore.uid}">▼</span></div>
-                            <div class="chore-points">+${displayPoints} pts</div>
-                        </div>
-                        <div class="chore-actions">${actionHtml}</div>
-                    </div>
-                    ${completedUiHtml}
-                    <div class="chore-desc" id="desc-${chore.uid}">
-                        ${chore.description ? chore.description.replace(/\n/g, '<br>') : '<i>No additional details</i>'}
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        async function completeChore(choreUid, linkedTaskUid) {
-            if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
-            
-            try {
-                const exactFormatString = new Date().toISOString();
-                const MUTATION = `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`;
-                
-                const activeUser = ALL_USERS.find(u => u.uid === getActiveUserId());
-                const doers = [activeUser.uid];
-
-                const baseTask = TASKS.find(t => t.uid === linkedTaskUid);
-                const pointsGiven = baseTask ? baseTask.value : 0;
-
-                const data = await fetchNipto(MUTATION, { done: linkedTaskUid, doers: doers, date: exactFormatString });
-                
-                let activityUids = [];
-                if (data && data.createActivity) {
-                    if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
-                    else if (data.createActivity.uid) activityUids = [data.createActivity.uid];
-                }
-
-                await window.db.collection('custom_chores').doc(choreUid).update({
-                    completed: true,
-                    completedActivityUids: activityUids,
-                    completedInfo: { names: activeUser.name, date: exactFormatString, pointsEach: pointsGiven }
-                });
-
-                loadChoresFromFirestore();
-                fetchWeeklyPoints();
-            } catch (error) { alert("Error completing task: " + error.message); }
-        }
-
-        async function undoChore(choreUid, legacyActivityUid, activityUidsJson) {
-            if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
-            if (!confirm("Undo this task and remove the points from Nipto?")) return;
-
-            try {
-                let uidsToDelete = [];
-                if (activityUidsJson && activityUidsJson !== "undefined") uidsToDelete = JSON.parse(activityUidsJson.replace(/&quot;/g, '"'));
-                if (uidsToDelete.length === 0 && legacyActivityUid && legacyActivityUid !== "null") uidsToDelete = [legacyActivityUid];
-
-                for (const uid of uidsToDelete) {
-                    await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: uid });
-                }
-                
-                await window.db.collection('custom_chores').doc(choreUid).update({
-                    completed: false,
-                    completedActivityUid: null,
-                    completedActivityUids: [],
-                    completedInfo: firebase.firestore.FieldValue.delete()
-                });
-
-                loadChoresFromFirestore();
-                fetchWeeklyPoints();
-            } catch (error) { alert("Error undoing task: " + error.message); }
-        }
-
-        // --- WEEKLY POINTS & ACTIVITY LOGIC ---
         async function fetchWeeklyPoints() {
             if (!API_TOKEN) return;
             const QUERY = `{ activities { uid date user { uid name } task { name value } } }`;
@@ -489,29 +593,37 @@
                     if (activity.user && points[activity.user.uid] !== undefined) {
                         points[activity.user.uid] += awardedPts;
                     }
-                    allWeekActivities.push({ ...activity, parsedDate: new Date(activity.date), awardedPts: awardedPts });
+                    allWeekActivities.push({
+                        ...activity,
+                        parsedDate: new Date(activity.date),
+                        awardedPts: awardedPts 
+                    });
                 });
 
-                let sortedUsers = ALL_USERS.map(u => ({ name: u.name, pts: points[u.uid], uid: u.uid })).sort((a, b) => b.pts - a.pts);
+                ALL_USERS.forEach(user => {
+                    const el = document.getElementById(`points-${user.uid}`);
+                    if (el) el.innerText = points[user.uid] + " pts";
+                });
 
+                document.querySelectorAll('.leader-crown').forEach(el => el.remove());
+                let aydenPts = points["NMRQaRQbvCwBaJbiMFId"] || 0;
+                let djPts = points["RMNUTP8VOHD9PDzNjf0g"] || 0;
+                if (aydenPts > djPts && aydenPts > 0) {
+                    document.getElementById('toggle-NMRQaRQbvCwBaJbiMFId').innerHTML += '<div class="leader-crown">👑</div>';
+                } else if (djPts > aydenPts && djPts > 0) {
+                    document.getElementById('toggle-RMNUTP8VOHD9PDzNjf0g').innerHTML += '<div class="leader-crown">👑</div>';
+                }
+
+                let sortedUsers = ALL_USERS.map(u => ({ name: u.name, pts: points[u.uid], color: u.color })).sort((a, b) => b.pts - a.pts);
                 let leaderboardHtml = sortedUsers.map((u, index) => {
                     let medal = index === 0 ? '🥇 1.' : index === 1 ? '🥈 2. ' : index === 2 ? '🥉 3.' : `${index + 1}.`;
-                    
-                    // Utilize Shared CSS Color Variables
-                    let userColor = 'var(--text-main)';
-                    if(u.uid === 'NMRQaRQbvCwBaJbiMFId') userColor = 'var(--user-ayden)';
-                    else if(u.uid === 'RMNUTP8VOHD9PDzNjf0g') userColor = 'var(--user-dj)';
-                    else if(u.uid === 'Llb9JjyTDvMnn8SJWfizXgthxl83') userColor = 'var(--user-alyssa)';
-                    else if(u.uid === 'cHnAKABalRf0gETPsDt9EiJLyZd2') userColor = 'var(--user-devyn)';
-                    else if(u.uid === '2pxnC1oGlZbLQLmu9UJJVPYOEmZ2') userColor = 'var(--user-carrina)';
-
-                    return `<div><span style="color: var(--text-muted); margin-right: 3px;">${medal}</span> <span style="color: ${userColor}; font-weight: 800;">${u.name}: ${u.pts} pts</span></div>`;
+                    return `<div><span style="color: var(--text-muted); margin-right: 3px;">${medal}</span> <span style="color: ${u.color}; font-weight: 800;">${u.name}: ${u.pts} pts</span></div>`;
                 }).join('<div style="width: 1px; background: var(--border-color); margin: 0 10px;"></div>'); 
 
-                const leaderboardContainer = document.getElementById('leaderboard-container');
-                if(leaderboardContainer) leaderboardContainer.innerHTML = leaderboardHtml;
+                const adultContainer = document.getElementById('leaderboard-container');
+                if(adultContainer) adultContainer.innerHTML = leaderboardHtml;
 
-                renderHistory(allWeekActivities);
+                updateHistoryDisplay();
 
             } catch (error) {
                 console.error("Error fetching points/history:", error);
@@ -519,10 +631,71 @@
             }
         }
 
+        // --- TIME LOGIC ---
+        function formatForInput(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            const h = String(dateObj.getHours()).padStart(2, '0');
+            const min = String(dateObj.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${d}T${h}:${min}`;
+        }
+
+        function setMode(mode) {
+            if (isEditMode) return; 
+            currentMode = mode;
+            if (mode === 'live') {
+                document.getElementById('btnLive').classList.add('active');
+                document.getElementById('btnCustom').classList.remove('active');
+                document.getElementById('customTimeBox').classList.remove('visible');
+            } else {
+                document.getElementById('btnCustom').classList.add('active');
+                document.getElementById('btnLive').classList.remove('active');
+                document.getElementById('customTimeBox').classList.add('visible');
+                const dateInput = document.getElementById('taskDate');
+                if (!dateInput.value) dateInput.value = formatForInput(new Date());
+            }
+        }
+
+        function setTimeOffset(minutes) {
+            if (currentMode === 'live') setMode('custom');
+            const dateInput = document.getElementById('taskDate');
+            
+            let targetDate;
+            if (dateInput.value) {
+                targetDate = new Date(dateInput.value);
+            } else {
+                targetDate = new Date();
+            }
+            
+            targetDate.setMinutes(targetDate.getMinutes() + minutes);
+            dateInput.value = formatForInput(targetDate);
+        }
+
+        // --- HISTORY LOGIC ---
+        function setHistoryView(mode) {
+            historyViewMode = mode;
+            document.getElementById('htBoys').classList.toggle('active', mode === 'boys');
+            document.getElementById('htEveryone').classList.toggle('active', mode === 'everyone');
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            let filteredActivities = allWeekActivities;
+            if (historyViewMode === 'boys') {
+                filteredActivities = allWeekActivities.filter(act => 
+                    act.user && (act.user.uid === "NMRQaRQbvCwBaJbiMFId" || act.user.uid === "RMNUTP8VOHD9PDzNjf0g")
+                );
+            }
+            renderHistory(filteredActivities);
+        }
+
         function renderHistory(activities) {
             const container = document.getElementById('historyContainer');
             container.innerHTML = '';
-            if (activities.length === 0) { container.innerHTML = '<div class="empty-history">No tasks found.</div>'; return; }
+            if (activities.length === 0) {
+                container.innerHTML = '<div class="empty-history">No tasks found.</div>'; return;
+            }
 
             activities.sort((a, b) => b.parsedDate - a.parsedDate);
             const timeOptions = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
@@ -532,8 +705,7 @@
                 const userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Unknown User");
                 const taskName = act.task ? act.task.name : "Deleted Task";
                 const taskValue = act.awardedPts !== undefined ? act.awardedPts : (act.task ? act.task.value : 0);
-                
-                const userColorClass = act.user ? `history-user-${act.user.uid}` : 'history-user-other';
+                const color = knownUser ? knownUser.color : 'var(--text-muted)';
 
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'history-item';
@@ -541,7 +713,7 @@
                     <div class="history-item-content">
                         <div class="history-task-name">${taskName}</div>
                         <div class="history-details">
-                            <span class="${userColorClass}">${userName} (+${taskValue})</span>
+                            <span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>
                             <span>${act.parsedDate.toLocaleDateString(undefined, timeOptions)}</span>
                         </div>
                     </div>
@@ -562,10 +734,18 @@
 
             try {
                 await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
+                
+                const linkedChore = CUSTOM_CHORES.find(c => (c.completedActivityUids && c.completedActivityUids.includes(activityUid)) || c.completedActivityUid === activityUid);
+                if (linkedChore) {
+                    await window.db.collection('custom_chores').doc(linkedChore.uid).update({ completed: false, completedActivityUid: null, completedActivityUids: [], completedInfo: firebase.firestore.FieldValue.delete() });
+                    loadChoresFromFirestore();
+                }
+
                 statusDiv.innerText = `Activity deleted successfully!`;
                 statusDiv.style.color = 'var(--success)';
                 fetchWeeklyPoints();
                 setTimeout(() => { statusDiv.innerText = ""; statusDiv.style.color = 'var(--text-main)'; }, 3000);
+
             } catch (error) {
                 console.error("Delete Error:", error);
                 statusDiv.innerText = `Error: ${error.message}`;
@@ -575,52 +755,18 @@
             }
         }
 
-        // --- TIME LOGIC ---
-        function formatForInput(dateObj) {
-            const y = dateObj.getFullYear();
-            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const d = String(dateObj.getDate()).padStart(2, '0');
-            const h = String(dateObj.getHours()).padStart(2, '0');
-            const min = String(dateObj.getMinutes()).padStart(2, '0');
-            return `${y}-${m}-${d}T${h}:${min}`;
-        }
-
-        function setMode(mode) {
-            if (isEditMode) return; 
-            currentMode = mode;
-            const statusLabel = document.getElementById('status');
-
-            if (mode === 'live') {
-                document.getElementById('btnLive').classList.add('active');
-                document.getElementById('btnCustom').classList.remove('active');
-                document.getElementById('customTimeBox').classList.remove('visible');
-                statusLabel.innerText = "Ready (Using exact current time on click)";
-            } else {
-                document.getElementById('btnCustom').classList.add('active');
-                document.getElementById('btnLive').classList.remove('active');
-                document.getElementById('customTimeBox').classList.add('visible');
-                
-                const dateInput = document.getElementById('taskDate');
-                if (!dateInput.value) dateInput.value = formatForInput(new Date());
-                statusLabel.innerText = "Ready (Using custom time above)";
-            }
-        }
-
-        function setTimeOffset(minutes) {
-            if (currentMode === 'live') setMode('custom');
-            const targetDate = new Date(); 
-            targetDate.setMinutes(targetDate.getMinutes() + minutes);
-            document.getElementById('taskDate').value = formatForInput(targetDate);
-        }
-
-        // --- API LOGGING LOGIC ---
+        // --- TASK LOGGING & RENDERING ---
         async function logTask(buttonElement, taskUid, taskName) {
             if (buttonElement.classList.contains('success')) return false;
             if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return false; }
+            
+            if (activeUsers.length === 0) {
+                alert("No users selected! Please select someone at the top of the dashboard.");
+                return false;
+            }
 
             const statusDiv = document.getElementById('status');
             buttonElement.disabled = true;
-            const targetUserId = getActiveUserId(); 
 
             let targetDate;
             if (currentMode === 'live') {
@@ -630,23 +776,23 @@
                 if (!dateInput) {
                     statusDiv.innerText = "Error: Please select a valid custom date/time.";
                     statusDiv.style.color = 'var(--danger)';
-                    buttonElement.disabled = false;
-                    return false;
+                    buttonElement.disabled = false; return false;
                 }
                 targetDate = new Date(dateInput);
             }
 
-            statusDiv.innerText = `Logging: ${taskName}...`;
+            let namesString = activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
+            statusDiv.innerText = `Logging: ${taskName} for ${namesString}...`;
             statusDiv.style.color = 'var(--text-main)';
 
             try {
                 await fetchNipto(
                     `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`, 
-                    { done: taskUid, doers: [targetUserId], date: targetDate.toISOString() }
+                    { done: taskUid, doers: activeUsers, date: targetDate.toISOString() }
                 );
                 
                 fetchWeeklyPoints();
-                statusDiv.innerText = `Successfully logged: ${taskName}`;
+                statusDiv.innerText = `Successfully logged for ${namesString}!`;
                 statusDiv.style.color = 'var(--success)';
                 
                 buttonElement.classList.add('success');
@@ -658,15 +804,11 @@
                     buttonElement.classList.remove('success');
                     buttonElement.disabled = false;
                     buttonElement.innerHTML = buttonElement.getAttribute('data-original-html') || buttonElement.innerHTML;
-                    
-                    if (isViewAllMode) statusDiv.innerText = "Viewing ALL Tasks";
-                    else if (currentMode === 'live') statusDiv.innerText = "Ready (Using exact current time on click)";
-                    else statusDiv.innerText = "Ready (Using custom time above)";
+                    statusDiv.innerText = "";
                     statusDiv.style.color = 'var(--text-main)';
                 }, 3000);
-
+                
                 return true;
-
             } catch (error) {
                 statusDiv.innerText = `Error: ${error.message}`;
                 statusDiv.style.color = 'var(--danger)';
@@ -691,17 +833,77 @@
             }
         }
 
-        // --- RENDER TASKS GRID LOGIC ---
+        async function togglePinTask(taskUid) {
+            const task = TASKS.find(t => t.uid === taskUid);
+            if (!task) return;
+
+            const targetUid = activeUsers[0];
+            if(!targetUid) return;
+
+            let pinned = task.pinnedUsers ? [...task.pinnedUsers] : [];
+            if (pinned.includes(targetUid)) pinned = pinned.filter(id => id !== targetUid);
+            else pinned.push(targetUid);
+
+            task.pinnedUsers = pinned;
+            renderTasks();
+            renderPinnedTasks();
+
+            try { await window.db.collection('nipto_tasks').doc(taskUid).update({ pinnedUsers: pinned }); } 
+            catch (error) { console.error("Error updating pin:", error); }
+        }
+
+        function renderPinnedTasks() {
+            const container = document.getElementById('pinnedContainer');
+            container.innerHTML = '';
+            
+            const targetUid = activeUsers[0]; 
+            const myPinnedTasks = TASKS.filter(t => t.pinnedUsers && t.pinnedUsers.includes(targetUid));
+
+            if (myPinnedTasks.length === 0) {
+                container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No pinned tasks.</div>';
+                return;
+            }
+
+            myPinnedTasks.forEach(task => {
+                const displayValue = Math.ceil(task.value / currentSplitDivisor);
+                const card = document.createElement('div');
+                card.className = 'chore-card';
+                card.innerHTML = `
+                    <div class="chore-header">
+                        <div class="chore-title-area">
+                            <div class="chore-title">📌 ${task.name}</div>
+                            <div class="chore-points">+${displayValue} pts</div>
+                        </div>
+                        <div class="chore-actions">
+                            <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">✅</button>
+                            <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">❌</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function logPinnedTask(btnElement, taskUid, taskName) {
+            const success = await logTask(btnElement, taskUid, taskName);
+            if (success) await togglePinTask(taskUid); 
+        }
+
         function renderTasks() {
             const container = document.getElementById('mainContainer');
             container.innerHTML = ''; 
             
-            const userId = getActiveUserId();
-            const userPrefs = getUserPreferences();
-            const visibleTasks = TASKS.filter(t => isEditMode || isViewAllMode || userPrefs.has(t.uid));
+            let visibleTasks = [];
+            if (isEditMode || isViewAllMode) {
+                visibleTasks = TASKS;
+            } else {
+                visibleTasks = TASKS.filter(t => {
+                    return activeUsers.some(uid => t.dashboardUsers && t.dashboardUsers.includes(uid));
+                });
+            }
 
             if (visibleTasks.length === 0 && !isEditMode) {
-                container.innerHTML = '<div class="empty-dashboard-msg" style="text-align: center; margin-top: 40px;">Your dashboard is empty. Click "Edit Dashboard" to add tasks!</div>';
+                container.innerHTML = '<div class="empty-dashboard-msg">Your dashboard is empty. Click the pencil icon to add tasks!</div>';
                 return;
             }
 
@@ -715,7 +917,7 @@
                 const section = document.createElement('div');
                 section.className = 'category-section';
 
-                const isCatCollapsed = localStorage.getItem(`nipto_cat_${category}`) === 'true';
+                const isCatCollapsed = localStorage.getItem(`nipto_merged_cat_${category}`) === 'true';
 
                 const header = document.createElement('h3');
                 header.className = 'category-header collapsible-header';
@@ -724,13 +926,12 @@
                 header.onclick = () => {
                     const collapsed = gridWrapper.classList.toggle('collapsed');
                     header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
-                    localStorage.setItem(`nipto_cat_${category}`, collapsed);
+                    localStorage.setItem(`nipto_merged_cat_${category}`, collapsed);
                 };
                 section.appendChild(header);
 
                 const gridWrapper = document.createElement('div');
                 gridWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
-                
                 const grid = document.createElement('div');
                 grid.className = 'task-grid';
 
@@ -738,25 +939,30 @@
                     const btn = document.createElement('button');
                     btn.className = 'task-btn';
                     
+                    const displayValue = Math.ceil(task.value / currentSplitDivisor);
+                    const taskContentHtml = `<span>${task.name}</span><span style="display:block; margin-top:5px; font-weight:bold; color:var(--primary); font-size:13px;">${displayValue} pts</span>`;
+
                     if (isEditMode) {
                         btn.classList.add('edit-mode');
                         if (tempEditPrefs.has(task.uid)) {
                             btn.classList.add('selected-pref');
-                            btn.innerHTML = `<span>${task.name}</span><span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
+                            btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
                         } else {
                             btn.classList.add('unselected-pref');
-                            btn.innerHTML = `<span>${task.name}</span><span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
+                            btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
                         }
                     } else {
-                        btn.innerHTML = `<span>${task.name}</span>`;
+                        btn.innerHTML = taskContentHtml;
                         
-                        const isPinned = task.pinnedUsers && task.pinnedUsers.includes(userId);
+                        const targetUid = activeUsers[0];
+                        const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);
                         const pinBtn = document.createElement('button');
                         pinBtn.className = `pin-task-btn ${isPinned ? 'active' : ''}`;
                         pinBtn.innerHTML = '📌';
                         pinBtn.title = isPinned ? "Unpin task" : "Pin task to reminders";
                         pinBtn.onclick = (e) => {
                             e.stopPropagation(); 
+                            if(activeUsers.length > 1) { alert("You can only pin tasks when a single person is selected at the top."); return;}
                             togglePinTask(task.uid);
                         };
                         btn.appendChild(pinBtn);
@@ -773,20 +979,215 @@
             });
         }
 
-       // Initialize
+        // --- CUSTOM ASSIGNED CHORES ---
+        async function loadChoresFromFirestore() {
+            try {
+                const snapshot = await window.db.collection('custom_chores').get();
+                CUSTOM_CHORES = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                renderChores();
+            } catch (error) { console.error("Error loading assigned chores:", error); }
+        }
+
+        function renderChores() {
+            const container = document.getElementById('choresContainer');
+            container.innerHTML = '';
+            
+            let visibleChores = CUSTOM_CHORES.filter(c => c.assignees && activeUsers.some(uid => c.assignees.includes(uid)));
+            visibleChores.sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1);
+
+            if (visibleChores.length === 0) {
+                container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No assigned tasks.</div>';
+                return;
+            }
+
+            visibleChores.forEach(chore => {
+                const linkedTask = TASKS.find(t => t.uid === chore.linkedNiptoTask);
+                const basePoints = linkedTask ? linkedTask.value : 0;
+                const displayPoints = basePoints > 0 ? Math.ceil(basePoints / currentSplitDivisor) : '?';
+                
+                const assigneesHtml = chore.assignees.map(uid => {
+                    const user = ALL_USERS.find(u => u.uid === uid);
+                    const name = user ? user.name : "Unknown";
+                    const color = user ? user.color : "var(--text-main)"; 
+                    return `<span style="color: ${color}; font-size: 11px; font-weight: bold; margin-right: 6px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${name}</span>`;
+                }).join('');
+
+                const card = document.createElement('div');
+                card.className = `chore-card ${chore.completed ? 'completed' : ''}`;
+                
+                let actionHtml = '';
+                if (isEditMode) {
+                    actionHtml = `<button class="chore-btn delete-btn" onclick="deleteChoreDB('${chore.uid}')" title="Delete Task permanently">🗑️</button>`;
+                } else {
+                    if (chore.completed) {
+                        let uidsJson = JSON.stringify(chore.completedActivityUids || []).replace(/"/g, '&quot;'); 
+                        let legacyUid = chore.completedActivityUid || "null";
+                        actionHtml = `<button class="chore-btn undo-btn" onclick="undoChore('${chore.uid}', '${legacyUid}', '${uidsJson}')" title="Undo Complete">↩️</button>`;
+                    } else {
+                        actionHtml = `<button class="chore-btn complete-btn" onclick="completeChore('${chore.uid}', '${chore.linkedNiptoTask}')" title="Mark Complete">✅</button>`;
+                    }
+                }
+
+                let completedUiHtml = '';
+                if (chore.completed && chore.completedInfo) {
+                    const formattedDate = new Date(chore.completedInfo.date).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const eachText = chore.completedInfo.names.includes(',') ? 'each' : '';
+                    completedUiHtml = `
+                        <div class="chore-completion-info">
+                            <b>✓ Logged by:</b> ${chore.completedInfo.names}<br>
+                            <b>🕒 When:</b> ${formattedDate}<br>
+                            <b>⭐ Awarded:</b> +${chore.completedInfo.pointsEach} pts ${eachText}
+                        </div>`;
+                }
+
+                card.innerHTML = `
+                    <div class="chore-header">
+                        <div class="chore-title-area" onclick="document.getElementById('desc-${chore.uid}').classList.toggle('open'); document.getElementById('icon-${chore.uid}').classList.toggle('open');">
+                            <div class="chore-title">${chore.title} <span class="chore-expand-icon" id="icon-${chore.uid}">▼</span></div>
+                            <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">${assigneesHtml}</div>
+                            <div class="chore-points">+${displayPoints} pts</div>
+                        </div>
+                        <div class="chore-actions">${actionHtml}</div>
+                    </div>
+                    ${completedUiHtml}
+                    <div class="chore-desc" id="desc-${chore.uid}">
+                        ${chore.description ? chore.description.replace(/\n/g, '<br>') : '<i>No additional details</i>'}
+                        ${isEditMode ? `<br><span style="font-size:11px; color:var(--primary); margin-top:5px; display:block;">Linked Task: ${linkedTask ? linkedTask.name : 'Unknown'}</span>` : ''}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function completeChore(choreUid, linkedTaskUid) {
+            if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
+            if (activeUsers.length === 0) { alert("Select at least one user first!"); return; }
+
+            try {
+                let targetDate = currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
+                const exactFormatString = targetDate.toISOString();
+                const baseTask = TASKS.find(t => t.uid === linkedTaskUid);
+                const pointsGiven = baseTask && baseTask.value > 0 ? Math.ceil(baseTask.value / currentSplitDivisor) : 0;
+
+                const data = await fetchNipto(
+                    `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`, 
+                    { done: linkedTaskUid, doers: activeUsers, date: exactFormatString }
+                );
+                
+                let activityUids = [];
+                if (data && data.createActivity) {
+                    if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
+                    else if (data.createActivity.uid) activityUids = [data.createActivity.uid];
+                }
+
+                let namesString = activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
+
+                await window.db.collection('custom_chores').doc(choreUid).update({
+                    completed: true, completedActivityUids: activityUids,
+                    completedInfo: { names: namesString, date: exactFormatString, pointsEach: pointsGiven }
+                });
+
+                loadChoresFromFirestore();
+                fetchWeeklyPoints();
+            } catch (error) { alert("Error completing task: " + error.message); }
+        }
+
+        async function undoChore(choreUid, legacyActivityUid, activityUidsJson) {
+            if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
+            if (!confirm("Undo this task and remove the points from Nipto?")) return;
+            try {
+                let uidsToDelete = [];
+                if (activityUidsJson && activityUidsJson !== "undefined") uidsToDelete = JSON.parse(activityUidsJson.replace(/&quot;/g, '"'));
+                if (uidsToDelete.length === 0 && legacyActivityUid && legacyActivityUid !== "null") uidsToDelete = [legacyActivityUid];
+
+                for (const uid of uidsToDelete) {
+                    await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: uid });
+                }
+                
+                await window.db.collection('custom_chores').doc(choreUid).update({
+                    completed: false, completedActivityUid: null, completedActivityUids: [], completedInfo: firebase.firestore.FieldValue.delete()
+                });
+                loadChoresFromFirestore();
+                fetchWeeklyPoints();
+            } catch (error) { alert("Error undoing task: " + error.message); }
+        }
+
+        async function deleteChoreDB(choreUid) {
+            if (!confirm("Permanently delete this custom task from the database? (This does not remove past points)")) return;
+            try {
+                await window.db.collection('custom_chores').doc(choreUid).delete();
+                loadChoresFromFirestore();
+            } catch (error) { alert("Error deleting task."); }
+        }
+
+        // Add Chore Form logic
+        function promptAddTask() {
+            if (hasEnteredTaskPin) { showAddTaskForm(); return; }
+            const pin = prompt("Enter 4-Digit PIN to create a Custom Task:");
+            if (pin === "9876") { hasEnteredTaskPin = true; showAddTaskForm(); } 
+            else if (pin !== null) { alert("Incorrect PIN."); }
+        }
+
+        function showAddTaskForm() {
+            document.getElementById('showAddTaskBtn').style.display = 'none';
+            document.getElementById('addTaskForm').style.display = 'flex';
+            const assigneesContainer = document.getElementById('choreAssignees');
+            assigneesContainer.innerHTML = '';
+            ALL_USERS.forEach(u => {
+                assigneesContainer.innerHTML += `<label style="font-size: 13px; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="${u.uid}" class="chore-assignee-cb"> ${u.name}</label>`;
+            });
+
+            const linkedTaskSelect = document.getElementById('choreLinkedTask');
+            linkedTaskSelect.innerHTML = '<option value="">-- Select Linked Nipto Task --</option>';
+            const assignedTasks = [
+                { uid: "4qN36U3lrNdyjFet2vcU", name: "Assigned task 5pt" }, { uid: "mDjzDiyY340KyT3Jz9Bu", name: "Assigned task 10pt" }, { uid: "8AfJBroeX8WLoweUOLS7", name: "Assigned task 15pt" }, { uid: "KYo9RbEjVEdYqCjFel3r", name: "Assigned task 20pt" }, { uid: "8yFI2WkhWPWSadC71aBh", name: "Assigned task 25pt" }, { uid: "xbOFuoSk6ytwL8mFPYjP", name: "Assigned task 30pt" }, { uid: "se46JFOXJ5D2fnn2OuBF", name: "Assigned task 35pt" }, { uid: "wu9NL07y73WjitJbOE82", name: "Assigned task 40pts" }, { uid: "nANasHvsuyJIU268y9ZP", name: "Assigned tasks 45pts" }, { uid: "ytu1De3mqoLrv0lH9ogy", name: "Assigned task 50pts" }, { uid: "UHWcbLzvgPQZTqWeAHOc", name: "Assigned task 55pts" }, { uid: "JKhirXLr9JISujzN0IYP", name: "Assigned task 60pts" }, { uid: "3krVyfDmAUKjH8IOKd5b", name: "Assigned task 65pts" }, { uid: "7OENuScaDaWPIzY113Dp", name: "Assigned task 70pts" }, { uid: "c3IAuz9JmGdsuvZczz23", name: "Assigned task 75pts" }, { uid: "ZBMLBATMU9gawKzK9JTw", name: "Assigned task 80pts" }, { uid: "kwbNsqaR0kW2muJItNZz", name: "Assigned task 85pts" }, { uid: "RNvfDqXomBi10jyV8p16", name: "Assigned task 90pts" }, { uid: "ppiTVnZU7vMmrGFFLZWx", name: "Assigned task 95pts" }, { uid: "z7z76pKMz1xlVS2yAd0G", name: "Assigned task 100pts" }
+            ];
+            assignedTasks.forEach(t => linkedTaskSelect.innerHTML += `<option value="${t.uid}">${t.name}</option>`);
+        }
+
+        function cancelAddTask() {
+            document.getElementById('showAddTaskBtn').style.display = 'block';
+            document.getElementById('addTaskForm').style.display = 'none';
+            document.getElementById('choreTitle').value = '';
+            document.getElementById('choreDesc').value = '';
+        }
+
+        async function saveNewChore() {
+            const title = document.getElementById('choreTitle').value.trim();
+            const desc = document.getElementById('choreDesc').value.trim();
+            const linkedTask = document.getElementById('choreLinkedTask').value;
+            const assignees = Array.from(document.querySelectorAll('.chore-assignee-cb:checked')).map(cb => cb.value);
+
+            if (!title || !linkedTask || assignees.length === 0) {
+                alert("Please provide a title, assign at least one person, and link a Nipto task."); return;
+            }
+
+            const newChore = {
+                title: title, description: desc, linkedNiptoTask: linkedTask, assignees: assignees,
+                completed: false, completedActivityUid: null, completedActivityUids: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                await window.db.collection('custom_chores').add(newChore);
+                cancelAddTask(); loadChoresFromFirestore(); 
+            } catch (error) { alert("Failed to save the custom task."); }
+        }
+
+        // Initialize
         initUsers();
         
         const collapsibles = [
-            { content: 'activity-content', icon: 'activity-icon', key: 'nipto_activity_collapsed' },
-            { content: 'pinned-content', icon: 'pin-icon', key: 'nipto_pin_collapsed' },
-            { content: 'assigned-content', icon: 'assign-icon', key: 'nipto_assign_collapsed' }
+            { content: 'activity-content', icon: 'activity-icon', key: 'nipto_merged_act_collapsed' },
+            { content: 'pinned-content', icon: 'pin-icon', key: 'nipto_merged_pin_collapsed' },
+            { content: 'assigned-content', icon: 'assign-icon', key: 'nipto_merged_assign_collapsed' }
         ];
         initCollapsibles(collapsibles);
 
-        checkAuth(async () => {
-            await loadTasksFromFirestore();
-            await loadChoresFromFirestore();
-            fetchWeeklyPoints();
+        checkAuth(async () => { 
+            await loadTasksFromFirestore(); 
+            await loadChoresFromFirestore(); 
+            fetchWeeklyPoints(); 
         });
 
     </script>
