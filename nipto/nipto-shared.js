@@ -1,7 +1,30 @@
-// nipto-shared.js
-
 const NIPTO_URL = "https://nipto.app/graphql";
 let API_TOKEN = localStorage.getItem("nipto_api_token") || "";
+
+// ==========================================
+// COLLAPSIBLE SECTIONS LOGIC (SHARED)
+// ==========================================
+function toggleSection(contentId, iconId, storageKey) {
+    const content = document.getElementById(contentId);
+    const icon = document.getElementById(iconId);
+    if (!content || !icon) return;
+    
+    const isCollapsed = content.classList.toggle('collapsed');
+    icon.classList.toggle('collapsed', isCollapsed);
+    
+    if (storageKey) localStorage.setItem(storageKey, isCollapsed);
+}
+
+function initCollapsibles(sectionsArray) {
+    sectionsArray.forEach(sec => {
+        if (localStorage.getItem(sec.key) === 'true') {
+            const content = document.getElementById(sec.content);
+            const icon = document.getElementById(sec.icon);
+            if (content) content.classList.add('collapsed');
+            if (icon) icon.classList.add('collapsed');
+        }
+    });
+}
 
 // ==========================================
 // AUTH & PIN LOGIC
@@ -44,7 +67,7 @@ function checkAuth(onSuccessCallback) {
 }
 
 // ==========================================
-// NIPTO API WRAPPER (DRY Fetch logic)
+// NIPTO API WRAPPER
 // ==========================================
 async function fetchNipto(query, variables = {}) {
     if (!API_TOKEN) throw new Error("Unauthorized: Missing Token");
@@ -69,7 +92,6 @@ async function fetchNipto(query, variables = {}) {
 
 // ==========================================
 // SYNC TASKS LOGIC 
-// (Combines boys.html, common.html, and sync-tasks.js logic)
 // ==========================================
 async function syncNiptoTasks(onSyncComplete) {
     const statusDiv = document.getElementById('status') || document.getElementById('status-message');

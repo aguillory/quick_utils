@@ -5,136 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nipto Dashboard</title>
     <link rel="stylesheet" href="nipto-shared.css">
-    
-    <style>
-        /* ==========================================
-           RIGHT SIDEBAR & CUSTOM CHORES STYLES
-           ========================================== */
-        
-        .page-wrapper {
-            max-width: 1400px !important;
-        }
-
-        .right-sidebar {
-            width: 300px;
-            flex-shrink: 0;
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 16px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            height: fit-content;
-            max-height: 85vh;
-            overflow-y: auto;
-            position: sticky;
-            top: 40px;
-        }
-
-        .right-sidebar h3 { font-size: 18px; margin-top: 0; margin-bottom: 12px; color: var(--text-main); }
-
-        .chore-card {
-            background: #fff;
-            border: 2px solid var(--border-color);
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 12px;
-            transition: all 0.2s;
-        }
-
-        .chore-card.completed {
-            opacity: 0.7;
-            background: #F9FAFB;
-            border-color: #D1D5DB;
-        }
-
-        .chore-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 10px;
-        }
-
-        .chore-title-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .chore-title {
-            font-weight: 600;
-            color: var(--text-main);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-        }
-
-        .chore-card.completed .chore-title { text-decoration: line-through; }
-
-        .chore-points {
-            font-size: 12px;
-            color: var(--primary);
-            font-weight: bold;
-            background: rgba(79, 70, 229, 0.1);
-            padding: 2px 6px;
-            border-radius: 4px;
-            width: fit-content;
-            margin-top: 6px;
-        }
-
-        .chore-expand-icon { font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
-        .chore-expand-icon.open { transform: rotate(180deg); }
-
-        .chore-desc {
-            display: none;
-            margin-top: 10px;
-            font-size: 13px;
-            color: var(--text-muted);
-            background: #F3F4F6;
-            padding: 10px;
-            border-radius: 8px;
-            line-height: 1.4;
-        }
-
-        .chore-desc.open { display: block; }
-
-        .chore-actions { display: flex; gap: 5px; }
-
-        .chore-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 18px;
-            padding: 4px;
-            border-radius: 6px;
-            transition: background 0.2s;
-        }
-
-        .chore-btn:hover { background: #F3F4F6; }
-        .chore-btn.complete-btn:hover { background: #D1FAE5; }
-        .chore-btn.delete-btn:hover { background: #FEE2E2; }
-
-        .user-toggle#toggle-both.active {
-            border-color: #8B5CF6;
-            background-color: #F5F3FF;
-            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
-            transform: translateY(-2px);
-        }
-        .user-toggle#toggle-both.active .user-name,
-        .user-toggle#toggle-both.active .user-points { color: #8B5CF6; }
-
-        .chore-completion-info {
-            font-size: 12px;
-            color: #065F46;
-            margin-top: 8px;
-            background: #D1FAE5;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #A7F3D0;
-            line-height: 1.4;
-        }
-    </style>
 </head>
 <body>
 
@@ -151,91 +21,100 @@
 
     <div class="page-wrapper">
         
-        <div class="sidebar">
-            <h3>This Week's Activity</h3>
-            
-            <div class="history-toggle">
-                <button class="ht-btn active" id="htBoys" onclick="setHistoryView('boys')">Just Boys</button>
-                <button class="ht-btn" id="htEveryone" onclick="setHistoryView('everyone')">Everyone</button>
-            </div>
-
-            <div id="historyContainer">
-                <div class="empty-history">Loading history...</div>
+        <div class="sidebar left-sidebar">
+            <h3 class="collapsible-header" onclick="toggleSection('activity-content', 'activity-icon', 'nipto_boys_act_collapsed')">
+                This Week's Activity <span class="toggle-icon" id="activity-icon">▼</span>
+            </h3>
+            <div id="activity-content" class="collapsible-content">
+                <div class="history-toggle">
+                    <button class="ht-btn active" id="htBoys" onclick="setHistoryView('boys')">Just Boys</button>
+                    <button class="ht-btn" id="htEveryone" onclick="setHistoryView('everyone')">Everyone</button>
+                </div>
+                <div id="historyContainer">
+                    <div class="empty-history">Loading history...</div>
+                </div>
             </div>
         </div>
 
-        <div class="main-column">
+        <div class="header">
+            <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
             
-            <div class="header" style="margin-bottom: 0;">
-                <h2 style="margin-bottom: 15px; text-align: center;">Tasks Dashboard</h2>
+            <div class="dashboard-header-controls">
                 
-                <div class="dashboard-header-controls" style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: none !important; padding-bottom: 0 !important; margin-bottom: 10px !important;">
+                <div style="flex: 1;">
                     
-                    <div style="flex: 1;">
-                        
-                        <div style="margin-bottom: 12px;">
-                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
-                            <div class="user-toggle-container">
-                                <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
-                                    <div class="user-name">Ayden</div>
-                                    <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
-                                </div>
-                                
-                                <div class="user-toggle inactive" id="toggle-both" onclick="setActiveUser('both')">
-                                    <div class="user-name">Together</div>
-                                    <div class="user-points" style="font-size: 12px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
-                                </div>
-                                
-                                <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
-                                    <div class="user-name">DJ</div>
-                                    <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
-                                </div>
+                    <div style="margin-bottom: 12px;">
+                        <div style="text-align: center; font-weight: bold; margin-bottom: 8px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
+                        <div class="user-toggle-container">
+                            <div class="user-toggle active" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                                <div class="user-name">Ayden</div>
+                                <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                            </div>
+                            
+                            <div class="user-toggle inactive" id="toggle-both" onclick="setActiveUser('both')">
+                                <div class="user-name">Together</div>
+                                <div class="user-points" style="font-size: 12px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
+                            </div>
+                            
+                            <div class="user-toggle inactive" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                                <div class="user-name">DJ</div>
+                                <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
                             </div>
                         </div>
-
-                        <div class="adult-points-container">
-                            <div id="points-Llb9JjyTDvMnn8SJWfizXgthxl83"><span style="color: var(--text-main);">Alyssa:</span> <span style="color: var(--primary);">-- pts</span></div>
-                            <div id="points-cHnAKABalRf0gETPsDt9EiJLyZd2"><span style="color: var(--text-main);">Devyn:</span> <span style="color: var(--primary);">-- pts</span></div>
-                            <div id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2"><span style="color: var(--text-main);">Carrina:</span> <span style="color: var(--primary);">-- pts</span></div>
-                        </div>
                     </div>
 
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
-                        <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary); font-size: 20px; padding: 5px 12px;" title="Sync Database">🔄</button>
-                        <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="font-size: 20px; padding: 5px 12px;">✏️</button>
+                    <div class="adult-points-container">
+                        <div id="points-Llb9JjyTDvMnn8SJWfizXgthxl83"><span style="color: var(--text-main);">Alyssa:</span> <span style="color: var(--primary);">-- pts</span></div>
+                        <div id="points-cHnAKABalRf0gETPsDt9EiJLyZd2"><span style="color: var(--text-main);">Devyn:</span> <span style="color: var(--primary);">-- pts</span></div>
+                        <div id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2"><span style="color: var(--text-main);">Carrina:</span> <span style="color: var(--primary);">-- pts</span></div>
                     </div>
                 </div>
 
-                <div class="controls-wrapper" style="margin-top: 5px;">
-                    <div id="status" style="text-align: center; font-weight: bold; min-height: 0;"></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: 15px;">
+                    <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary); font-size: 20px; padding: 5px 12px;" title="Sync Database">🔄</button>
+                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="font-size: 20px; padding: 5px 12px;">✏️</button>
                 </div>
             </div>
 
-            <div id="mainContainer"></div>
+            <div class="controls-wrapper" style="margin-top: 5px;">
+                <div id="status" style="text-align: center; font-weight: bold; min-height: 0;"></div>
+            </div>
         </div>
 
+        <div class="main-content">
+            <div id="mainContainer"></div>
+        </div>
+        
         <div class="right-sidebar">
-            <h3>Assigned Tasks</h3>
-            <div id="choresContainer"></div>
-            
-            <div id="addTaskSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                <button id="showAddTaskBtn" class="action-btn" onclick="promptAddTask()" style="width: 100%;">➕ Create Custom Task</button>
+            <div class="widget-panel">
+                <h4 class="collapsible-header" onclick="toggleSection('assigned-content', 'assign-icon', 'nipto_boys_assign_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    📋 Assigned Tasks & Custom Chores <span class="toggle-icon" id="assign-icon">▼</span>
+                </h4>
                 
-                <div id="addTaskForm" style="display: none; background: #f9fafb; padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-top: 10px; flex-direction: column; gap: 10px;">
-                    <input type="text" id="choreTitle" placeholder="Task Title" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                <div id="assigned-content" class="collapsible-content">
+                    <div id="choresContainer"></div>
                     
-                    <textarea id="choreDesc" placeholder="Description & Details..." rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-family: inherit; resize: vertical;"></textarea>
-                    
-                    <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To:</label>
-                    <div id="choreAssignees" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                    <div id="addTaskSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <button id="showAddTaskBtn" class="action-btn" onclick="promptAddTask()" style="width: 100%;">➕ Create Custom Task</button>
+                        
+                        <div id="addTaskForm" style="display: none; background: #f9fafb; padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-top: 10px; flex-direction: column; gap: 10px;">
+                            <input type="text" id="choreTitle" placeholder="Task Title" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                            
+                            <textarea id="choreDesc" placeholder="Description & Details..." rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-family: inherit; resize: vertical;"></textarea>
+                            
+                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To:</label>
+                            <div id="choreAssignees" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
 
-                    <label style="font-size: 13px; font-weight: bold; color: var(--text-muted); margin-top: 5px;">Link Nipto Task:</label>
-                    <select id="choreLinkedTask" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;"></select>
+                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted); margin-top: 5px;">Link Nipto Task:</label>
+                            <select id="choreLinkedTask" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;"></select>
 
-                    <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <button class="action-btn save-mode" onclick="saveNewChore()" style="flex: 1;">Save</button>
-                        <button class="action-btn" onclick="cancelAddTask()" style="flex: 1;">Cancel</button>
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button class="action-btn save-mode" onclick="saveNewChore()" style="flex: 1;">Save</button>
+                                <button class="action-btn" onclick="cancelAddTask()" style="flex: 1;">Cancel</button>
+                            </div>
+                        </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -249,24 +128,13 @@
     <script src="nipto-shared.js"></script>
 
     <script>
-        // ========================================================
-        // TWEAK THESE VARIABLES TO FIX YOUR POINTS DISCREPANCY!
-        // ========================================================
-        // By default, Nipto considers the week to start on Monday at midnight.
-        // If your app resets on a different day or time, update this:
-        const NIPTO_RESET_DAY = 1;  // 0 = Sunday, 1 = Monday
-        const NIPTO_RESET_HOUR = 0; // 0 = Midnight, 18 = 6 PM, etc.
-        // ========================================================
-
-
-        // --- CONFIGURATION ---
         const BOYS = [
             { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden" },
             { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ" }
         ];
 
         const ADULTS = [
-            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa" },
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa M" },
             { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn" },
             { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina" }
         ];
@@ -283,7 +151,6 @@
         let allWeekActivities = [];
         let historyViewMode = 'boys'; 
 
-        // --- USER & DASHBOARD PREFERENCES ---
         function initUsers() {
             const lastUser = localStorage.getItem("nipto_kids_last_user");
             if (lastUser && (BOYS.find(u => u.uid === lastUser) || lastUser === 'both')) {
@@ -467,18 +334,11 @@
                 ALL_USERS.forEach(u => points[u.uid] = 0);
                 allWeekActivities = []; 
 
-                // Nipto's API already perfectly pre-filters the 'activities' array 
-                // for the current week based on your App settings. 
-                // We completely skip local timezone filtering and just sum the data!
-
                 activities.forEach(activity => {
-                    // Nipto natively returns the exact awarded/split points in task.value
                     let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
-
                     if (activity.user && points[activity.user.uid] !== undefined) {
                         points[activity.user.uid] += awardedPts;
                     }
-
                     allWeekActivities.push({
                         ...activity,
                         parsedDate: new Date(activity.date),
@@ -505,20 +365,25 @@
                 let sortedUsers = ALL_USERS.map(u => ({ 
                     name: u.name, 
                     pts: points[u.uid],
-                    isBoy: BOYS.some(b => b.uid === u.uid)
+                    uid: u.uid
                 })).sort((a, b) => b.pts - a.pts);
 
                 let leaderboardHtml = sortedUsers.map((u, index) => {
                     let medal = index === 0 ? '🥇 1.' : index === 1 ? '🥈 2. ' : index === 2 ? '🥉 3.' : `${index + 1}.`;
-                    let highlightClass = u.isBoy ? 'color: var(--primary); font-weight: 800;' : 'color: var(--text-main); font-weight: 600;';
                     
-                    return `<div><span style="color: var(--text-muted); margin-right: 3px;">${medal}</span> <span style="${highlightClass}">${u.name}: ${u.pts} pts</span></div>`;
+                    let userColor = 'var(--text-main)';
+                    if(u.uid === 'NMRQaRQbvCwBaJbiMFId') userColor = 'var(--user-ayden)';
+                    else if(u.uid === 'RMNUTP8VOHD9PDzNjf0g') userColor = 'var(--user-dj)';
+                    else if(u.uid === 'Llb9JjyTDvMnn8SJWfizXgthxl83') userColor = 'var(--user-alyssa)';
+                    else if(u.uid === 'cHnAKABalRf0gETPsDt9EiJLyZd2') userColor = 'var(--user-devyn)';
+                    else if(u.uid === '2pxnC1oGlZbLQLmu9UJJVPYOEmZ2') userColor = 'var(--user-carrina)';
+                    
+                    return `<div><span style="color: var(--text-muted); margin-right: 3px;">${medal}</span> <span style="color: ${userColor}; font-weight: 800;">${u.name}: ${u.pts} pts</span></div>`;
                 }).join('<div style="width: 1px; background: var(--border-color); margin: 0 10px;"></div>'); 
 
                 const adultContainer = document.querySelector('.adult-points-container');
                 if(adultContainer) {
                     adultContainer.innerHTML = leaderboardHtml;
-                    adultContainer.style.flexWrap = 'wrap'; 
                 }
 
                 updateHistoryDisplay();
@@ -569,8 +434,7 @@
                 const taskValue = act.awardedPts !== undefined ? act.awardedPts : (act.task ? act.task.value : 0);
                 const formattedTime = act.parsedDate.toLocaleDateString(undefined, timeOptions);
 
-                const isBoy = act.user && (act.user.uid === "NMRQaRQbvCwBaJbiMFId" || act.user.uid === "RMNUTP8VOHD9PDzNjf0g");
-                const userColorClass = isBoy ? `history-user-${act.user.uid}` : 'history-user-other';
+                const userColorClass = act.user ? `history-user-${act.user.uid}` : 'history-user-other';
 
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'history-item';
@@ -704,16 +568,25 @@
                 return acc;
             }, {});
 
-            const categories = Object.keys(groupedTasks).sort();
-
-            categories.forEach(category => {
+            Object.keys(groupedTasks).sort().forEach(category => {
                 const section = document.createElement('div');
                 section.className = 'category-section';
 
+                const isCatCollapsed = localStorage.getItem(`nipto_boys_cat_${category}`) === 'true';
+
                 const header = document.createElement('h3');
-                header.className = 'category-header';
-                header.innerText = category;
+                header.className = 'category-header collapsible-header';
+                header.innerHTML = `${category} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}">▼</span>`;
+                
+                header.onclick = () => {
+                    const collapsed = gridWrapper.classList.toggle('collapsed');
+                    header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
+                    localStorage.setItem(`nipto_boys_cat_${category}`, collapsed);
+                };
                 section.appendChild(header);
+
+                const gridWrapper = document.createElement('div');
+                gridWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
 
                 const grid = document.createElement('div');
                 grid.className = 'task-grid';
@@ -743,7 +616,8 @@
                     grid.appendChild(btn);
                 });
 
-                section.appendChild(grid);
+                gridWrapper.appendChild(grid);
+                section.appendChild(gridWrapper);
                 container.appendChild(section);
             });
         }
@@ -782,9 +656,13 @@
                 const assigneesHtml = chore.assignees.map(uid => {
                     const user = ALL_USERS.find(u => u.uid === uid);
                     const name = user ? user.name : "Unknown";
-                    let color = "#8B5CF6"; 
-                    if (uid === "NMRQaRQbvCwBaJbiMFId") color = "#3B82F6"; 
-                    else if (uid === "RMNUTP8VOHD9PDzNjf0g") color = "#10B981"; 
+                    
+                    let color = "var(--text-main)"; 
+                    if (uid === "NMRQaRQbvCwBaJbiMFId") color = "var(--user-ayden)"; 
+                    else if (uid === "RMNUTP8VOHD9PDzNjf0g") color = "var(--user-dj)"; 
+                    else if (uid === "Llb9JjyTDvMnn8SJWfizXgthxl83") color = "var(--user-alyssa)";
+                    else if (uid === "cHnAKABalRf0gETPsDt9EiJLyZd2") color = "var(--user-devyn)";
+                    else if (uid === "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2") color = "var(--user-carrina)";
                     
                     return `<span style="color: ${color}; font-size: 11px; font-weight: bold; margin-right: 6px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${name}</span>`;
                 }).join('');
@@ -806,7 +684,6 @@
                     }
                 }
 
-                // Render Completion details if available
                 let completedUiHtml = '';
                 if (chore.completed && chore.completedInfo) {
                     const formattedDate = new Date(chore.completedInfo.date).toLocaleString([], {
@@ -825,7 +702,7 @@
 
                 card.innerHTML = `
                     <div class="chore-header">
-                        <div class="chore-title-area" onclick="toggleChoreDesc('${chore.uid}')">
+                        <div class="chore-title-area" onclick="document.getElementById('desc-${chore.uid}').classList.toggle('open'); document.getElementById('icon-${chore.uid}').classList.toggle('open');">
                             <div class="chore-title">
                                 ${chore.title} 
                                 <span class="chore-expand-icon" id="icon-${chore.uid}">▼</span>
@@ -847,11 +724,6 @@
             });
         }
 
-        function toggleChoreDesc(uid) {
-            document.getElementById(`desc-${uid}`).classList.toggle('open');
-            document.getElementById(`icon-${uid}`).classList.toggle('open');
-        }
-
         async function completeChore(choreUid, linkedTaskUid) {
             if (!API_TOKEN) { document.getElementById('pinModal').style.display = 'flex'; return; }
             const statusDiv = document.getElementById('status');
@@ -863,7 +735,6 @@
                 const activeUserName = activeUserId === 'both' ? "Ayden & DJ" : BOYS.find(u => u.uid === activeUserId).name;
                 const doers = activeUserId === 'both' ? BOYS.map(b => b.uid) : [activeUserId];
                 
-                // Calculate display points for the record
                 const baseTask = TASKS.find(t => t.uid === linkedTaskUid);
                 const basePoints = baseTask ? baseTask.value : 0;
                 const pointsGiven = basePoints > 0 ? Math.ceil(basePoints / currentSplitDivisor) : 0;
@@ -872,21 +743,14 @@
                 
                 let activityUids = [];
                 if (data && data.createActivity) {
-                    if (Array.isArray(data.createActivity)) {
-                        activityUids = data.createActivity.map(a => a.uid);
-                    } else if (data.createActivity.uid) {
-                        activityUids = [data.createActivity.uid];
-                    }
+                    if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
+                    else if (data.createActivity.uid) activityUids = [data.createActivity.uid];
                 }
 
                 await window.db.collection('custom_chores').doc(choreUid).update({
                     completed: true,
                     completedActivityUids: activityUids,
-                    completedInfo: {
-                        names: activeUserName,
-                        date: exactFormatString,
-                        pointsEach: pointsGiven
-                    }
+                    completedInfo: { names: activeUserName, date: exactFormatString, pointsEach: pointsGiven }
                 });
 
                 loadChoresFromFirestore();
@@ -896,9 +760,7 @@
                 statusDiv.style.color = 'var(--success)';
                 setTimeout(() => statusDiv.innerText = "", 3000);
 
-            } catch (error) {
-                alert("Error completing task: " + error.message);
-            }
+            } catch (error) { alert("Error completing task: " + error.message); }
         }
 
         async function undoChore(choreUid, legacyActivityUid, activityUidsJson) {
@@ -907,18 +769,11 @@
 
             try {
                 let uidsToDelete = [];
-                
-                if (activityUidsJson && activityUidsJson !== "undefined") {
-                    uidsToDelete = JSON.parse(activityUidsJson.replace(/&quot;/g, '"'));
-                }
-
-                if (uidsToDelete.length === 0 && legacyActivityUid && legacyActivityUid !== "null") {
-                    uidsToDelete = [legacyActivityUid];
-                }
+                if (activityUidsJson && activityUidsJson !== "undefined") uidsToDelete = JSON.parse(activityUidsJson.replace(/&quot;/g, '"'));
+                if (uidsToDelete.length === 0 && legacyActivityUid && legacyActivityUid !== "null") uidsToDelete = [legacyActivityUid];
 
                 for (const uid of uidsToDelete) {
-                    const MUTATION = `mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`;
-                    await fetchNipto(MUTATION, { uid: uid });
+                    await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: uid });
                 }
                 
                 await window.db.collection('custom_chores').doc(choreUid).update({
@@ -930,9 +785,7 @@
 
                 loadChoresFromFirestore();
                 fetchWeeklyPoints();
-            } catch (error) {
-                alert("Error undoing task: " + error.message);
-            }
+            } catch (error) { alert("Error undoing task: " + error.message); }
         }
 
         async function deleteChoreDB(choreUid) {
@@ -940,25 +793,15 @@
             try {
                 await window.db.collection('custom_chores').doc(choreUid).delete();
                 loadChoresFromFirestore();
-            } catch (error) {
-                alert("Error deleting task.");
-            }
+            } catch (error) { alert("Error deleting task."); }
         }
 
         // --- ADD CUSTOM CHORE FORM ---
         function promptAddTask() {
-            if (hasEnteredTaskPin) {
-                showAddTaskForm();
-                return;
-            }
-
+            if (hasEnteredTaskPin) { showAddTaskForm(); return; }
             const pin = prompt("Enter 4-Digit PIN to create a Custom Task:");
-            if (pin === "9876") {
-                hasEnteredTaskPin = true; 
-                showAddTaskForm();
-            } else if (pin !== null) {
-                alert("Incorrect PIN.");
-            }
+            if (pin === "9876") { hasEnteredTaskPin = true; showAddTaskForm(); } 
+            else if (pin !== null) { alert("Incorrect PIN."); }
         }
 
         function showAddTaskForm() {
@@ -987,7 +830,6 @@
             const linkedTaskSelect = document.getElementById('choreLinkedTask');
             linkedTaskSelect.innerHTML = '<option value="">-- Select Linked Nipto Task --</option>';
             
-            // Hardcoded array of assigned tasks using exact UIDs from the database
             const assignedTasks = [
                 { uid: "4qN36U3lrNdyjFet2vcU", name: "Assigned task 5pt" },
                 { uid: "mDjzDiyY340KyT3Jz9Bu", name: "Assigned task 10pt" },
@@ -1028,13 +870,8 @@
             }
 
             const newChore = {
-                title: title,
-                description: desc,
-                linkedNiptoTask: linkedTask,
-                assignees: assignees,
-                completed: false,
-                completedActivityUid: null,
-                completedActivityUids: [],
+                title: title, description: desc, linkedNiptoTask: linkedTask, assignees: assignees,
+                completed: false, completedActivityUid: null, completedActivityUids: [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
@@ -1042,14 +879,18 @@
                 await window.db.collection('custom_chores').add(newChore);
                 cancelAddTask();
                 loadChoresFromFirestore(); 
-            } catch (error) {
-                console.error(error);
-                alert("Failed to save the custom task to the database.");
-            }
+            } catch (error) { alert("Failed to save the custom task to the database."); }
         }
 
         // Initialize
         initUsers();
+        
+        const collapsibles = [
+            { content: 'activity-content', icon: 'activity-icon', key: 'nipto_boys_act_collapsed' },
+            { content: 'assigned-content', icon: 'assign-icon', key: 'nipto_boys_assign_collapsed' }
+        ];
+        initCollapsibles(collapsibles);
+
         checkAuth(async () => { 
             await loadTasksFromFirestore(); 
             await loadChoresFromFirestore(); 
