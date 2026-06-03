@@ -1,0 +1,268 @@
+/* ==========================================
+   GLOBAL VARIABLES & BLACK OPS II RESET
+   ========================================== */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap');
+
+:root {
+    /* Black Ops II Tactical Palette */
+    --primary: #FF7300;       /* Iconic BO2 Orange */
+    --primary-hover: #FFA200; /* Intense Bright Orange */
+    --success: #39FF14;       /* Tactical Neon Green */
+    --danger: #FF0000;        /* Alert Red */
+    --bg-color: #080808;      /* Pitch Black / Gunmetal */
+    --card-bg: rgba(20, 20, 20, 0.85); /* Semi-transparent HUD Panel */
+    --text-main: #E0E0E0;     /* High-vis Off-White */
+    --text-muted: #666666;    /* Muted Tech Grey */
+    --border-color: #333333;  /* Dark Metallic Outline */
+}
+
+body { 
+    font-family: 'Rajdhani', sans-serif; /* Military Tech Font */
+    margin: 0; 
+    background-color: var(--bg-color); 
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+    box-sizing: border-box;
+    /* BO2 Scanline / CRT Mesh Pattern */
+    background-image: 
+        repeating-linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.15),
+            rgba(0, 0, 0, 0.15) 1px,
+            transparent 1px,
+            transparent 2px
+        );
+    background-size: 100% 2px;
+}
+
+h1, h2, h3 { 
+    margin-top: 0;
+    color: var(--text-main); 
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 700;
+}
+
+h2 { font-size: 36px; margin-bottom: 5px; text-shadow: 0 0 10px rgba(255, 255, 255, 0.2); }
+p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
+
+/* ==========================================
+   CONTAINERS & LAYOUT (TACTICAL HUD)
+   ========================================== */
+.dashboard-container, .header, .right-sidebar, .sidebar, .modal-content {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 0px; /* Sharp corners */
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0,0,0,0.5);
+    box-sizing: border-box;
+    backdrop-filter: blur(5px);
+}
+
+.dashboard-container {
+    max-width: 600px;
+    width: 100%;
+    text-align: center;
+    position: relative;
+}
+
+.header {
+    width: 100%;
+    max-width: 800px;
+    margin-bottom: 30px;
+    border-top: 3px solid var(--primary); /* Signature orange stripe */
+}
+
+#mainContainer {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+#status:empty { display: none; }
+
+/* ==========================================
+   BUTTONS (FLAT, NEON & RESPONSIVE)
+   ========================================== */
+.time-btn, .task-btn, .qt-btn, .action-btn, .ht-btn, .mode-btn, .modal-content button { 
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 20px; 
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer; 
+    border-radius: 0px; 
+    background-color: #111111; 
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    transition: all 0.15s ease-in-out;
+}
+
+.time-btn:hover:not(:disabled), .task-btn:hover:not(:disabled), .action-btn:hover, .modal-content button:hover { 
+    background-color: rgba(255, 115, 0, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 15px rgba(255, 115, 0, 0.4), inset 0 0 10px rgba(255, 115, 0, 0.2);
+    transform: translateY(-1px);
+}
+
+.time-btn:active:not(:disabled), .task-btn:active:not(:disabled) { 
+    background-color: var(--primary);
+    color: #000;
+    box-shadow: 0 0 20px var(--primary);
+    transform: translateY(1px);
+}
+
+.time-btn.success, .task-btn.success, .action-btn.save-mode { 
+    background-color: rgba(57, 255, 20, 0.1); 
+    border-color: var(--success);
+    color: var(--success); 
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
+}
+
+.time-btn.error, .task-btn.error { 
+    background-color: rgba(255, 0, 0, 0.1); 
+    border-color: var(--danger);
+    color: var(--danger); 
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+}
+
+/* ==========================================
+   USER TOGGLES (CALLING CARDS) - V2
+   ========================================== */
+.user-toggle {
+    background-color: transparent !important; /* Block shared CSS white backgrounds */
+    border: none !important; /* Remove standard borders to use pseudo-element */
+    padding: 15px;
+    margin-bottom: 15px;
+    margin-top: 20px; /* Extra space above so the prestige badge fits */
+    position: relative;
+    transition: all 0.2s;
+    box-shadow: none !important;
+}
+
+/* The actual calling card shape and background layer */
+.user-toggle::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, #151515 0%, #0a0a0a 100%);
+    border: 1px solid var(--border-color);
+    border-left: 6px solid var(--text-muted);
+    /* Clip path applied here so it doesn't clip the prestige badge */
+    clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+    z-index: -1;
+    transition: all 0.2s;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+
+.user-name { font-size: 26px; font-weight: 700; color: var(--text-main); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; position: relative; z-index: 2; }
+.user-points { font-size: 18px; color: var(--text-muted); font-weight: 600; position: relative; z-index: 2; }
+
+/* Active State */
+.user-toggle.active { transform: scale(1.02); }
+.user-toggle.active::before {
+    border-color: var(--primary);
+    border-left: 6px solid var(--primary);
+    background: linear-gradient(90deg, rgba(155,255,255, 0.5) 0%, rgba(0,0,0,0.8) 100%);
+    box-shadow: 0 0 15px rgba(255, 115, 0, 0.3), inset 0 0 10px rgba(255, 115, 0, 0.1);
+}
+.user-toggle.active .user-points { color: var(--primary); }
+
+/* Specific User Overrides */
+.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active::before { border-color: #00F0FF; border-left-color: #00F0FF; box-shadow: 0 0 15px rgba(0, 240, 255, 0.4); } 
+.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active .user-points { color: #00F0FF; }
+
+.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active::before { border-color: var(--success); border-left-color: var(--success); box-shadow: 0 0 15px rgba(57, 255, 20, 0.4); } 
+.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active .user-points { color: var(--success); }
+
+/* FIX: Inactive state legibility (Override shared CSS light gray) */
+.user-toggle.inactive { opacity: 0.6 !important; filter: none !important; }
+.user-toggle.inactive::before { background: #080808; border-color: #222; border-left-color: #333; }
+.user-toggle.inactive .user-name { color: #777; }
+.user-toggle.inactive .user-points { color: #555; }
+
+/* ==========================================
+   THE CROWN REPLACEMENT (PRESTIGE BADGE)
+   ========================================== */
+.leader-crown {
+    font-size: 0 !important; 
+    position: absolute;
+    top: -22px; /* Safely pushed above the button */
+    right: 0px;
+    animation: pulse 2s infinite ease-in-out;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.leader-crown::after {
+    content: "✪ PRESTIGE";
+    font-size: 14px;
+    color: #000;
+    background: var(--primary);
+    padding: 4px 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    box-shadow: 0 0 15px var(--primary);
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+    display: block;
+    transform: rotate(5deg);
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); filter: drop-shadow(0 0 5px var(--primary)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 15px var(--primary)); }
+    100% { transform: scale(0.95); filter: drop-shadow(0 0 5px var(--primary)); }
+}
+/* ==========================================
+   INPUTS & SELECTS
+   ========================================== */
+select, input[type="datetime-local"], .modal-content input {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 0px;
+    border: 1px solid var(--border-color);
+    background-color: #0D0D0D;
+    padding: 10px;
+    color: var(--primary);
+    outline: none;
+    transition: all 0.2s;
+}
+
+select:focus, input[type="datetime-local"]:focus, .modal-content input:focus { 
+    border-color: var(--primary); 
+    box-shadow: 0 0 10px rgba(255, 115, 0, 0.3);
+}
+
+/* ==========================================
+   GRIDS & MISC
+   ========================================== */
+.task-grid, .grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+    gap: 15px; 
+}
+
+.divider { height: 1px; background-color: var(--border-color); margin: 30px 0; }
+
+.empty-dashboard-msg, .empty-history { font-size: 18px; color: var(--text-muted); font-style: italic; }
+
+
+
+@keyframes pulse {
+    0% { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.2); opacity: 1; text-shadow: 0 0 25px var(--primary); }
+    100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+
+.adult-points-container {
+	background: #222;
+}

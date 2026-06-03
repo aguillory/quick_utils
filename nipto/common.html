@@ -77,11 +77,27 @@
         .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active { border-color: var(--user-carrina); background-color: rgba(139, 92, 246, 0.05); }
         .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-name, .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-points { color: var(--user-carrina); }
 
+        /* Theme Menu Options */
+        .theme-option {
+            padding: 10px 15px;
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-main, #333);
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            transition: background 0.2s;
+        }
+        .theme-option:last-child { border-bottom: none; }
+        .theme-option:hover { background: var(--bg-color, #f8fafc); }
+        .theme-option.active-theme { font-weight: bold; color: var(--primary, #2563eb); background: rgba(37, 99, 235, 0.05); }
+
     </style>
 </head>
 <body>
 
-    <!-- PIN MODAL -->
     <div id="pinModal" style="display: none;">
         <div class="modal-content">
             <h2>Enter Dashboard PIN</h2>
@@ -93,15 +109,17 @@
         </div>
     </div>
 
-    <!-- FLOATING INDICATOR -->
     <div id="floating-user-indicator">
         <span style="color: var(--text-muted); font-size: 13px;">Logging tasks for:</span>
         <div class="floating-avatar-group" id="floating-avatars"></div>
     </div>
+    
+    <button id="floating-save-btn" class="action-btn save-mode" onclick="toggleEditMode()" style="display: none; position: fixed; bottom: 80px; right: 20px; z-index: 1001; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border-radius: 50px; padding: 12px 25px; font-size: 16px; font-weight: 800; border: 2px solid var(--primary);">
+        💾 Save Dashboard
+    </button>
 
     <div class="page-wrapper">
         
-        <!-- LEFT SIDEBAR: HISTORY -->
         <div class="sidebar left-sidebar">
             <h3 class="collapsible-header" onclick="toggleSection('activity-content', 'activity-icon', 'nipto_boys_act_collapsed')">
                 This Week's Activity <span class="toggle-icon" id="activity-icon">▼</span>
@@ -117,21 +135,27 @@
             </div>
         </div>
 
-        <!-- CENTER HEADER: CONTROLS & LEADERBOARD -->
         <div class="header">
             <div class="dashboard-header-controls" style="margin-bottom: 15px;">
-    <h2 style="margin: 0;">Household Dashboard</h2>
-    
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <!-- NEW TOGGLE BUTTON -->
-        <button id="themeToggleBtn" class="action-btn" onclick="toggleTheme()">⛏️ Fun Mode</button>
-        
-        <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄</button>
-        <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
-        <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
-    </div>
-</div>
-            <!-- Time Controls -->
+                <h2 style="margin: 0;">Household Dashboard</h2>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    
+                    <div class="theme-selector-container" style="position: relative; display: inline-block;">
+                        <button id="themeToggleBtn" class="action-btn" onclick="toggleThemeMenu()">🎨 Theme ▼</button>
+                        <div id="themeMenu" style="display: none; position: absolute; top: 100%; left: 0; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; flex-direction: column; min-width: 160px; overflow: hidden; margin-top: 5px;">
+                            <button class="theme-option" id="theme-opt-boring" onclick="setTheme('boring')">👔 Boring Mode</button>
+                            <button class="theme-option" id="theme-opt-pixel" onclick="setTheme('pixel')">⛏️ Pixel Mode</button>
+                            <button class="theme-option" id="theme-opt-tactical" onclick="setTheme('tactical')">🎯 Tactical Mode</button>
+                        </div>
+                    </div>
+                    
+                    <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄</button>
+                    <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
+                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
+                </div>
+            </div>
+            
             <div class="controls-wrapper" style="margin-top: 0; margin-bottom: 25px;">
                 <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                     <div style="font-weight: bold; color: var(--text-main); font-size: 15px;">When was the task completed?</div>
@@ -151,15 +175,12 @@
                         </div>
                     </div>
                 </div>
-                <!-- Status indicator primarily for successful/failed logs -->
                 <div id="status" style="margin: 0; font-weight: bold; min-height: 0;"></div>
             </div>
 
-            <!-- User Toggles -->
             <div style="text-align: center; font-weight: 800; margin-bottom: 10px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
             
             <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px;">
-                <!-- Kids Row -->
                 <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
                     <div class="user-toggle active" style="max-width: 250px;" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
                         <div class="user-name">Ayden</div>
@@ -171,7 +192,6 @@
                     </div>
                 </div>
                 
-                <!-- Adults Row -->
                 <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
                     <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-Llb9JjyTDvMnn8SJWfizXgthxl83" onclick="setActiveUser('Llb9JjyTDvMnn8SJWfizXgthxl83')">
                         <div class="user-name">Alyssa</div>
@@ -187,7 +207,6 @@
                     </div>
                 </div>
 
-                <!-- Together Row -->
                 <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
                     <div class="user-toggle inactive" style="max-width: 300px;" id="toggle-together" onclick="toggleTogetherMode()">
                         <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
@@ -196,26 +215,21 @@
                 </div>
             </div>
 
-            <!-- Together Custom Split Drawer -->
             <div id="together-drawer">
                 <div style="text-align: center; font-size: 13px; font-weight: bold; color: var(--text-muted); margin-bottom: 5px;">Select everyone who helped:</div>
                 <div class="together-checkboxes" id="together-checkbox-container">
-                    <!-- Checkboxes injected by JS -->
-                </div>
+                    </div>
             </div>
 
-            <!-- Leaderboard -->
             <div id="leaderboard-container" class="adult-points-container" style="margin-top: 10px;">
                 Loading rankings...
             </div>
         </div>
 
-        <!-- CENTER CONTENT: MAIN TASKS -->
         <div class="main-content">
             <div id="mainContainer"></div>
         </div>
         
-        <!-- RIGHT SIDEBAR: PINNED & ASSIGNED -->
         <div class="right-sidebar">
             <div class="widget-panel">
                 <h4 class="collapsible-header" onclick="toggleSection('pinned-content', 'pin-icon', 'nipto_pin_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
@@ -258,7 +272,6 @@
 
     </div>
 
-    <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -476,6 +489,7 @@
             }
 
             const btn = document.getElementById('editBtn');
+            const floatingBtn = document.getElementById('floating-save-btn');
             const syncBtn = document.getElementById('syncNiptoBtn');
             const statusDiv = document.getElementById('status');
             const viewAllBtn = document.getElementById('viewAllBtn');
@@ -484,6 +498,12 @@
                 isEditMode = true;
                 btn.innerText = "💾 Save Dashboard";
                 btn.classList.add('save-mode');
+                
+                // Show floating save button
+                floatingBtn.style.display = 'block';
+                floatingBtn.innerText = "💾 Save Dashboard";
+                floatingBtn.disabled = false;
+                
                 syncBtn.style.display = 'inline-block';
                 viewAllBtn.style.display = 'none';
                 statusDiv.innerText = `EDIT MODE: Modifying dashboard for ${ALL_USERS.find(u=>u.uid === activeUsers[0]).name}`;
@@ -500,6 +520,8 @@
             } else {
                 btn.innerText = "⏳ Saving...";
                 btn.disabled = true;
+                floatingBtn.innerText = "⏳ Saving...";
+                floatingBtn.disabled = true;
                 syncBtn.disabled = true;
                 
                 await savePreferencesToFirestore();
@@ -509,6 +531,10 @@
                 btn.innerText = "✏️ Edit Dashboard";
                 btn.classList.remove('save-mode');
                 btn.disabled = false;
+                
+                // Hide floating save button
+                floatingBtn.style.display = 'none';
+                
                 syncBtn.style.display = 'none';
                 syncBtn.disabled = false;
                 viewAllBtn.style.display = 'inline-block';
@@ -607,13 +633,27 @@
                     if (el) el.innerText = points[user.uid] + " pts";
                 });
 
+                // Remove existing crowns
                 document.querySelectorAll('.leader-crown').forEach(el => el.remove());
-                let aydenPts = points["NMRQaRQbvCwBaJbiMFId"] || 0;
-                let djPts = points["RMNUTP8VOHD9PDzNjf0g"] || 0;
-                if (aydenPts > djPts && aydenPts > 0) {
-                    document.getElementById('toggle-NMRQaRQbvCwBaJbiMFId').innerHTML += '<div class="leader-crown">👑</div>';
-                } else if (djPts > aydenPts && djPts > 0) {
-                    document.getElementById('toggle-RMNUTP8VOHD9PDzNjf0g').innerHTML += '<div class="leader-crown">👑</div>';
+
+                // Find the #1 overall user dynamically
+                let topUser = null;
+                let maxPts = 0;
+
+                ALL_USERS.forEach(user => {
+                    let userPts = points[user.uid] || 0;
+                    if (userPts > maxPts) {
+                        maxPts = userPts;
+                        topUser = user.uid;
+                    }
+                });
+
+                // Apply the prestige badge to the correct user (only if they have > 0 points)
+                if (topUser && maxPts > 0) {
+                    const topUserElement = document.getElementById(`toggle-${topUser}`);
+                    if (topUserElement) {
+                        topUserElement.innerHTML += '<div class="leader-crown">👑</div>';
+                    }
                 }
 
                 let sortedUsers = ALL_USERS.map(u => ({ name: u.name, pts: points[u.uid], color: u.color })).sort((a, b) => b.pts - a.pts);
@@ -1176,45 +1216,61 @@
             } catch (error) { alert("Failed to save the custom task."); }
         }
         
-        // --- THEME TOGGLE LOGIC ---
-let isFunMode = localStorage.getItem('nipto_theme') === 'fun';
+        // --- MULTI-THEME LOGIC ---
+        const THEMES = {
+            'boring': null, 
+            'pixel': 'minecraft.css',
+            'tactical': 'blackops.css'
+        };
 
-function initTheme() {
-    if (isFunMode) enableFunMode();
-}
+        // Get saved theme or default to boring. Migrate old 'fun' to 'pixel'
+        let currentTheme = localStorage.getItem('nipto_theme') || 'boring';
+        if (currentTheme === 'fun') currentTheme = 'pixel';
 
-function toggleTheme() {
-    isFunMode = !isFunMode;
-    if (isFunMode) {
-        enableFunMode();
-        localStorage.setItem('nipto_theme', 'fun');
-    } else {
-        disableFunMode();
-        localStorage.setItem('nipto_theme', 'boring');
-    }
-}
+        function initTheme() {
+            applyTheme(currentTheme);
+        }
 
-function enableFunMode() {
-    let link = document.getElementById('fun-theme-css');
-    if (!link) {
-        link = document.createElement('link');
-        link.id = 'fun-theme-css';
-        link.rel = 'stylesheet';
-        link.href = 'boyz.css'; 
-        document.head.appendChild(link);
-    }
-    
-    const toggleBtn = document.getElementById('themeToggleBtn');
-    if (toggleBtn) toggleBtn.innerHTML = "👔 Boring Mode";
-}
+        function toggleThemeMenu() {
+            const menu = document.getElementById('themeMenu');
+            menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+        }
 
-function disableFunMode() {
-    let link = document.getElementById('fun-theme-css');
-    if (link) link.remove();
-    
-    const toggleBtn = document.getElementById('themeToggleBtn');
-    if (toggleBtn) toggleBtn.innerHTML = "⛏️ Fun Mode";
-}
+        function setTheme(themeId) {
+            currentTheme = themeId;
+            localStorage.setItem('nipto_theme', themeId);
+            applyTheme(themeId);
+            document.getElementById('themeMenu').style.display = 'none';
+        }
+
+        function applyTheme(themeId) {
+            // Remove existing dynamic theme CSS if it exists
+            let link = document.getElementById('dynamic-theme-css');
+            if (link) link.remove();
+
+            // Inject the new theme CSS if it's not the default ('boring')
+            if (THEMES[themeId]) {
+                link = document.createElement('link');
+                link.id = 'dynamic-theme-css';
+                link.rel = 'stylesheet';
+                link.href = THEMES[themeId];
+                document.head.appendChild(link);
+            }
+
+            // Update active state in the dropdown menu
+            document.querySelectorAll('.theme-option').forEach(btn => btn.classList.remove('active-theme'));
+            const activeBtn = document.getElementById(`theme-opt-${themeId}`);
+            if (activeBtn) activeBtn.classList.add('active-theme');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const container = document.querySelector('.theme-selector-container');
+            const menu = document.getElementById('themeMenu');
+            if (container && !container.contains(event.target)) {
+                menu.style.display = 'none';
+            }
+        });
 
         // Initialize
         initUsers();
