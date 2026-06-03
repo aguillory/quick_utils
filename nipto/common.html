@@ -120,15 +120,17 @@
         <!-- CENTER HEADER: CONTROLS & LEADERBOARD -->
         <div class="header">
             <div class="dashboard-header-controls" style="margin-bottom: 15px;">
-                <h2 style="margin: 0;">Household Dashboard</h2>
-                
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄</button>
-                    <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
-                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
-                </div>
-            </div>
-
+    <h2 style="margin: 0;">Household Dashboard</h2>
+    
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <!-- NEW TOGGLE BUTTON -->
+        <button id="themeToggleBtn" class="action-btn" onclick="toggleTheme()">⛏️ Fun Mode</button>
+        
+        <button id="syncNiptoBtn" class="action-btn" onclick="syncNiptoTasks(loadTasksFromFirestore)" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄</button>
+        <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
+        <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
+    </div>
+</div>
             <!-- Time Controls -->
             <div class="controls-wrapper" style="margin-top: 0; margin-bottom: 25px;">
                 <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
@@ -1173,10 +1175,50 @@
                 cancelAddTask(); loadChoresFromFirestore(); 
             } catch (error) { alert("Failed to save the custom task."); }
         }
+        
+        // --- THEME TOGGLE LOGIC ---
+let isFunMode = localStorage.getItem('nipto_theme') === 'fun';
+
+function initTheme() {
+    if (isFunMode) enableFunMode();
+}
+
+function toggleTheme() {
+    isFunMode = !isFunMode;
+    if (isFunMode) {
+        enableFunMode();
+        localStorage.setItem('nipto_theme', 'fun');
+    } else {
+        disableFunMode();
+        localStorage.setItem('nipto_theme', 'boring');
+    }
+}
+
+function enableFunMode() {
+    let link = document.getElementById('fun-theme-css');
+    if (!link) {
+        link = document.createElement('link');
+        link.id = 'fun-theme-css';
+        link.rel = 'stylesheet';
+        link.href = 'boyz.css'; 
+        document.head.appendChild(link);
+    }
+    
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (toggleBtn) toggleBtn.innerHTML = "👔 Boring Mode";
+}
+
+function disableFunMode() {
+    let link = document.getElementById('fun-theme-css');
+    if (link) link.remove();
+    
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (toggleBtn) toggleBtn.innerHTML = "⛏️ Fun Mode";
+}
 
         // Initialize
         initUsers();
-        
+        initTheme();
         const collapsibles = [
             { content: 'activity-content', icon: 'activity-icon', key: 'nipto_merged_act_collapsed' },
             { content: 'pinned-content', icon: 'pin-icon', key: 'nipto_merged_pin_collapsed' },
