@@ -916,6 +916,33 @@ function renderTodoTasks() {
     });
 }
 
+function updateTaskDatalists() {
+    const categories = new Set();
+    const locations = new Set();
+
+    // Add some defaults so the lists are never completely empty
+    categories.add("Barn"); categories.add("House"); categories.add("Animals");
+    locations.add("Inside"); locations.add("Outside"); locations.add("Barn"); locations.add("Shop");
+
+    // Loop through existing tasks and add any historical categories/locations
+    if (state.todoTasksData) {
+        state.todoTasksData.forEach(task => {
+            if (task.category && task.category.trim() !== "") categories.add(task.category.trim());
+            if (task.location && task.location.trim() !== "") locations.add(task.location.trim());
+        });
+    }
+
+    const catDatalist = document.getElementById('categoryOptions');
+    const locDatalist = document.getElementById('locationOptions');
+
+    // Update the HTML datalists with the sorted, unique values
+    if (catDatalist) {
+        catDatalist.innerHTML = Array.from(categories).sort().map(c => `<option value="${c}"></option>`).join('');
+    }
+    if (locDatalist) {
+        locDatalist.innerHTML = Array.from(locations).sort().map(l => `<option value="${l}"></option>`).join('');
+    }
+}
 function openTaskModal() {
     document.getElementById('taskModalTitle').innerText = "Add Task";
     document.getElementById('taskId').value = '';
@@ -925,7 +952,9 @@ function openTaskModal() {
     document.getElementById('taskPriority').value = 'Medium';
     document.getElementById('taskPoints').value = '';
     document.getElementById('taskNotes').value = '';
-    populateTodoAssignees([]); // Clear assignees
+    populateTodoAssignees([]); 
+    updateTaskDatalists(); 
+    
     document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -942,7 +971,7 @@ function editTask(id) {
     document.getElementById('taskPoints').value = task.linkedNiptoTask || '';
     document.getElementById('taskNotes').value = task.notes || '';
     populateTodoAssignees(task.assignees || []); // Load saved assignees
-    
+    updateTaskDatalists();
     document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -1273,6 +1302,7 @@ window.setHistoryView = setHistoryView;
 window.toggleSection = toggleSection;
 window.toggleThemeMenu = toggleThemeMenu;
 window.setTheme = setTheme;
+window.updateTaskDatalists = updateTaskDatalists;
 
 // ==========================================
 // HTML BUTTON BRIDGES

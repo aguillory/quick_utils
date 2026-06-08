@@ -203,8 +203,7 @@
         </div>
 
     </div>
-    
-<div id="taskModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; padding: 15px; z-index: 1000;">
+    <div id="taskModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; padding: 15px; z-index: 1000;">
     <div class="modal" style="background: var(--card-bg, #fff); padding: 20px; border-radius: 10px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
         <h2 id="taskModalTitle" style="margin: 0 0 10px 0;">Add Task</h2>
         <input type="hidden" id="taskId">
@@ -229,20 +228,9 @@
             <option value="Shop"></option>
         </datalist>
 
-<label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Location</label>
-        <input type="text" id="taskLocation" list="locationOptions" placeholder="e.g., Inside, Outside, Barn, Shop" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-        <datalist id="locationOptions">
-            <option value="Inside"></option>
-            <option value="Outside"></option>
-            <option value="Barn"></option>
-            <option value="Shop"></option>
-        </datalist>
-
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To</label>
         <div id="todoAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-            </div>
-        <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Priority</label>
-        
+        </div>
         
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Priority</label>
         <select id="taskPriority" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
