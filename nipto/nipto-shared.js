@@ -1,6 +1,14 @@
 const NIPTO_URL = "https://nipto.app/graphql";
 let API_TOKEN = localStorage.getItem("nipto_api_token") || "";
 
+// Master User List for all Nipto Apps
+const ALL_USERS = [
+    { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden", color: "var(--user-ayden)" },
+    { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ", color: "var(--user-dj)" },
+    { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa", color: "var(--user-alyssa)"},
+    { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn", color: "var(--user-devyn)"},
+    { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", color: "var(--user-carrina)"}
+];
 // ==========================================
 // COLLAPSIBLE SECTIONS LOGIC (SHARED)
 // ==========================================
@@ -29,11 +37,7 @@ function initCollapsibles(sectionsArray) {
 // ==========================================
 // AUTH & PIN LOGIC
 // ==========================================
-function decodeKey(pin) {
-    const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
-    const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
-    return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
-}
+
 
 function savePin(onSuccessCallback) {
     const pin = document.getElementById('pinInput').value;

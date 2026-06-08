@@ -126,5 +126,3 @@ async function syncNiptoTasks() {
     }
 }
 
-// Attach to button click
-document.getElementById('sync-btn').addEventListener('click', syncNiptoTasks);

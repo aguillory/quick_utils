@@ -405,3 +405,92 @@ select:focus, input[type="datetime-local"]:focus { border-color: var(--primary);
 .modal-content input:focus { border-color: var(--primary); }
 .modal-content button { background: var(--primary); color: white; border: none; padding: 12px 30px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
 .modal-content button:hover { background: var(--primary-hover); }
+
+
+        /* Floating Active User Indicator */
+        #floating-user-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            padding: 12px 20px;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            font-size: 15px;
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .floating-avatar-group { display: flex; gap: 5px; }
+        .floating-avatar { padding: 4px 10px; border-radius: 20px; color: white; font-size: 13px; }
+
+        /* Together Checkbox Drawer */
+        #together-drawer {
+            display: none;
+            background: #F8FAFC;
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: -5px;
+            margin-bottom: 15px;
+            animation: fadeInDown 0.2s ease-out;
+        }
+        #together-drawer.visible { display: flex; flex-direction: column; gap: 10px; }
+        .together-checkboxes { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }
+        .together-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--card-bg);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+        .together-label:hover { border-color: var(--text-muted); }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Unified Toggles Layout */
+        .user-toggle { padding: 10px; flex: 1; min-width: 100px; }
+        .user-toggle .user-name { font-size: 18px; }
+        .user-toggle .user-points { font-size: 14px; }
+        
+        /* Specific User Toggle Colors (using variables from shared css) */
+        .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active { border-color: var(--user-alyssa); background-color: rgba(37, 99, 235, 0.05); }
+        .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active .user-name, .user-toggle#toggle-Llb9JjyTDvMnn8SJWfizXgthxl83.active .user-points { color: var(--user-alyssa); }
+        
+        .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active { border-color: var(--user-devyn); background-color: rgba(239, 68, 68, 0.05); }
+        .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active .user-name, .user-toggle#toggle-cHnAKABalRf0gETPsDt9EiJLyZd2.active .user-points { color: var(--user-devyn); }
+        
+        .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active { border-color: var(--user-carrina); background-color: rgba(139, 92, 246, 0.05); }
+        .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-name, .user-toggle#toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2.active .user-points { color: var(--user-carrina); }
+
+        /* Theme Menu Options */
+        .theme-option {
+            padding: 10px 15px;
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-main, #333);
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            transition: background 0.2s;
+        }
+        .theme-option:last-child { border-bottom: none; }
+        .theme-option:hover { background: var(--bg-color, #f8fafc); }
+        .theme-option.active-theme { font-weight: bold; color: var(--primary, #2563eb); background: rgba(37, 99, 235, 0.05); }
