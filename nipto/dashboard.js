@@ -324,8 +324,52 @@ function renderHistory(activities) {
 }
 
 // --- TASK LOGGING & NIPTO INTERACTIONS ---
+// --- TOAST NOTIFICATIONS ---
+const toastTimeouts = {};
+const toastCounts = {};
+
+function showToast(taskUid, taskName, points, namesString) {
+    let container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toastId = `toast-${taskUid}`;
+    let existingToast = document.getElementById(toastId);
+
+    if (existingToast) {
+        // Increment multiplier if tapped rapidly
+        toastCounts[taskUid] = (toastCounts[taskUid] || 1) + 1;
+        existingToast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> (+${points} pts) <span style="background: white; color: var(--success, #22c55e); padding: 2px 6px; border-radius: 10px; font-weight: bold; margin-left: 5px; font-size: 12px;">x${toastCounts[taskUid]}</span>`;
+        
+        // Reset animation & timeout
+        existingToast.style.animation = 'none';
+        existingToast.offsetHeight; // Trigger reflow
+        existingToast.style.animation = 'slideUpFade 0.2s ease-out';
+        
+        clearTimeout(toastTimeouts[taskUid]);
+        toastTimeouts[taskUid] = setTimeout(() => {
+            existingToast.remove();
+            delete toastCounts[taskUid];
+        }, 3000);
+    } else {
+        // Create new toast
+        toastCounts[taskUid] = 1;
+        const toast = document.createElement('div');
+        toast.id = toastId;
+        toast.style.cssText = 'background: var(--success, #22c55e); color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px; animation: slideUpFade 0.3s ease-out; transition: opacity 0.3s, transform 0.3s;';
+        toast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> (+${points} pts)`;
+        container.appendChild(toast);
+
+        toastTimeouts[taskUid] = setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            setTimeout(() => toast.remove(), 300);
+            delete toastCounts[taskUid];
+        }, 3000);
+    }
+}
+
+// --- TASK LOGGING & NIPTO INTERACTIONS ---
 async function logTask(buttonElement, taskUid, taskName) {
-    if (buttonElement.classList.contains('success')) return false;
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return false; }
     
     if (state.activeUsers.length === 0) {
@@ -333,51 +377,45 @@ async function logTask(buttonElement, taskUid, taskName) {
         return false;
     }
 
-    const statusDiv = document.getElementById('status');
-    buttonElement.disabled = true;
+    // 1. Immediate Visual Feedback (Allows rapid tapping!)
+    buttonElement.style.transition = 'border 0.1s, transform 0.1s';
+    buttonElement.style.border = '2px solid var(--success, #22c55e)';
+    buttonElement.style.transform = 'scale(0.96)';
+    setTimeout(() => { 
+        buttonElement.style.border = ''; 
+        buttonElement.style.transform = 'scale(1)';
+    }, 250);
 
-    let targetDate;
-    if (state.currentMode === 'live') {
-        targetDate = new Date(); 
-    } else {
-        const dateInput = document.getElementById('taskDate').value;
-        if (!dateInput) {
-            statusDiv.innerText = "Error: Please select a valid custom date/time.";
-            statusDiv.style.color = 'var(--danger)';
-            buttonElement.disabled = false; return false;
-        }
-        targetDate = new Date(dateInput);
+    const statusDiv = document.getElementById('status');
+    let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
+    
+    if (state.currentMode !== 'live' && !document.getElementById('taskDate').value) {
+        statusDiv.innerText = "Error: Please select a valid custom date/time.";
+        statusDiv.style.color = 'var(--danger)';
+        return false;
     }
 
     let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
-    statusDiv.innerText = `Logging: ${taskName} for ${namesString}...`;
-    statusDiv.style.color = 'var(--text-main)';
+    
+    // Find task value for the toast
+    const taskObj = state.tasks.find(t => t.uid === taskUid);
+    const points = taskObj ? Math.ceil(taskObj.value / state.currentSplitDivisor) : 0;
 
     try {
-        await api.logActivityToNipto(taskUid, targetDate.toISOString());
+        // Send the request to the API in the background
+        const logPromise = api.logActivityToNipto(taskUid, targetDate.toISOString());
         
+        // Trigger UI immediately so it feels super responsive
+        showToast(taskUid, taskName, points, namesString);
+        statusDiv.innerText = ""; // Clear any old errors
+        
+        await logPromise; // Wait to safely pull updated data
         updateLeaderboardUI();
-        statusDiv.innerText = `Successfully logged for ${namesString}!`;
-        statusDiv.style.color = 'var(--success)';
-        
-        buttonElement.classList.add('success');
-        if(!buttonElement.querySelector('.chore-title')) {
-            buttonElement.innerHTML += '<br><span style="font-size:12px;">✓ Logged</span>';
-        }
-        
-        setTimeout(() => {
-            buttonElement.classList.remove('success');
-            buttonElement.disabled = false;
-            buttonElement.innerHTML = buttonElement.getAttribute('data-original-html') || buttonElement.innerHTML;
-            statusDiv.innerText = "";
-            statusDiv.style.color = 'var(--text-main)';
-        }, 3000);
         
         return true;
     } catch (error) {
-        statusDiv.innerText = `Error: ${error.message}`;
+        statusDiv.innerText = `Error logging ${taskName}: ${error.message}`;
         statusDiv.style.color = 'var(--danger)';
-        buttonElement.disabled = false;
         return false;
     }
 }
@@ -920,11 +958,7 @@ function updateTaskDatalists() {
     const categories = new Set();
     const locations = new Set();
 
-    // Add some defaults so the lists are never completely empty
-    categories.add("Barn"); categories.add("House"); categories.add("Animals");
-    locations.add("Inside"); locations.add("Outside"); locations.add("Barn"); locations.add("Shop");
-
-    // Loop through existing tasks and add any historical categories/locations
+    // Pull from General To-Do Tasks
     if (state.todoTasksData) {
         state.todoTasksData.forEach(task => {
             if (task.category && task.category.trim() !== "") categories.add(task.category.trim());
@@ -932,10 +966,18 @@ function updateTaskDatalists() {
         });
     }
 
+    // Pull categories from Nipto Tasks
+    if (state.tasks) {
+        state.tasks.forEach(task => {
+            if (task.category && task.category.trim() !== "" && task.category !== "📌") {
+                categories.add(task.category.trim());
+            }
+        });
+    }
+
     const catDatalist = document.getElementById('categoryOptions');
     const locDatalist = document.getElementById('locationOptions');
 
-    // Update the HTML datalists with the sorted, unique values
     if (catDatalist) {
         catDatalist.innerHTML = Array.from(categories).sort().map(c => `<option value="${c}"></option>`).join('');
     }
@@ -943,6 +985,8 @@ function updateTaskDatalists() {
         locDatalist.innerHTML = Array.from(locations).sort().map(l => `<option value="${l}"></option>`).join('');
     }
 }
+
+
 function openTaskModal() {
     document.getElementById('taskModalTitle').innerText = "Add Task";
     document.getElementById('taskId').value = '';

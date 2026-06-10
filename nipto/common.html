@@ -212,22 +212,13 @@
         <input type="text" id="taskName" placeholder="What needs to be done?" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
         
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Category</label>
-        <input type="text" id="taskCategory" placeholder="e.g., Barn, House, Animals" list="categoryOptions" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-        <datalist id="categoryOptions">
-            <option value="Barn"></option>
-            <option value="House"></option>
-            <option value="Animals"></option>
-        </datalist>
-        
-        <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Location</label>
-        <input type="text" id="taskLocation" list="locationOptions" placeholder="e.g., Inside, Outside, Barn, Shop" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-        <datalist id="locationOptions">
-            <option value="Inside"></option>
-            <option value="Outside"></option>
-            <option value="Barn"></option>
-            <option value="Shop"></option>
-        </datalist>
+     <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Category</label>
+<input type="text" id="taskCategory" placeholder="e.g., Barn, House, Animals" list="categoryOptions" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
+<datalist id="categoryOptions"></datalist>
 
+<label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Location</label>
+<input type="text" id="taskLocation" list="locationOptions" placeholder="e.g., Inside, Outside, Barn, Shop" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
+<datalist id="locationOptions"></datalist>
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To</label>
         <div id="todoAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
         </div>
@@ -265,6 +256,6 @@
     <script src="firebase-config.js"></script>
     <script type="module" src="dashboard.js"></script> 
     <script src="sync-tasks.js"></script>
-
+<div id="toast-container"></div>
 </body>
 </html>

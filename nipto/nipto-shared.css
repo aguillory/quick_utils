@@ -494,3 +494,40 @@ select:focus, input[type="datetime-local"]:focus { border-color: var(--primary);
         .theme-option:last-child { border-bottom: none; }
         .theme-option:hover { background: var(--bg-color, #f8fafc); }
         .theme-option.active-theme { font-weight: bold; color: var(--primary, #2563eb); background: rgba(37, 99, 235, 0.05); }
+
+
+input[list] {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--card-bg, #fff);
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="%23888" viewBox="0 0 16 16"><path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 30px !important;
+    cursor: pointer;
+}
+input[list]::-webkit-calendar-picker-indicator {
+    opacity: 0;
+    cursor: pointer;
+}
+input[list]:focus {
+    outline: 2px solid var(--primary);
+}
+
+/* Toast Notifications for rapid logging */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column-reverse; /* Stacks new alerts on top */
+    gap: 10px;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+@keyframes slideUpFade {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
