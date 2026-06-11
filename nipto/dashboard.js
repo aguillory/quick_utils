@@ -1002,7 +1002,18 @@ function renderTodoTasks() {
         };
 
         section.appendChild(header);
-        grouped[key].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1);
+        grouped[key].sort((a, b) => {
+    // 1. Completed items drop to the bottom
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    
+    // 2. Individual tasks above multi-person tasks
+    const aIsIndividual = (a.assignees || []).length === 1;
+    const bIsIndividual = (b.assignees || []).length === 1;
+    if (aIsIndividual && !bIsIndividual) return -1;
+    if (!aIsIndividual && bIsIndividual) return 1;
+
+    return 0;
+});
 
         grouped[key].forEach(task => {
             const card = document.createElement('div');
@@ -1169,14 +1180,19 @@ async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
             await api.updateFirestoreDocument('custom_tasks', taskId, { 
                 completed: true,
                 completedActivityUids: activityUids,
-                completedBy: state.activeUsers 
+                completedBy: state.activeUsers,
+                completedAt: targetDate.toISOString() // Add this!
             });
             updateLeaderboardUI();
         } catch (error) { alert("Error awarding points: " + error.message); }
     } else {
-        await api.updateFirestoreDocument('custom_tasks', taskId, { completed: !currentStatus });
+        // Handling unlinked tasks or un-checking tasks
+        await api.updateFirestoreDocument('custom_tasks', taskId, { 
+            completed: !currentStatus,
+            completedAt: !currentStatus ? new Date().toISOString() : null // Add this!
+        });
     }
-}
+} // <-- This is the missing closing brace!
 
 
 // --- UTILS & TIME LOGIC ---
@@ -1398,16 +1414,34 @@ api.checkAuth(
         renderSidebarRoutines(); 
         updateLeaderboardUI();
         
+        // The updated snapshot listener belongs INSIDE this first success block
         window.db.collection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             state.todoTasksData = [];
-            snapshot.forEach(doc => state.todoTasksData.push({ id: doc.id, ...doc.data() }));
+            const now = Date.now();
+            const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                
+                // Check if completed and older than 2 days
+                if (data.completed && data.completedAt) {
+                    const completedTime = new Date(data.completedAt).getTime();
+                    if (now - completedTime > TWO_DAYS_MS) {
+                        // Delete from DB completely
+                        api.deleteFirestoreDocument('custom_tasks', doc.id);
+                        return; // Skip adding to the dashboard
+                    }
+                }
+                
+                state.todoTasksData.push({ id: doc.id, ...data });
+            });
             renderTodoTasks(); 
             renderSidebarTodos(); 
         });
     },
     () => { document.getElementById('pinModal').style.display = 'flex'; },
     (error) => { console.error("Database Auth Failed."); }
-);
+); // <-- This was the missing closing parenthesis and semicolon!
 
 // ==========================================
 // WINDOW BINDINGS (CRITICAL FOR ES6 MODULES)
@@ -1510,6 +1544,44 @@ function openRoutineModal() {
 function closeRoutineModal() {
     document.getElementById('routineModal').style.display = 'none';
 }
+function editRoutine(routineId) {
+    const routine = state.routines.find(r => r.uid === routineId);
+    if (!routine) return;
+
+    document.getElementById('routineModalTitle').innerText = "Edit Routine";
+    document.getElementById('routineId').value = routine.uid;
+    document.getElementById('routineName').value = routine.name;
+    document.getElementById('routineType').value = routine.completionType;
+    document.getElementById('routineFrequency').value = routine.schedule.type;
+    
+    // Set Schedule Details based on type
+    const freq = routine.schedule.type;
+    if (freq === 'daily') {
+        document.getElementById('routineDailyReset').value = routine.schedule.resetType || 'midnight';
+        if (routine.schedule.resetType === 'specific') {
+            document.getElementById('routineSpecificTimes').value = (routine.schedule.specificTimes || []).join(', ');
+        }
+    } else if (freq === 'weekly') {
+        document.querySelectorAll('.routine-day-cb').forEach(cb => {
+            cb.checked = (routine.schedule.daysOfWeek || []).includes(parseInt(cb.value));
+        });
+    } else if (freq === 'interval') {
+        document.getElementById('routineIntervalValue').value = routine.schedule.value || 1;
+        document.getElementById('routineIntervalUnit').value = routine.schedule.unit || 'months';
+    }
+
+    // Populate dropdowns and checkboxes
+    populateRoutineAssignees(routine.assignees || []);
+    populateRoutinePointsSelect();
+    document.getElementById('routinePoints').value = routine.linkedNiptoTask || '';
+    
+    toggleRoutineFrequencyFields();
+    
+    document.getElementById('routineModal').style.display = 'flex';
+}
+
+// Don't forget to bind it to the window!
+window.editRoutine = editRoutine;
 
 function toggleRoutineFrequencyFields() {
     const freq = document.getElementById('routineFrequency').value;
@@ -1610,39 +1682,35 @@ async function saveRoutine() {
         scheduleData.unit = document.getElementById('routineIntervalUnit').value;
     }
 
-    // This is the "Master Object" that Phase 3 will use to calculate due dates
-    const routineData = {
+    // Define the base data that updates on both creation AND edit
+    let routineData = {
         name: name,
-        completionType: document.getElementById('routineType').value, // 'shared' or 'individual'
+        completionType: document.getElementById('routineType').value,
         assignees: assignees,
         schedule: scheduleData,
-        linkedNiptoTask: document.getElementById('routinePoints').value || null,
-        createdAt: new Date().toISOString(),
-        
-        // Critical: Keeps a log of who completed what and when
-        // If shared: { "shared": "2024-10-25T05:00:00Z" }
-        // If individual: { "uid1": "2024-10-25T05:00:00Z", "uid2": ... }
-        lastCompleted: {} 
+        linkedNiptoTask: document.getElementById('routinePoints').value || null
     };
 
     const id = document.getElementById('routineId').value;
     try {
         if (id) {
+            // UPDATE: Only update the settings, preserve the history
             await api.updateFirestoreDocument('routines', id, routineData);
         } else {
+            // NEW: Add creation timestamps and empty history objects
+            routineData.createdAt = new Date().toISOString();
+            routineData.lastCompleted = {};
+            routineData.lastCompletedBy = {};
             await api.addFirestoreDocument('routines', routineData);
         }
         closeRoutineModal();
         
-        // FIX 2: Immediately load the new routine from Firebase...
         await api.loadRoutinesFromFirestore();
         
-        // ...and force a retroactive scan to catch anything Carrina, Devyn, or the boys did earlier today!
         if (typeof syncRoutinesWithNiptoHistory === 'function') {
             await syncRoutinesWithNiptoHistory();
         }
         
-        // Redraw UI instantly
         if (typeof renderRoutines === 'function') renderRoutines();
         if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
         
@@ -1773,13 +1841,24 @@ function renderRoutines() {
     });
 
     // Sort: Overdue -> Due -> Completed
-    evaluatedRoutines.sort((a, b) => {
-        const rank = { 'overdue': 0, 'due': 1, 'completed': 2 };
-        if (rank[a.evaluation.status] !== rank[b.evaluation.status]) {
-            return rank[a.evaluation.status] - rank[b.evaluation.status];
-        }
-        return a.evaluation.nextDue - b.evaluation.nextDue;
-    });
+evaluatedRoutines.sort((a, b) => {
+    // 1. Overdue at the very top
+    if (a.evaluation.status === 'overdue' && b.evaluation.status !== 'overdue') return -1;
+    if (a.evaluation.status !== 'overdue' && b.evaluation.status === 'overdue') return 1;
+
+    // 2. Completed at the bottom
+    if (a.evaluation.isCompleted && !b.evaluation.isCompleted) return 1;
+    if (!a.evaluation.isCompleted && b.evaluation.isCompleted) return -1;
+
+    // 3. Individual tasks vs Multiple assignees (group tasks)
+    const aIsIndividual = a.routine.assignees.length === 1;
+    const bIsIndividual = b.routine.assignees.length === 1;
+    if (aIsIndividual && !bIsIndividual) return -1;
+    if (!aIsIndividual && bIsIndividual) return 1;
+
+    // 4. Default to next due date
+    return a.evaluation.nextDue - b.evaluation.nextDue;
+});
 
     evaluatedRoutines.forEach(item => {
         const r = item.routine;
@@ -1801,12 +1880,19 @@ function renderRoutines() {
             </div>`;
         }
 
-        let actionsHtml = '';
-        if (state.isEditMode) {
-            actionsHtml = `<button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')">🗑️</button>`;
+let primaryActionBtn = '';
+        if (ev.isCompleted) {
+            primaryActionBtn = `<button class="chore-btn undo-btn" onclick="undoRoutine('${r.uid}')" title="Undo Complete">↩️</button>`;
         } else {
-            actionsHtml = `<button class="chore-btn complete-btn" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')" ${ev.isCompleted ? 'disabled style="opacity:0.5"' : ''}>✅</button>`;
+            primaryActionBtn = `<button class="chore-btn complete-btn" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>`;
         }
+
+        // Always render all three buttons, just like the to-do list
+        let actionsHtml = `
+            ${primaryActionBtn}
+            <button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit">✏️</button>
+            <button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete">🗑️</button>
+        `;
 
         card.innerHTML = `
             <div class="chore-header">
@@ -1848,16 +1934,30 @@ function renderSidebarRoutines() {
         const r = item.routine;
         const card = document.createElement('div');
         card.className = 'chore-card';
-        card.innerHTML = `
-            <div class="chore-header">
-                <div class="chore-title-area">
-                    <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
-                </div>
-                <div class="chore-actions">
-                    <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
-                </div>
-            </div>
-        `;
+        // Build Assignee Badges
+const assigneesHtml = r.assignees.map(uid => {
+    const u = ALL_USERS.find(user => user.uid === uid);
+    return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
+}).join('');
+
+// Format Schedule & Points
+const timeStr = item.evaluation.nextDue.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
+const pts = linkedTaskInfo && linkedTaskInfo.value > 0 ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
+
+card.innerHTML = `
+    <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+            <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
+            <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
+            <span>👥 ${assigneesHtml}</span>
+            <span>🕒 ${timeStr}</span>
+            ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
+        </div>
+    </div>
+`;
         container.appendChild(card);
     });
 }
@@ -1879,16 +1979,32 @@ function renderSidebarTodos() {
         const linkedTaskArg = task.linkedNiptoTask ? `'${task.linkedNiptoTask}'` : 'null';
         const card = document.createElement('div');
         card.className = 'chore-card';
-        card.innerHTML = `
-            <div class="chore-header">
-                <div class="chore-title-area">
-                    <div class="chore-title" style="font-size: 13px;">📋 ${task.name}</div>
-                </div>
-                <div class="chore-actions">
-                    <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})">✅</button>
-                </div>
-            </div>
-        `;
+        // Build Assignee Badges
+const assigneesHtml = (task.assignees || []).map(uid => {
+    const u = ALL_USERS.find(user => user.uid === uid);
+    return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
+}).join('');
+
+// Get Points
+let pts = '';
+if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
+    const linkedTaskInfo = state.tasks.find(t => t.uid === task.linkedNiptoTask);
+    if (linkedTaskInfo) pts = `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts`;
+}
+
+card.innerHTML = `
+    <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+            <div class="chore-title" style="font-size: 13px;">📋 ${task.name}</div>
+            <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})">✅</button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
+            <span>👥 ${assigneesHtml || 'Anyone'}</span>
+            <span style="color: ${task.priority === 'High' ? 'var(--danger)' : 'inherit'}">⚡ ${task.priority || 'Medium'}</span>
+            ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
+        </div>
+    </div>
+`;
         container.appendChild(card);
     });
 }
@@ -2052,3 +2168,39 @@ window.refreshDashboard = async () => {
 
     if (btn) { btn.innerText = "🔄 Refresh"; btn.disabled = false; }
 };
+
+async function undoRoutine(routineId) {
+    const routine = state.routines.find(r => r.uid === routineId);
+    if (!routine) return;
+    if (!confirm("Undo this routine? (Remember to delete the extra points in Nipto if applicable)")) return;
+
+    // Create copies of the records to modify
+    let newLastCompleted = { ...routine.lastCompleted };
+    let newLastCompletedBy = { ...routine.lastCompletedBy };
+
+    // Wipe the most recent completion for the active users or the shared group
+    if (routine.completionType === 'shared') {
+        delete newLastCompleted['shared'];
+        delete newLastCompletedBy['shared'];
+    } else {
+        state.activeUsers.forEach(uid => {
+            delete newLastCompleted[uid];
+            delete newLastCompletedBy[uid];
+        });
+    }
+
+    try {
+        await api.updateFirestoreDocument('routines', routineId, {
+            lastCompleted: newLastCompleted,
+            lastCompletedBy: newLastCompletedBy
+        });
+        await api.loadRoutinesFromFirestore();
+        renderRoutines();
+        renderSidebarRoutines();
+    } catch (error) {
+        alert("Error undoing routine: " + error.message);
+    }
+}
+
+// Don't forget to bind it to the window!
+window.undoRoutine = undoRoutine;
