@@ -9,23 +9,26 @@ function decodeKey(pin) {
     return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
 }
 
-async function syncNiptoTasks() {
-    const pin = document.getElementById('pinInput').value;
-    const statusText = document.getElementById('status-message');
-    const syncBtn = document.getElementById('sync-btn');
 
-    if (pin.length !== 4) {
-        statusText.innerText = "Error: Please enter a valid 4-digit PIN.";
+async function syncNiptoTasks() {
+    // 1. Updated to match the IDs in common.html
+    const statusText = document.getElementById('status');
+    const syncBtn = document.getElementById('syncNiptoBtn');
+    
+    // 2. Pull the already decoded token from localStorage
+    const apiToken = localStorage.getItem("nipto_api_token");
+
+    if (!apiToken) {
+        statusText.innerText = "Error: Please unlock the dashboard first.";
         statusText.style.color = "#cf6679";
+        document.getElementById('pinModal').style.display = 'flex';
         return;
     }
 
-    const apiToken = decodeKey(pin);
     syncBtn.disabled = true;
     statusText.innerText = "Connecting to Nipto API...";
     statusText.style.color = "#e0e0e0";
 
-    // This query matches the exact structure of your tasks.txt
     const QUERY = `
         query GetTasks {
           tasks {
@@ -38,7 +41,6 @@ async function syncNiptoTasks() {
     `;
 
     try {
-        // 1. Fetch live data from Nipto
         const response = await fetch(NIPTO_URL, {
             method: 'POST',
             headers: {
@@ -56,18 +58,14 @@ async function syncNiptoTasks() {
 
         const tasks = jsonData.data.tasks;
         if (!tasks || tasks.length === 0) {
-            throw new Error("No tasks returned from Nipto. Check your PIN or API permissions.");
+            throw new Error("No tasks returned from Nipto.");
         }
 
         statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
 
-        // 1. Create a Set of all the incoming active task IDs for fast comparison
         const activeNiptoTaskIds = new Set(tasks.map(task => task.uid));
-
-        // 2. Fetch all current tasks from your Firebase database
         const firebaseSnapshot = await window.db.collection('nipto_tasks').get();
         
-        // 3. Find the tasks in Firebase that are NO LONGER in the Nipto API response
         const uidsToDelete = [];
         firebaseSnapshot.forEach(doc => {
             if (!activeNiptoTaskIds.has(doc.id)) {
@@ -75,13 +73,11 @@ async function syncNiptoTasks() {
             }
         });
 
-        // 4. Populate the Firebase database (Upserts & Deletions)
         let batch = window.db.batch();
         let operationCount = 0;
         let totalSynced = 0;
         let totalDeleted = 0;
 
-        // Upsert active tasks
         for (const task of tasks) {
             const docRef = window.db.collection('nipto_tasks').doc(task.uid);
             batch.set(docRef, task, { merge: true });
@@ -95,7 +91,6 @@ async function syncNiptoTasks() {
             }
         }
 
-        // Delete orphaned tasks
         for (const orphanId of uidsToDelete) {
             const docRef = window.db.collection('nipto_tasks').doc(orphanId);
             batch.delete(docRef);
@@ -114,13 +109,19 @@ async function syncNiptoTasks() {
         }
 
         statusText.innerText = `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`;
-        statusText.style.color = "#03dac6";
-        document.getElementById('pinInput').value = ''; // Clear PIN for security
+        statusText.style.color = "var(--success, #03dac6)";
+        
+        // Clear success message after 4 seconds
+        setTimeout(() => {
+            if (statusText.innerText.includes("Success!")) {
+                statusText.innerText = "";
+            }
+        }, 4000);
 
     } catch (error) {
         console.error("Error syncing Nipto tasks:", error);
         statusText.innerText = `Error: ${error.message}`;
-        statusText.style.color = "#cf6679";
+        statusText.style.color = "var(--danger, #cf6679)";
     } finally {
         syncBtn.disabled = false;
     }
