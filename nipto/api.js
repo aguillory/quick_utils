@@ -121,3 +121,15 @@ export async function addFirestoreDocument(collection, data) {
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
     });
 }
+
+export async function loadRoutinesFromFirestore() {
+    try {
+        const snapshot = await window.db.collection('routines').get();
+        state.routines = [];
+        snapshot.forEach(doc => {
+            state.routines.push({ uid: doc.id, ...doc.data() });
+        });
+    } catch (error) {
+        console.error("Error loading routines:", error);
+    }
+}

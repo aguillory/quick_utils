@@ -48,7 +48,8 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 /* ==========================================
    CONTAINERS & LAYOUT (BLOCKY)
    ========================================== */
-.dashboard-container, .header, .right-sidebar, .sidebar, .modal-content {
+/* Swapped .right-sidebar for .widget-panel below */
+.dashboard-container, .header, .widget-panel, .sidebar, .modal-content {
     background: var(--card-bg);
     padding: 30px;
     /* No border radius for blocks! */
@@ -57,6 +58,13 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
     /* Hard blocky shadow */
     box-shadow: 10px 10px 0px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
+}
+
+/* Force the right sidebar container to stay invisible */
+.right-sidebar {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .dashboard-container {

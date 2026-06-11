@@ -19,7 +19,8 @@ export const state = {
     tasks: [],
     customChores: [],
     allWeekActivities: [],
-    todoTasksData: [], // Replaces tasksData
+    todoTasksData: [], 
+    routines: [],
     
     // Edit mode tracking
     isEditMode: false,

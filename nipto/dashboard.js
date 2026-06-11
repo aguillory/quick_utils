@@ -3,7 +3,40 @@ import { state, ALL_USERS, saveUserState } from './state.js';
 import * as api from './api.js';
 
 // --- INIT & USER STATE LOGIC ---
-function initUsers() {
+// ==========================================
+// CLOUD PREFERENCES ENGINE
+// ==========================================
+state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: [], todoSortOrder: [], collapsed: {} };
+
+async function loadCloudPreferences(uid) {
+    if (!uid || state.isTogetherMode) return;
+    try {
+        const doc = await window.db.collection('user_preferences').doc(uid).get();
+        if (doc.exists) {
+            state.userPrefs = { ...state.userPrefs, ...doc.data() };
+        } else {
+            state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: [], todoSortOrder: [], collapsed: {} };
+        }
+    } catch (e) {
+        console.error("Error loading cloud prefs:", e);
+    }
+}
+
+function saveCloudPreference(key, value) {
+    const uid = state.activeUsers[0];
+    if (!uid || state.isTogetherMode) return;
+    state.userPrefs[key] = value;
+    window.db.collection('user_preferences').doc(uid).set({ [key]: value }, { merge: true });
+}
+
+function saveCloudCollapsed(catKey, isCollapsed) {
+    const uid = state.activeUsers[0];
+    if (!uid || state.isTogetherMode) return;
+    if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+    state.userPrefs.collapsed[catKey] = isCollapsed;
+    window.db.collection('user_preferences').doc(uid).set({ collapsed: state.userPrefs.collapsed }, { merge: true });
+}
+async function initUsers() {
     populateTogetherCheckboxes();
     const stored = localStorage.getItem("nipto_merged_users");
     if (stored) {
@@ -12,15 +45,60 @@ function initUsers() {
             if (parsed.isTogetherMode) {
                 setTogetherState(parsed.users);
             } else if (parsed.users && parsed.users.length === 1) {
-                setActiveUser(parsed.users[0], true);
+                await setActiveUser(parsed.users[0], true);
             } else {
-                setActiveUser(ALL_USERS[0].uid, true);
+                await setActiveUser(ALL_USERS[0].uid, true);
             }
-        } catch (e) { setActiveUser(ALL_USERS[0].uid, true); }
+        } catch (e) { await setActiveUser(ALL_USERS[0].uid, true); }
     } else {
-        setActiveUser(ALL_USERS[0].uid, true);
+        await setActiveUser(ALL_USERS[0].uid, true);
     }
 }
+
+async function setActiveUser(uid, skipSave = false) {
+    if (state.isEditMode) {
+        alert("Please save your dashboard edits before switching users.");
+        return;
+    }
+    
+    state.isTogetherMode = false;
+    state.activeUsers = [uid];
+    state.currentSplitDivisor = 1;
+    document.getElementById('together-drawer').classList.remove('visible');
+
+    ALL_USERS.forEach(user => {
+        const el = document.getElementById(`toggle-${user.uid}`);
+        if (user.uid === uid) {
+            el.classList.add('active'); el.classList.remove('inactive');
+        } else {
+            el.classList.add('inactive'); el.classList.remove('active');
+        }
+    });
+    
+    const togEl = document.getElementById('toggle-together');
+    togEl.classList.add('inactive');
+    togEl.classList.remove('active');
+
+    // --- FETCH CLOUD PREFERENCES ---
+    await loadCloudPreferences(uid);
+
+    let userTheme = state.userPrefs.theme || 'boring';
+    applyTheme(userTheme);
+
+    let savedHistoryView = state.userPrefs.historyView || 'everyone';
+    setHistoryView(savedHistoryView, true); 
+
+    if(!skipSave) saveUserState();
+    updateFloatingIndicator();
+    renderTasks();
+    renderPinnedTasks();
+    renderChores();
+    renderTodoTasks(); 
+    renderRoutines(); 
+    renderSidebarRoutines(); 
+    renderSidebarTodos(); 
+}
+
 
 function updateFloatingIndicator() {
     const container = document.getElementById('floating-avatars');
@@ -273,6 +351,7 @@ async function updateLeaderboardUI() {
         if(adultContainer) adultContainer.innerHTML = leaderboardHtml;
 
         updateHistoryDisplay();
+        syncRoutinesWithNiptoHistory();
     } catch (error) {
         if (error.message === "Token Expired") document.getElementById('pinModal').style.display = 'flex';
         console.error("Error drawing points:", error);
@@ -377,7 +456,7 @@ async function logTask(buttonElement, taskUid, taskName) {
         return false;
     }
 
-    // 1. Immediate Visual Feedback (Allows rapid tapping!)
+    // Immediate Visual Feedback
     buttonElement.style.transition = 'border 0.1s, transform 0.1s';
     buttonElement.style.border = '2px solid var(--success, #22c55e)';
     buttonElement.style.transform = 'scale(0.96)';
@@ -396,22 +475,56 @@ async function logTask(buttonElement, taskUid, taskName) {
     }
 
     let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
-    
-    // Find task value for the toast
     const taskObj = state.tasks.find(t => t.uid === taskUid);
     const points = taskObj ? Math.ceil(taskObj.value / state.currentSplitDivisor) : 0;
 
     try {
-        // Send the request to the API in the background
         const logPromise = api.logActivityToNipto(taskUid, targetDate.toISOString());
-        
-        // Trigger UI immediately so it feels super responsive
         showToast(taskUid, taskName, points, namesString);
-        statusDiv.innerText = ""; // Clear any old errors
+        statusDiv.innerText = ""; 
         
-        await logPromise; // Wait to safely pull updated data
+        await logPromise; 
+        
+        // --- INSTANT ROUTINE CROSS-WIRE ---
+        if (state.routines) {
+            const linkedRoutines = state.routines.filter(r => r.linkedNiptoTask === taskUid);
+            let requiresRoutineRender = false;
+            
+            for (const routine of linkedRoutines) {
+                let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
+                let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
+
+                if (routine.completionType === 'shared') {
+                    newLastCompleted['shared'] = targetDate.toISOString();
+                    newLastCompletedBy['shared'] = namesString;
+                } else {
+                    state.activeUsers.forEach(uid => {
+                        newLastCompleted[uid] = targetDate.toISOString();
+                        const uObj = ALL_USERS.find(u=>u.uid===uid);
+                        newLastCompletedBy[uid] = uObj ? uObj.name : "Unknown";
+                    });
+                }
+
+                routine.lastCompleted = newLastCompleted;
+                routine.lastCompletedBy = newLastCompletedBy;
+                requiresRoutineRender = true;
+
+                // Update Firebase quietly in the background
+                api.updateFirestoreDocument('routines', routine.uid, {
+                    lastCompleted: newLastCompleted,
+                    lastCompletedBy: newLastCompletedBy
+                }).catch(e => console.error("Routine auto-update failed:", e));
+            }
+
+            // Immediately redraw the UI so the routine vanishes from the sidebar
+            if (requiresRoutineRender) {
+                if (typeof renderRoutines === 'function') renderRoutines();
+                if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
+            }
+        }
+        // ---------------------------------
+
         updateLeaderboardUI();
-        
         return true;
     } catch (error) {
         statusDiv.innerText = `Error logging ${taskName}: ${error.message}`;
@@ -419,7 +532,6 @@ async function logTask(buttonElement, taskUid, taskName) {
         return false;
     }
 }
-
 async function deleteTaskActivity(activityUid, btnElement) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
     if (!confirm("Are you sure you want to delete this logged task?")) return;
@@ -524,8 +636,7 @@ function renderTasks() {
         return acc;
     }, {});
 
-    let activeUser = state.activeUsers[0] || 'default';
-    let savedOrder = JSON.parse(localStorage.getItem(`nipto_sort_order_${activeUser}`) || '[]');
+    let savedOrder = state.userPrefs.niptoSortOrder || [];
     let keys = Object.keys(groupedTasks);
     
     keys.sort((a, b) => {
@@ -541,8 +652,8 @@ function renderTasks() {
         const section = document.createElement('div');
         section.className = 'category-section';
 
-        // Track collapsibility per user
-        const isCatCollapsed = localStorage.getItem(`nipto_merged_cat_${activeUser}_${category}`) === 'true';
+        // Read cloud preference for collapsed state
+        const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
 
         const orderControls = `<span class="sort-controls" style="font-size: 14px; margin-left: 10px; opacity: 0.5;">
             <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
@@ -555,14 +666,6 @@ function renderTasks() {
         header.style.display = 'flex';
         header.style.alignItems = 'center';
         
-        header.onclick = (e) => {
-            if(e.target.tagName === 'BUTTON') return;
-            const collapsed = gridWrapper.classList.toggle('collapsed');
-            header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
-            localStorage.setItem(`nipto_merged_cat_${category}`, collapsed);
-        };
-        section.appendChild(header);
-
         const gridWrapper = document.createElement('div');
         gridWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
         
@@ -570,12 +673,10 @@ function renderTasks() {
             if(e.target.tagName === 'BUTTON') return;
             const collapsed = gridWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
-            
-            // FIX: Save using the personalized activeUser key!
-            localStorage.setItem(`nipto_merged_cat_${activeUser}_${category}`, collapsed);
+            saveCloudCollapsed(`nipto_${category}`, collapsed); // Save to cloud
         };
+        
         section.appendChild(header);
-
 
         const grid = document.createElement('div');
         grid.className = 'task-grid';
@@ -596,9 +697,8 @@ function renderTasks() {
                     btn.classList.add('unselected-pref');
                     btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
                 }
-            } else {
-                btn.innerHTML = taskContentHtml;
-                
+
+                // PIN BUTTON INJECTED ONLY IN EDIT MODE
                 const targetUid = state.activeUsers[0];
                 const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);
                 const pinBtn = document.createElement('button');
@@ -611,6 +711,8 @@ function renderTasks() {
                     togglePinTask(task.uid);
                 };
                 btn.appendChild(pinBtn);
+            } else {
+                btn.innerHTML = taskContentHtml;
             }
             
             btn.setAttribute('data-original-html', btn.innerHTML);
@@ -896,7 +998,7 @@ function renderTodoTasks() {
             if(e.target.tagName === 'BUTTON') return; // Ignore clicks on the arrow buttons
             const collapsed = contentWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
-            localStorage.setItem(`todo_cat_${activeUser}_${key}`, collapsed);
+            saveCloudCollapsed("todo_" + key, collapsed)
         };
 
         section.appendChild(header);
@@ -1098,14 +1200,28 @@ function savePin(onSuccessCallback) {
 }
 
 function switchTab(tabName) {
-    document.getElementById('tab-nipto').style.backgroundColor = tabName === 'nipto' ? 'var(--primary)' : 'var(--card-bg)';
-    document.getElementById('tab-nipto').style.color = tabName === 'nipto' ? 'white' : 'var(--text-main)';
-    
-    document.getElementById('tab-todo').style.backgroundColor = tabName === 'todo' ? 'var(--primary)' : 'var(--card-bg)';
-    document.getElementById('tab-todo').style.color = tabName === 'todo' ? 'white' : 'var(--text-main)';
+    // Reset all tabs to inactive styles
+    ['nipto', 'routines', 'todo'].forEach(t => {
+        const tabBtn = document.getElementById(`tab-${t}`);
+        if(tabBtn) {
+            tabBtn.style.backgroundColor = 'var(--card-bg)';
+            tabBtn.style.color = 'var(--text-main)';
+            tabBtn.classList.remove('active');
+        }
+        const pane = document.getElementById(`pane-${t}`);
+        if(pane) pane.style.display = 'none';
+    });
 
-    document.getElementById('pane-nipto').style.display = tabName === 'nipto' ? 'block' : 'none';
-    document.getElementById('pane-todo').style.display = tabName === 'todo' ? 'block' : 'none';
+    // Apply active styles to selected tab
+    const activeBtn = document.getElementById(`tab-${tabName}`);
+    if (activeBtn) {
+        activeBtn.style.backgroundColor = 'var(--primary)';
+        activeBtn.style.color = 'white';
+        activeBtn.classList.add('active');
+    }
+    
+    const activePane = document.getElementById(`pane-${tabName}`);
+    if (activePane) activePane.style.display = 'block';
 }
 
 function formatForInput(dateObj) {
@@ -1142,23 +1258,7 @@ function setTimeOffset(minutes) {
     dateInput.value = formatForInput(targetDate);
 }
 
-function setHistoryView(mode, skipSave = false) {
-    state.historyViewMode = mode;
-    
-    const btnBoys = document.getElementById('htBoys');
-    const btnEveryone = document.getElementById('htEveryone');
-    
-    if (btnBoys) btnBoys.classList.toggle('active', mode === 'boys');
-    if (btnEveryone) btnEveryone.classList.toggle('active', mode === 'everyone');
-    
-    updateHistoryDisplay();
 
-    // Save the preference to the active person's profile
-    if (!skipSave) {
-        let activeUser = state.activeUsers[0] || 'default';
-        localStorage.setItem(`history_view_${activeUser}`, mode);
-    }
-}
 
 function toggleSection(contentId, iconId, storageKey) {
     const content = document.getElementById(contentId);
@@ -1197,55 +1297,6 @@ function toggleThemeMenu() {
     menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
 }
 
-function setActiveUser(uid, skipSave = false) {
-    if (state.isEditMode) {
-        alert("Please save your dashboard edits before switching users.");
-        return;
-    }
-    
-    state.isTogetherMode = false;
-    state.activeUsers = [uid];
-    state.currentSplitDivisor = 1;
-    
-    document.getElementById('together-drawer').classList.remove('visible');
-
-    ALL_USERS.forEach(user => {
-        const el = document.getElementById(`toggle-${user.uid}`);
-        if (user.uid === uid) {
-            el.classList.add('active');
-            el.classList.remove('inactive');
-        } else {
-            el.classList.add('inactive');
-            el.classList.remove('active');
-        }
-    });
-    
-    const togEl = document.getElementById('toggle-together');
-    togEl.classList.add('inactive');
-    togEl.classList.remove('active');
-
-    // Load User's Specific Theme Preference
-    let userTheme = localStorage.getItem(`nipto_theme_${uid}`);
-    if (!userTheme) {
-        // Fallback to old global theme if they don't have one set
-        userTheme = localStorage.getItem('nipto_theme') || 'boring';
-        localStorage.setItem(`nipto_theme_${uid}`, userTheme);
-    }
-    applyTheme(userTheme);
-// Load User's Specific History View Preference
-    let savedHistoryView = localStorage.getItem(`history_view_${uid}`);
-    if (!savedHistoryView) {
-        // Default to 'everyone' if they haven't set a preference yet
-        savedHistoryView = 'everyone'; 
-    }
-    setHistoryView(savedHistoryView, true); // true prevents it from saving redundantly on load
-    if(!skipSave) saveUserState();
-    updateFloatingIndicator();
-    renderTasks();
-    renderPinnedTasks();
-    renderChores();
-    renderTodoTasks(); // Re-render to apply user-specific collapsed state and sort order
-}
 
 function setTheme(themeId) {
     const activeUid = state.activeUsers[0];
@@ -1253,11 +1304,50 @@ function setTheme(themeId) {
         alert("Please select a specific person first to save their theme preference.");
         return;
     }
-    
-    localStorage.setItem(`nipto_theme_${activeUid}`, themeId);
+    saveCloudPreference('theme', themeId);
     applyTheme(themeId);
     document.getElementById('themeMenu').style.display = 'none';
 }
+
+function setHistoryView(mode, skipSave = false) {
+    state.historyViewMode = mode;
+    const btnBoys = document.getElementById('htBoys');
+    const btnEveryone = document.getElementById('htEveryone');
+    if (btnBoys) btnBoys.classList.toggle('active', mode === 'boys');
+    if (btnEveryone) btnEveryone.classList.toggle('active', mode === 'everyone');
+    
+    updateHistoryDisplay();
+    if (!skipSave) saveCloudPreference('historyView', mode);
+}
+
+window.moveCategory = function(category, direction, type, event) {
+    event.stopPropagation(); 
+    
+    let savedOrder = (type === 'todo') ? (state.userPrefs.todoSortOrder || []) : (state.userPrefs.niptoSortOrder || []);
+    
+    if (savedOrder.length === 0) {
+        const containerId = type === 'todo' ? 'todoContainer' : 'mainContainer';
+        const container = document.getElementById(containerId);
+        savedOrder = Array.from(container.querySelectorAll('.category-header'))
+            .map(el => el.childNodes[0].textContent.trim());
+    }
+    
+    const idx = savedOrder.indexOf(category);
+    if (idx === -1) return;
+    
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= savedOrder.length) return; 
+    
+    [savedOrder[idx], savedOrder[newIdx]] = [savedOrder[newIdx], savedOrder[idx]];
+    
+    if (type === 'todo') {
+        saveCloudPreference('todoSortOrder', savedOrder);
+        renderTodoTasks();
+    } else {
+        saveCloudPreference('niptoSortOrder', savedOrder);
+        renderTasks();
+    }
+};
 
 function applyTheme(themeId) {
     let link = document.getElementById('dynamic-theme-css');
@@ -1299,16 +1389,20 @@ api.checkAuth(
     async () => { 
         await api.loadTasksFromFirestore(); 
         await api.loadChoresFromFirestore(); 
+        await api.loadRoutinesFromFirestore(); 
+        
         renderTasks();
         renderPinnedTasks();
         renderChores();
+        renderRoutines(); 
+        renderSidebarRoutines(); 
         updateLeaderboardUI();
         
-        // Listen to todo tasks
         window.db.collection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             state.todoTasksData = [];
             snapshot.forEach(doc => state.todoTasksData.push({ id: doc.id, ...doc.data() }));
             renderTodoTasks(); 
+            renderSidebarTodos(); 
         });
     },
     () => { document.getElementById('pinModal').style.display = 'flex'; },
@@ -1347,6 +1441,10 @@ window.toggleSection = toggleSection;
 window.toggleThemeMenu = toggleThemeMenu;
 window.setTheme = setTheme;
 window.updateTaskDatalists = updateTaskDatalists;
+window.openRoutineModal = openRoutineModal;
+window.closeRoutineModal = closeRoutineModal;
+window.toggleRoutineFrequencyFields = toggleRoutineFrequencyFields;
+window.saveRoutine = saveRoutine;
 
 // ==========================================
 // HTML BUTTON BRIDGES
@@ -1370,36 +1468,7 @@ window.runSync = async () => {
     }
 };
 
-window.moveCategory = function(category, direction, type, event) {
-    event.stopPropagation(); // Prevent the collapse toggle
-    let activeUser = state.activeUsers[0] || 'default';
-    let storageKey = `${type}_sort_order_${activeUser}`;
-    
-    // Attempt to load saved order, or pull current visible order from DOM
-    let savedOrder = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    if (savedOrder.length === 0) {
-        const containerId = type === 'todo' ? 'todoContainer' : 'mainContainer';
-        const container = document.getElementById(containerId);
-        // Extract category names currently on screen
-        savedOrder = Array.from(container.querySelectorAll('.category-header'))
-            .map(el => el.childNodes[0].textContent.trim());
-    }
-    
-    const idx = savedOrder.indexOf(category);
-    if (idx === -1) return;
-    
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= savedOrder.length) return; 
-    
-    // Swap array items
-    [savedOrder[idx], savedOrder[newIdx]] = [savedOrder[newIdx], savedOrder[idx]];
-    
-    localStorage.setItem(storageKey, JSON.stringify(savedOrder));
-    
-    // Re-render the appropriate view
-    if (type === 'todo') renderTodoTasks();
-    else renderTasks();
-};
+
 
 function populateTodoAssignees(selectedUids = []) {
     const container = document.getElementById('todoAssignees');
@@ -1412,3 +1481,574 @@ function populateTodoAssignees(selectedUids = []) {
         </label>`;
     });
 }
+
+// ==========================================
+// ROUTINE MODAL LOGIC (PHASE 2)
+// ==========================================
+
+function openRoutineModal() {
+    document.getElementById('routineModalTitle').innerText = "Add Routine";
+    document.getElementById('routineId').value = '';
+    document.getElementById('routineName').value = '';
+    document.getElementById('routineType').value = 'shared';
+    document.getElementById('routineFrequency').value = 'daily';
+    
+    // Reset Form States
+    document.getElementById('routineDailyReset').value = 'midnight';
+    document.getElementById('routineSpecificTimes').value = '';
+    document.querySelectorAll('.routine-day-cb').forEach(cb => cb.checked = false);
+    document.getElementById('routineIntervalValue').value = '1';
+    document.getElementById('routineIntervalUnit').value = 'months';
+    
+    populateRoutineAssignees([]);
+    populateRoutinePointsSelect();
+    toggleRoutineFrequencyFields();
+    
+    document.getElementById('routineModal').style.display = 'flex';
+}
+
+function closeRoutineModal() {
+    document.getElementById('routineModal').style.display = 'none';
+}
+
+function toggleRoutineFrequencyFields() {
+    const freq = document.getElementById('routineFrequency').value;
+    const dailyReset = document.getElementById('routineDailyReset').value;
+    
+    // Show/Hide main frequency blocks
+    document.getElementById('freqDailyFields').style.display = freq === 'daily' ? 'block' : 'none';
+    document.getElementById('freqWeeklyFields').style.display = freq === 'weekly' ? 'block' : 'none';
+    document.getElementById('freqIntervalFields').style.display = freq === 'interval' ? 'block' : 'none';
+    
+    // Show/Hide specific times box if Daily + Specific is selected
+    document.getElementById('dailySpecificTimes').style.display = (freq === 'daily' && dailyReset === 'specific') ? 'block' : 'none';
+}
+
+function populateRoutineAssignees(selectedUids = []) {
+    const container = document.getElementById('routineAssignees');
+    container.innerHTML = '';
+    
+    // Uses your existing ALL_USERS state
+    ALL_USERS.forEach(u => {
+        const isChecked = selectedUids.includes(u.uid) ? 'checked' : '';
+        container.innerHTML += `
+        <label style="font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+            <input type="checkbox" value="${u.uid}" class="routine-assignee-cb" ${isChecked}> ${u.name}
+        </label>`;
+    });
+}
+
+function populateRoutinePointsSelect() {
+    const select = document.getElementById('routinePoints');
+    select.innerHTML = '<option value="">-- No Points --</option>';
+
+    if (!state.tasks || state.tasks.length === 0) return;
+
+    // 1. Group all database tasks by their category
+    const groupedTasks = state.tasks.reduce((acc, task) => {
+        // Fallback to 'Uncategorized' if a task somehow lacks a category
+        const categoryName = task.category || task.group || 'Uncategorized';
+        
+        // Skip the temporary pinned category if it exists
+        if (categoryName === "📌") return acc;
+
+        if (!acc[categoryName]) {
+            acc[categoryName] = [];
+        }
+        acc[categoryName].push(task);
+        return acc;
+    }, {});
+
+    // 2. Sort the categories alphabetically so the dropdown is organized
+    const sortedCategories = Object.keys(groupedTasks).sort((a, b) => a.localeCompare(b));
+
+    // 3. Build the <optgroup> for each category
+    sortedCategories.forEach(category => {
+        const optGroup = document.createElement('optgroup');
+        optGroup.label = category;
+
+        // Sort the tasks within this specific category alphabetically
+        const tasksInCat = groupedTasks[category].sort((a, b) => a.name.localeCompare(b.name));
+
+        tasksInCat.forEach(t => {
+            optGroup.innerHTML += `<option value="${t.uid}">${t.name} (${t.value} pts)</option>`;
+        });
+
+        select.appendChild(optGroup);
+    });
+}
+
+async function saveRoutine() {
+    const name = document.getElementById('routineName').value.trim();
+    if (!name) { alert("Routine Name is required!"); return; }
+
+    const assignees = Array.from(document.querySelectorAll('.routine-assignee-cb:checked')).map(cb => cb.value);
+    if (assignees.length === 0) { alert("Assign the routine to at least one person!"); return; }
+
+    const freq = document.getElementById('routineFrequency').value;
+    let scheduleData = { type: freq };
+
+    // Package the specific schedule rules based on selection
+    if (freq === 'daily') {
+        const resetType = document.getElementById('routineDailyReset').value;
+        scheduleData.resetType = resetType;
+        if (resetType === 'specific') {
+            const times = document.getElementById('routineSpecificTimes').value;
+            scheduleData.specificTimes = times.split(',').map(t => t.trim()).filter(t => t);
+            if(scheduleData.specificTimes.length === 0) {
+                alert("Please enter at least one valid time (e.g., 05:00)"); return;
+            }
+            // Sort times sequentially (e.g., 05:00 comes before 17:00)
+            scheduleData.specificTimes.sort(); 
+        }
+    } else if (freq === 'weekly') {
+        const days = Array.from(document.querySelectorAll('.routine-day-cb:checked')).map(cb => parseInt(cb.value));
+        if (days.length === 0) { alert("Select at least one day of the week!"); return; }
+        scheduleData.daysOfWeek = days;
+    } else if (freq === 'interval') {
+        scheduleData.value = parseInt(document.getElementById('routineIntervalValue').value);
+        scheduleData.unit = document.getElementById('routineIntervalUnit').value;
+    }
+
+    // This is the "Master Object" that Phase 3 will use to calculate due dates
+    const routineData = {
+        name: name,
+        completionType: document.getElementById('routineType').value, // 'shared' or 'individual'
+        assignees: assignees,
+        schedule: scheduleData,
+        linkedNiptoTask: document.getElementById('routinePoints').value || null,
+        createdAt: new Date().toISOString(),
+        
+        // Critical: Keeps a log of who completed what and when
+        // If shared: { "shared": "2024-10-25T05:00:00Z" }
+        // If individual: { "uid1": "2024-10-25T05:00:00Z", "uid2": ... }
+        lastCompleted: {} 
+    };
+
+    const id = document.getElementById('routineId').value;
+    try {
+        if (id) {
+            await api.updateFirestoreDocument('routines', id, routineData);
+        } else {
+            await api.addFirestoreDocument('routines', routineData);
+        }
+        closeRoutineModal();
+        
+        // FIX 2: Immediately load the new routine from Firebase...
+        await api.loadRoutinesFromFirestore();
+        
+        // ...and force a retroactive scan to catch anything Carrina, Devyn, or the boys did earlier today!
+        if (typeof syncRoutinesWithNiptoHistory === 'function') {
+            await syncRoutinesWithNiptoHistory();
+        }
+        
+        // Redraw UI instantly
+        if (typeof renderRoutines === 'function') renderRoutines();
+        if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
+        
+    } catch (error) {
+        alert("Error saving routine: " + error.message);
+    }
+}
+
+// ==========================================
+// PHASE 3: ROUTINE ENGINE & RENDERING
+// ==========================================
+
+function getRoutineStatus(routine, targetUids) {
+    let lastComp = null;
+    let compNames = "";
+
+    if (routine.completionType === 'shared') {
+        lastComp = routine.lastCompleted ? routine.lastCompleted['shared'] : null;
+        compNames = routine.lastCompletedBy ? routine.lastCompletedBy['shared'] : "Someone";
+    } else {
+        let oldest = null;
+        let allDone = true;
+        let names = [];
+        targetUids.forEach(uid => {
+            const lc = routine.lastCompleted ? routine.lastCompleted[uid] : null;
+            if (!lc) allDone = false;
+            else {
+                if (!oldest || new Date(lc) < new Date(oldest)) oldest = lc;
+                const uObj = ALL_USERS.find(u => u.uid === uid);
+                if (uObj) names.push(uObj.name);
+            }
+        });
+        if (!allDone) lastComp = null; 
+        else {
+            lastComp = oldest;
+            compNames = names.join(', ');
+        }
+    }
+
+    const now = new Date();
+    
+    if (!lastComp) {
+        return { status: 'overdue', nextDue: new Date(0), isCompleted: false, compNames: "" }; 
+    }
+
+    const baseDate = new Date(lastComp);
+    let nextDue = new Date(baseDate);
+
+    if (routine.schedule.type === 'daily') {
+        if (routine.schedule.resetType === 'midnight') {
+            nextDue.setDate(nextDue.getDate() + 1);
+            nextDue.setHours(0,0,0,0);
+        } else if (routine.schedule.resetType === 'specific') {
+            let foundNext = false;
+            
+            // NEW: Cleans up AM/PM formats automatically so the math doesn't break
+            let cleanTimes = routine.schedule.specificTimes.map(t => {
+                let clean = t.trim().toLowerCase();
+                let isPM = clean.includes('pm');
+                let isAM = clean.includes('am');
+                clean = clean.replace(/[a-z\s]/g, ''); // strip letters and spaces
+                let parts = clean.split(':').map(Number);
+                let h = parts[0] || 0;
+                let m = parts[1] || 0;
+                if (isPM && h < 12) h += 12;
+                if (isAM && h === 12) h = 0;
+                return { h, m, orig: t };
+            });
+
+            // Sort chronologically just in case
+            cleanTimes.sort((a, b) => (a.h * 60 + a.m) - (b.h * 60 + b.m));
+
+            for (let timeObj of cleanTimes) {
+                let candidate = new Date(baseDate);
+                candidate.setHours(timeObj.h, timeObj.m, 0, 0);
+                if (candidate > baseDate) {
+                    nextDue = candidate;
+                    foundNext = true;
+                    break;
+                }
+            }
+            if (!foundNext && cleanTimes.length > 0) {
+                nextDue.setDate(nextDue.getDate() + 1);
+                nextDue.setHours(cleanTimes[0].h, cleanTimes[0].m, 0, 0);
+            }
+        }
+    } else if (routine.schedule.type === 'weekly') {
+        nextDue.setDate(nextDue.getDate() + 1); 
+        nextDue.setHours(0,0,0,0);
+        let safety = 0;
+        while (!routine.schedule.daysOfWeek.includes(nextDue.getDay()) && safety < 8) {
+            nextDue.setDate(nextDue.getDate() + 1);
+            safety++;
+        }
+    } else if (routine.schedule.type === 'interval') {
+        const val = routine.schedule.value;
+        const unit = routine.schedule.unit;
+        if (unit === 'days') nextDue.setDate(nextDue.getDate() + val);
+        if (unit === 'weeks') nextDue.setDate(nextDue.getDate() + (val * 7));
+        if (unit === 'months') nextDue.setMonth(nextDue.getMonth() + val);
+        if (unit === 'years') nextDue.setFullYear(nextDue.getFullYear() + val);
+    }
+
+    if (now >= nextDue) {
+        let isOverdue = (now.getTime() - nextDue.getTime()) > (12 * 60 * 60 * 1000);
+        return { status: isOverdue ? 'overdue' : 'due', nextDue: nextDue, isCompleted: false, compNames: "" };
+    } else {
+        return { status: 'completed', nextDue: nextDue, isCompleted: true, compNames: compNames, completedAt: baseDate };
+    }
+}
+
+// MAIN TAB RENDERER
+function renderRoutines() {
+    const container = document.getElementById('routinesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!state.routines || state.routines.length === 0) {
+        container.innerHTML = '<div class="empty-dashboard-msg">No routines set up yet.</div>'; return;
+    }
+
+    // Filter routines applicable to the actively selected users
+    let visibleRoutines = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
+    
+    // Calculate statuses
+    let evaluatedRoutines = visibleRoutines.map(r => {
+        return { routine: r, evaluation: getRoutineStatus(r, state.activeUsers) };
+    });
+
+    // Sort: Overdue -> Due -> Completed
+    evaluatedRoutines.sort((a, b) => {
+        const rank = { 'overdue': 0, 'due': 1, 'completed': 2 };
+        if (rank[a.evaluation.status] !== rank[b.evaluation.status]) {
+            return rank[a.evaluation.status] - rank[b.evaluation.status];
+        }
+        return a.evaluation.nextDue - b.evaluation.nextDue;
+    });
+
+    evaluatedRoutines.forEach(item => {
+        const r = item.routine;
+        const ev = item.evaluation;
+        const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
+        const ptsDisplay = linkedTaskInfo && linkedTaskInfo.value > 0 ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
+
+        const card = document.createElement('div');
+        card.className = `chore-card ${ev.isCompleted ? 'completed' : ''}`;
+        
+        let statusBadge = '';
+        if (ev.status === 'overdue') statusBadge = `<span style="color: white; background: var(--danger); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">⚠️ Overdue</span>`;
+        else if (ev.status === 'due') statusBadge = `<span style="color: white; background: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">📅 Due Today</span>`;
+        
+        let completedText = '';
+        if (ev.isCompleted) {
+            completedText = `<div style="font-size: 12px; color: var(--success); margin-top: 5px; font-weight: bold;">
+                ✓ Completed by ${ev.compNames} (Resets ${ev.nextDue.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})})
+            </div>`;
+        }
+
+        let actionsHtml = '';
+        if (state.isEditMode) {
+            actionsHtml = `<button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')">🗑️</button>`;
+        } else {
+            actionsHtml = `<button class="chore-btn complete-btn" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')" ${ev.isCompleted ? 'disabled style="opacity:0.5"' : ''}>✅</button>`;
+        }
+
+        card.innerHTML = `
+            <div class="chore-header">
+                <div class="chore-title-area">
+                    <div class="chore-title" style="${ev.isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">
+                        ${r.completionType === 'shared' ? '🤝' : '👤'} ${r.name}
+                    </div>
+                    <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                        ${statusBadge}
+                        <span style="font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); padding: 2px 6px; border-radius: 4px;">↻ ${r.schedule.type}</span>
+                        ${ptsDisplay ? `<span style="font-size: 11px; color: var(--primary); background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${ptsDisplay}</span>` : ''}
+                    </div>
+                    ${completedText}
+                </div>
+                <div class="chore-actions">${actionsHtml}</div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// SIDEBAR RENDERERS
+function renderSidebarRoutines() {
+    const container = document.getElementById('sidebarRoutinesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!state.routines) return;
+
+    let visibleRoutines = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
+    let dueRoutines = visibleRoutines.map(r => ({ routine: r, evaluation: getRoutineStatus(r, state.activeUsers) }))
+                                     .filter(item => !item.evaluation.isCompleted); // Only show what needs doing
+
+    if (dueRoutines.length === 0) {
+        container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">All caught up! 🎉</div>'; return;
+    }
+
+    dueRoutines.forEach(item => {
+        const r = item.routine;
+        const card = document.createElement('div');
+        card.className = 'chore-card';
+        card.innerHTML = `
+            <div class="chore-header">
+                <div class="chore-title-area">
+                    <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
+                </div>
+                <div class="chore-actions">
+                    <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function renderSidebarTodos() {
+    const container = document.getElementById('sidebarTodosContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!state.todoTasksData) return;
+
+    let visibleTodos = state.todoTasksData.filter(t => !t.completed && t.assignees && state.activeUsers.some(uid => t.assignees.includes(uid)));
+    
+    if (visibleTodos.length === 0) {
+        container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No general to-dos assigned.</div>'; return;
+    }
+
+    visibleTodos.forEach(task => {
+        const linkedTaskArg = task.linkedNiptoTask ? `'${task.linkedNiptoTask}'` : 'null';
+        const card = document.createElement('div');
+        card.className = 'chore-card';
+        card.innerHTML = `
+            <div class="chore-header">
+                <div class="chore-title-area">
+                    <div class="chore-title" style="font-size: 13px;">📋 ${task.name}</div>
+                </div>
+                <div class="chore-actions">
+                    <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})">✅</button>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// ACTIONS
+async function completeRoutine(routineId, linkedNiptoTask) {
+    if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
+    if (state.activeUsers.length === 0) { alert("Select at least one user first!"); return; }
+
+    const routine = state.routines.find(r => r.uid === routineId);
+    if (!routine) return;
+
+    let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
+    let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
+    
+    try {
+        if (linkedNiptoTask && linkedNiptoTask !== "null") {
+            await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString());
+            // Fire the fun UI toast!
+            const tObj = state.tasks.find(t => t.uid === linkedNiptoTask);
+            if(tObj) showToast(linkedNiptoTask, routine.name, Math.ceil(tObj.value / state.currentSplitDivisor), namesString);
+        }
+
+        let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
+        let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
+
+        if (routine.completionType === 'shared') {
+            newLastCompleted['shared'] = targetDate.toISOString();
+            newLastCompletedBy['shared'] = namesString;
+        } else {
+            state.activeUsers.forEach(uid => {
+                newLastCompleted[uid] = targetDate.toISOString();
+                newLastCompletedBy[uid] = ALL_USERS.find(u=>u.uid===uid).name;
+            });
+        }
+
+        await api.updateFirestoreDocument('routines', routineId, {
+            lastCompleted: newLastCompleted,
+            lastCompletedBy: newLastCompletedBy
+        });
+
+        await api.loadRoutinesFromFirestore();
+        renderRoutines();
+        renderSidebarRoutines();
+        updateLeaderboardUI();
+    } catch (error) {
+        alert("Error completing routine: " + error.message);
+    }
+}
+
+async function deleteRoutine(routineId) {
+    if(confirm("Are you sure you want to permanently delete this routine?")) {
+        await api.deleteFirestoreDocument('routines', routineId);
+        await api.loadRoutinesFromFirestore();
+        renderRoutines();
+        renderSidebarRoutines();
+    }
+}
+
+// BIND TO WINDOW
+window.completeRoutine = completeRoutine;
+window.deleteRoutine = deleteRoutine;
+window.renderRoutines = renderRoutines;
+window.renderSidebarRoutines = renderSidebarRoutines;
+window.renderSidebarTodos = renderSidebarTodos;
+
+
+// ==========================================
+// BACKGROUND ROUTINE HISTORY SYNC
+// ==========================================
+async function syncRoutinesWithNiptoHistory() {
+    if (!state.routines || !state.allWeekActivities) return;
+
+    let requiresDbUpdate = false;
+
+    for (const routine of state.routines) {
+        if (!routine.linkedNiptoTask) continue; 
+
+        // Get the actual linked task object so we can match by name if the ID fails
+        const linkedObj = state.tasks.find(t => t.uid === routine.linkedNiptoTask);
+        
+        const matchingActivities = state.allWeekActivities.filter(act => {
+            // 1. Try to match by any variation of the Task ID
+            const historicalTaskId = (act.task && (act.task.uid || act.task.id)) || act.taskId || act.task_id;
+            if (historicalTaskId && historicalTaskId === routine.linkedNiptoTask) return true;
+            
+            // 2. AGGRESSIVE FALLBACK: Match by exact Task Name if Nipto stripped the ID
+            if (linkedObj && act.task && act.task.name === linkedObj.name) return true;
+            
+            return false;
+        });
+        
+        if (matchingActivities.length === 0) continue;
+
+        matchingActivities.sort((a, b) => a.parsedDate - b.parsedDate);
+
+        let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
+        let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
+        let updatedThisRoutine = false;
+
+        for (const act of matchingActivities) {
+            const actDateStr = act.parsedDate.toISOString();
+            const actUserUid = (act.user && (act.user.uid || act.user.id)) || act.userId || "unknown";
+            const actUserName = (act.user && act.user.name) ? act.user.name : "Someone";
+
+            if (routine.completionType === 'shared') {
+                const currentSharedDate = newLastCompleted['shared'];
+                if (!currentSharedDate || new Date(actDateStr) > new Date(currentSharedDate)) {
+                    newLastCompleted['shared'] = actDateStr;
+                    newLastCompletedBy['shared'] = actUserName; 
+                    updatedThisRoutine = true;
+                }
+            } else {
+                const currentUserDate = newLastCompleted[actUserUid];
+                if (!currentUserDate || new Date(actDateStr) > new Date(currentUserDate)) {
+                    newLastCompleted[actUserUid] = actDateStr;
+                    newLastCompletedBy[actUserUid] = actUserName;
+                    updatedThisRoutine = true;
+                }
+            }
+        }
+
+        if (updatedThisRoutine) {
+            routine.lastCompleted = newLastCompleted;
+            routine.lastCompletedBy = newLastCompletedBy;
+            requiresDbUpdate = true;
+            
+            api.updateFirestoreDocument('routines', routine.uid, {
+                lastCompleted: newLastCompleted,
+                lastCompletedBy: newLastCompletedBy
+            }).catch(err => console.error("History auto-sync error:", err));
+        }
+    }
+
+    if (requiresDbUpdate) {
+        if (typeof renderRoutines === 'function') renderRoutines();
+        if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
+    }
+}
+
+window.refreshDashboard = async () => {
+    const btn = document.getElementById('refreshBtn');
+    if (btn) { btn.innerText = "⏳ Syncing..."; btn.disabled = true; }
+
+    try {
+        await api.loadTasksFromFirestore();
+        await api.loadChoresFromFirestore();
+        await api.loadRoutinesFromFirestore();
+        await updateLeaderboardUI(); 
+        
+        renderTasks();
+        renderPinnedTasks();
+        renderChores();
+        renderRoutines();
+        renderSidebarRoutines();
+        if (typeof renderTodoTasks === 'function') renderTodoTasks();
+        if (typeof renderSidebarTodos === 'function') renderSidebarTodos();
+    } catch (e) {
+        console.error("Refresh failed:", e);
+    }
+
+    if (btn) { btn.innerText = "🔄 Refresh"; btn.disabled = false; }
+};
