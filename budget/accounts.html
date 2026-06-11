@@ -19,8 +19,8 @@
     <style>
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #064e3b; } /* emerald-900 */
-        ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 4px; } /* emerald-400 */
+        ::-webkit-scrollbar-track { background: #064e3b; } 
+        ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 4px; } 
         ::-webkit-scrollbar-thumb:hover { background: #10b981; }
     </style>
 </head>
@@ -43,6 +43,8 @@
             CreditCard: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
             Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
             Trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+            TrendingDown: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>`,
+            ChartLine: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>`
         };
 
         // --- State ---
@@ -52,42 +54,54 @@
             loginError: '',
             debts: [],
             bills: [],
+            history: [], // For the Burn-Down Chart
+            extraPayment: 0,
             isSaving: false,
             hasUnsavedChanges: false,
             saveTimer: null,
-            lastSavedData: null // To prevent save loops
+            lastSavedData: null
         };
 
         // --- Helpers ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-        const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b); // Simple deep equal for this data structure
 
         // --- Logic ---
         const Logic = {
             calculateTotals: () => {
-                const totalDebt = state.debts.reduce((acc, d) => acc + d.balance, 0);
+                const consumerDebts = state.debts.filter(d => d.type !== 'Mortgage');
                 
-                const revolvingDebts = state.debts.filter(d => d.type !== 'Loan');
+                const totalDebt = consumerDebts.reduce((acc, d) => acc + d.balance, 0);
+                const totalMinPayments = consumerDebts.reduce((acc, d) => acc + d.minPayment, 0);
+                const totalMonthlyInterest = consumerDebts.reduce((acc, d) => {
+                    const apr = parseFloat(d.apr) || 0;
+                    return acc + ((d.balance * (apr / 100)) / 12);
+                }, 0);
+
+                const revolvingDebts = state.debts.filter(d => d.type === 'Card');
                 const totalRevolvingDebt = revolvingDebts.reduce((acc, d) => acc + d.balance, 0);
                 const totalRevolvingLimit = revolvingDebts.reduce((acc, d) => acc + d.limit, 0);
-                
                 const totalUtilization = totalRevolvingLimit > 0 ? (totalRevolvingDebt / totalRevolvingLimit) * 100 : 0;
                 
                 const totalMonthlyBills = state.bills.reduce((acc, b) => acc + b.amount, 0);
-                const totalMinPayments = state.debts.reduce((acc, d) => acc + d.minPayment, 0);
-
-                return { totalDebt, totalUtilization, totalRevolvingLimit, totalMonthlyBills, totalMinPayments };
+                
+                return { totalDebt, totalUtilization, totalRevolvingLimit, totalMonthlyBills, totalMinPayments, totalMonthlyInterest };
             },
             getDebtStatus: (debt) => {
                 const isLoan = debt.type === 'Loan';
-                const limitLabel = isLoan ? "Orig Amt" : "Limit";
+                const isMortgage = debt.type === 'Mortgage';
+                const isConsumer = !isMortgage;
+                const limitLabel = (isLoan || isMortgage) ? "Orig Amt" : "Limit";
                 const utilization = debt.limit > 0 ? (debt.balance / debt.limit) * 100 : 0;
+                const monthlyInterest = ((debt.balance * (parseFloat(debt.apr) || 0)) / 100) / 12;
 
                 let barColor = "bg-emerald-500";
                 let textColor = "text-slate-400";
                 let warningText = "";
 
-                if (isLoan) {
+                if (isMortgage) {
+                    barColor = "bg-purple-500";
+                    textColor = "text-purple-400";
+                } else if (isLoan) {
                     barColor = "bg-blue-500";
                     textColor = "text-blue-400";
                 } else {
@@ -95,7 +109,54 @@
                     if (utilization > 70) { barColor = "bg-red-500"; textColor = "text-red-600"; warningText = "High Usage"; }
                     if (utilization > 95) { barColor = "bg-red-700"; textColor = "text-red-700"; warningText = "Critical"; }
                 }
-                return { isLoan, limitLabel, utilization, barColor, textColor, warningText };
+                return { isLoan, isMortgage, isConsumer, limitLabel, utilization, barColor, textColor, warningText, monthlyInterest };
+            },
+            simulatePayoff: (debts, extraPaymentAmount, strategy) => {
+                let simDebts = debts.filter(d => d.type !== 'Mortgage' && d.balance > 0).map(d => ({ ...d }));
+                if (simDebts.length === 0) return { months: 0, totalInterestPaid: 0 };
+
+                let months = 0;
+                let totalInterestPaid = 0;
+                
+                const initialMinPayments = simDebts.reduce((sum, d) => sum + (parseFloat(d.minPayment) || 0), 0);
+                const monthlyCommitment = initialMinPayments + Math.max(0, parseFloat(extraPaymentAmount) || 0);
+
+                while (simDebts.some(d => d.balance > 0) && months < 600) { 
+                    months++;
+                    let availableCash = monthlyCommitment;
+
+                    if (strategy === 'snowball') {
+                        simDebts.sort((a, b) => a.balance - b.balance); 
+                    } else {
+                        simDebts.sort((a, b) => b.apr - a.apr); 
+                    }
+
+                    for (let d of simDebts) {
+                        if (d.balance <= 0) continue;
+                        
+                        let interest = (d.balance * ((parseFloat(d.apr) || 0) / 100)) / 12;
+                        d.balance += interest;
+                        totalInterestPaid += interest;
+
+                        let minPay = Math.min(d.balance, parseFloat(d.minPayment) || 0);
+                        if (availableCash >= minPay) {
+                            d.balance -= minPay;
+                            availableCash -= minPay;
+                        } else {
+                            d.balance -= availableCash;
+                            availableCash = 0;
+                        }
+                    }
+
+                    for (let d of simDebts) {
+                        if (d.balance > 0 && availableCash > 0) {
+                            let extraPay = Math.min(d.balance, availableCash);
+                            d.balance -= extraPay;
+                            availableCash -= extraPay;
+                        }
+                    }
+                }
+                return { months, totalInterestPaid };
             }
         };
 
@@ -113,16 +174,35 @@
             },
             scheduleSave: () => {
                 state.hasUnsavedChanges = true;
-                render(); // Update header status immediately
+                
+                // --- Burn Down History Snapshot Logic ---
+                const currentMonthStr = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
+                const currentTotalDebt = Logic.calculateTotals().totalDebt;
+                let updatedHistory = [...(state.history || [])];
+                
+                if (updatedHistory.length > 0 && updatedHistory[updatedHistory.length - 1].month === currentMonthStr) {
+                    updatedHistory[updatedHistory.length - 1].balance = currentTotalDebt; // Update existing month
+                } else {
+                    updatedHistory.push({ month: currentMonthStr, balance: currentTotalDebt }); // New month
+                }
+                state.history = updatedHistory;
+                
+                render(); 
                 
                 if (state.saveTimer) clearTimeout(state.saveTimer);
                 
                 state.saveTimer = setTimeout(async () => {
                     if (!state.user) return;
                     state.isSaving = true;
-                    render(); // Show "Saving..."
+                    render(); 
 
-                    const currentData = { debts: state.debts, bills: state.bills };
+                    const currentData = { 
+                        debts: state.debts, 
+                        bills: state.bills, 
+                        extraPayment: state.extraPayment,
+                        history: state.history 
+                    };
+
                     try {
                         await setDoc(doc(db, 'users', state.user.uid, 'accounts_data', 'current_config'), {
                             ...currentData,
@@ -137,7 +217,13 @@
                         state.isSaving = false;
                         render();
                     }
-                }, 2000); // 2 second debounce
+                }, 1500);
+            },
+            updateExtraPayment: (value) => {
+                state.extraPayment = parseFloat(value) || 0;
+                Actions.scheduleSave();
+                render();
+                setTimeout(() => { const el = document.getElementById('extraPaymentInput'); if(el) { el.focus(); const val = el.value; el.value = ''; el.value = val; } }, 0);
             },
             addDebt: () => {
                 state.debts = [{ id: Date.now().toString(), name: 'New Card', balance: 0, limit: 1000, apr: 0, minPayment: 0, dueDay: 1, type: 'Card' }, ...state.debts];
@@ -145,32 +231,29 @@
                 render();
             },
             updateDebt: (id, field, value) => {
-                // Convert numbers
                 if (['balance', 'limit', 'apr', 'minPayment', 'dueDay'].includes(field)) {
                     value = parseFloat(value) || 0;
                 }
                 state.debts = state.debts.map(d => d.id === id ? { ...d, [field]: value } : d);
                 Actions.scheduleSave();
-                
-                // Re-render input without losing focus is tricky in vanilla JS strings
-                // For smoother typing, we might defer full re-render or just let the user type.
-                // Current approach: re-render. Note: Focus management is handled by not swapping DOM elements unnecessarily if possible, 
-                // but simpler here to just re-render and expect browser to keep focus if IDs match (it won't perfectly without morphdom).
-                // FIX: For input fields, we will use onchange or simple oninput but prevent re-render of the specific element if focused?
-                // For simplicity in this conversion: We will re-render. If typing focus is lost, we can optimize.
                 render(); 
-                // Restore focus helper (basic implementation)
                 setTimeout(() => {
                     const el = document.getElementById(`${field}-${id}`);
                     if(el) {
                         el.focus();
-                        // Try to set cursor to end (for text inputs)
                         if(el.type === 'text' || el.type === 'number') {
-                            const val = el.value; 
-                            el.value = ''; el.value = val; 
+                            const val = el.value; el.value = ''; el.value = val; 
                         }
                     }
                 }, 0);
+            },
+            quickPay: (id, amount) => {
+                const debt = state.debts.find(d => d.id === id);
+                if (!debt) return;
+                const newBalance = Math.max(0, debt.balance - amount); 
+                state.debts = state.debts.map(d => d.id === id ? { ...d, balance: newBalance } : d);
+                Actions.scheduleSave();
+                render();
             },
             deleteDebt: (id) => {
                 if(!confirm("Delete this account?")) return;
@@ -188,7 +271,6 @@
                 state.bills = state.bills.map(b => b.id === id ? { ...b, [field]: value } : b);
                 Actions.scheduleSave();
                 render();
-                // Restore focus
                 setTimeout(() => {
                     const el = document.getElementById(`bill-${field}-${id}`);
                     if(el) { el.focus(); const val = el.value; el.value = ''; el.value = val; }
@@ -227,8 +309,119 @@
             </div>
         `;
 
+        const renderStrategyPanel = () => {
+            const consumerDebts = state.debts.filter(d => d.type !== 'Mortgage' && d.balance > 0);
+            if (consumerDebts.length === 0) return '';
+
+            const snowball = Logic.simulatePayoff(state.debts, state.extraPayment, 'snowball');
+            const avalanche = Logic.simulatePayoff(state.debts, state.extraPayment, 'avalanche');
+
+            const getDateString = (monthsOut) => {
+                if(monthsOut >= 600) return "Never (Increase Payments)";
+                const d = new Date();
+                d.setMonth(d.getMonth() + monthsOut);
+                return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            };
+
+            const interestDiff = snowball.totalInterestPaid - avalanche.totalInterestPaid;
+
+            return `
+            <div class="bg-indigo-900 rounded-xl p-6 shadow-lg mb-6 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-indigo-800/50 blur-3xl pointer-events-none"></div>
+                
+                <div class="relative z-10 flex flex-col lg:flex-row gap-8 items-center">
+                    <div class="w-full lg:w-1/3 space-y-4">
+                        <h2 class="text-xl font-bold flex items-center gap-2">
+                            ${Icons.TrendingDown}
+                            Payoff Strategizer
+                        </h2>
+                        <p class="text-sm text-indigo-200">How much extra cash can you throw at debt each month beyond the minimums?</p>
+                        
+                        <div class="relative">
+                            <span class="absolute left-4 top-2.5 text-indigo-300 font-bold">$</span>
+                            <input 
+                                id="extraPaymentInput"
+                                type="number" 
+                                value="${state.extraPayment}"
+                                onchange="Accounts.updateExtraPayment(this.value)"
+                                class="w-full pl-8 pr-4 py-2.5 bg-indigo-950/50 border border-indigo-700 rounded-lg text-white font-bold text-lg focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-indigo-950/40 border border-indigo-800/50 p-4 rounded-xl">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-indigo-100">Snowball Method</h3>
+                                <span class="text-[10px] uppercase font-bold bg-indigo-800 text-indigo-200 px-2 py-0.5 rounded">Smallest Bal First</span>
+                            </div>
+                            <div class="text-3xl font-black text-white mb-1">${getDateString(snowball.months)}</div>
+                            <div class="text-sm text-indigo-300">Total Interest Paid: ${formatCurrency(snowball.totalInterestPaid)}</div>
+                        </div>
+
+                        <div class="bg-indigo-950/40 border border-indigo-800/50 p-4 rounded-xl relative ${interestDiff > 0 ? 'ring-1 ring-emerald-500' : ''}">
+                            ${interestDiff > 0 ? `<div class="absolute -top-3 -right-2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md">Saves ${formatCurrency(interestDiff)}</div>` : ''}
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-indigo-100">Avalanche Method</h3>
+                                <span class="text-[10px] uppercase font-bold bg-indigo-800 text-indigo-200 px-2 py-0.5 rounded">Highest APR First</span>
+                            </div>
+                            <div class="text-3xl font-black text-white mb-1">${getDateString(avalanche.months)}</div>
+                            <div class="text-sm text-indigo-300">Total Interest Paid: ${formatCurrency(avalanche.totalInterestPaid)}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        };
+
+        const renderBurnDownChart = () => {
+            if (!state.history || state.history.length === 0) return '';
+            
+            // To make the chart look visually meaningful, we base the height off the highest debt recorded
+            const maxBalance = Math.max(...state.history.map(h => h.balance), 1); 
+
+            return `
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 overflow-hidden">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        ${Icons.ChartLine}
+                        Debt Burn-Down History
+                    </h2>
+                    <span class="text-xs font-bold uppercase text-slate-400">Total Consumer Debt</span>
+                </div>
+                
+                <div class="h-48 flex items-end gap-2 pb-6 border-b border-slate-100 relative mt-4">
+                    ${state.history.map(point => {
+                        const heightPercentage = (point.balance / maxBalance) * 100;
+                        
+                        // Parse 'YYYY-MM' safely
+                        const [year, month] = point.month.split('-');
+                        const date = new Date(year, month - 1); 
+                        const monthStr = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                        
+                        return `
+                        <div class="flex-1 flex flex-col items-center group relative h-full justify-end min-w-[30px]">
+                            <div class="w-full max-w-[40px] bg-emerald-500 rounded-t-sm transition-all duration-500 group-hover:bg-emerald-400" style="height: ${heightPercentage}%; min-height: 4px;"></div>
+                            
+                            <div class="absolute -bottom-6 text-[10px] font-bold text-slate-400 whitespace-nowrap">${monthStr}</div>
+                            
+                            <div class="absolute -top-8 bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none shadow-lg">
+                                ${formatCurrency(point.balance)}
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+                
+                ${state.history.length === 1 ? `
+                    <div class="mt-8 p-3 bg-slate-50 text-slate-500 text-xs text-center rounded-lg border border-slate-100">
+                        This chart has recorded your first baseline. It will automatically track your progress and build new trend bars as you update your balances month to month!
+                    </div>
+                ` : ''}
+            </div>
+            `;
+        };
+
         const renderDebtRow = (item) => {
-            const { isLoan, limitLabel, utilization, barColor, textColor, warningText } = Logic.getDebtStatus(item);
+            const { isLoan, isMortgage, isConsumer, limitLabel, utilization, barColor, textColor, warningText, monthlyInterest } = Logic.getDebtStatus(item);
             
             return `
             <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col gap-3 relative overflow-hidden">
@@ -244,22 +437,26 @@
                         />
                     </div>
                     
-                    <div class="flex bg-slate-100 p-0.5 rounded-lg">
+                    <div class="flex bg-slate-100 p-0.5 rounded-lg flex-wrap gap-0.5">
                         <button 
                             onclick="Accounts.updateDebt('${item.id}', 'type', 'Card')"
-                            class="px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${!isLoan ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}"
+                            class="px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${item.type === 'Card' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}"
                         >Card</button>
                         <button 
                             onclick="Accounts.updateDebt('${item.id}', 'type', 'Loan')"
                             class="px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${isLoan ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}"
                         >Loan</button>
+                        <button 
+                            onclick="Accounts.updateDebt('${item.id}', 'type', 'Mortgage')"
+                            class="px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${isMortgage ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400'}"
+                        >Mortgage</button>
                     </div>
 
                     <button onclick="Accounts.deleteDebt('${item.id}')" class="text-slate-300 hover:text-red-500 md:self-start pt-1">${Icons.Trash}</button>
                 </div>
 
                 <div class="grid grid-cols-3 md:grid-cols-5 gap-4">
-                        <div>
+                    <div>
                         <label class="text-xs text-slate-400 font-bold uppercase">Due Day</label>
                         <input 
                             id="dueDay-${item.id}"
@@ -305,7 +502,7 @@
                             class="w-full text-slate-600 focus:outline-none border-b border-transparent focus:border-indigo-500"
                         />
                     </div>
-                        <div>
+                    <div>
                         <label class="text-xs text-slate-400 font-bold uppercase">Min Pay</label>
                         <div class="relative">
                             <span class="absolute left-0 top-0 text-slate-400">$</span>
@@ -325,8 +522,23 @@
                         <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${Math.min(utilization, 100)}%"></div>
                     </div>
                     <div class="flex justify-between items-center text-[10px] uppercase font-bold mt-[-4px]">
-                        <span class="text-slate-400">${isLoan ? 'Remaining Principal' : `Available: ${formatCurrency(item.limit - item.balance)}`}</span>
-                        <span class="${textColor}">${isLoan ? `${utilization.toFixed(1)}% of Loan` : (warningText || `${utilization.toFixed(1)}% Used`)}</span>
+                        <span class="text-slate-400">${(isLoan || isMortgage) ? 'Remaining Principal' : `Available: ${formatCurrency(item.limit - item.balance)}`}</span>
+                        <span class="${textColor}">${(isLoan || isMortgage) ? `${utilization.toFixed(1)}% Paid Off` : (warningText || `${utilization.toFixed(1)}% Used`)}</span>
+                    </div>
+                ` : ''}
+
+                ${item.balance > 0 && isConsumer ? `
+                    <div class="mt-2 pt-3 border-t border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                        <div class="text-[11px] text-slate-500 flex items-center gap-1">
+                            <span>Est. Interest:</span>
+                            <span class="font-bold ${monthlyInterest > 10 ? 'text-red-500' : 'text-slate-700'}">${formatCurrency(monthlyInterest)}/mo</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-[10px] uppercase font-bold text-slate-400 mr-1">Log Payment:</span>
+                            ${item.minPayment > 0 ? `<button onclick="Accounts.quickPay('${item.id}', ${item.minPayment})" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-xs font-bold hover:bg-emerald-100 hover:border-emerald-300 transition shadow-sm">Min (${formatCurrency(item.minPayment)})</button>` : ''}
+                            <button onclick="Accounts.quickPay('${item.id}', 50)" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-xs font-bold hover:bg-emerald-100 hover:border-emerald-300 transition shadow-sm">+$50</button>
+                            <button onclick="Accounts.quickPay('${item.id}', 100)" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-xs font-bold hover:bg-emerald-100 hover:border-emerald-300 transition shadow-sm">+$100</button>
+                        </div>
                     </div>
                 ` : ''}
             </div>`;
@@ -378,7 +590,7 @@
         `;
 
         const renderApp = () => {
-            const { totalDebt, totalUtilization, totalRevolvingLimit, totalMonthlyBills, totalMinPayments } = Logic.calculateTotals();
+            const { totalDebt, totalUtilization, totalRevolvingLimit, totalMonthlyBills, totalMinPayments, totalMonthlyInterest } = Logic.calculateTotals();
             
             return `
             <div class="bg-emerald-900 text-white pb-20 pt-8 px-4 shadow-xl">
@@ -396,10 +608,13 @@
                     </div>
                     
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50">
-                            <div class="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Total Debt Balance</div>
+                        <div class="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50 relative overflow-hidden">
+                            <div class="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Consumer Debt Balance</div>
                             <div class="text-2xl font-bold text-white">${formatCurrency(totalDebt)}</div>
-                            <div class="text-xs text-emerald-400 mt-1">Min Payments: ${formatCurrency(totalMinPayments)}/mo</div>
+                            <div class="flex flex-col gap-1 mt-2">
+                                <div class="text-[11px] text-emerald-400 bg-emerald-900/50 inline-block px-2 py-0.5 rounded w-fit">Min Payments: ${formatCurrency(totalMinPayments)}/mo</div>
+                                <div class="text-[11px] text-red-300 bg-red-900/30 border border-red-800/30 inline-block px-2 py-0.5 rounded w-fit">Est. Interest Burn: ${formatCurrency(totalMonthlyInterest)}/mo</div>
+                            </div>
                         </div>
                         <div class="bg-emerald-800/50 p-4 rounded-xl border border-emerald-700/50">
                             <div class="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Total Credit Utilization</div>
@@ -420,8 +635,11 @@
             <div class="max-w-5xl mx-auto px-4 -mt-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
                 <div class="lg:col-span-7 space-y-6">
+                    ${renderStrategyPanel()}
+                    ${renderBurnDownChart()}
+
                     <div class="flex justify-between items-center">
-                        <h2 class="text-lg font-bold text-white">Revolving Debt & Loans</h2>
+                        <h2 class="text-lg font-bold text-slate-800">Your Accounts</h2>
                         <button onclick="Accounts.addDebt()" class="flex items-center gap-1 text-sm bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition">
                             ${Icons.Plus} Add Account
                         </button>
@@ -430,7 +648,7 @@
                     <div class="space-y-4">
                         ${state.debts.length === 0 ? `
                             <div class="bg-white p-8 rounded-lg shadow-sm border border-slate-200 text-center text-slate-400">
-                                No accounts yet. Click "Add Account" to start tracking your debts.
+                                No accounts yet. Click "Add Account" to start tracking.
                             </div>
                         ` : ''}
                         ${state.debts.map(renderDebtRow).join('')}
@@ -438,8 +656,8 @@
                 </div>
 
                 <div class="lg:col-span-5 space-y-6">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-lg font-bold text-white">Recurring Bills</h2>
+                    <div class="flex justify-between items-center pt-2 lg:pt-0">
+                        <h2 class="text-lg font-bold text-slate-800">Recurring Bills</h2>
                         <button onclick="Accounts.addBill()" class="flex items-center gap-1 text-sm bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition">
                             ${Icons.Plus} Add Bill
                         </button>
@@ -474,10 +692,6 @@
                 app.innerHTML = renderLogin();
                 return;
             }
-
-            // We are using morphing or full replace. Full replace is simplest for "No Build".
-            // However, input focus is lost on full replace.
-            // The Update actions use setTimeout to restore focus by ID.
             app.innerHTML = renderApp();
         };
 
@@ -488,20 +702,8 @@
             
             if (u) {
                 onSnapshot(doc(db, 'users', u.uid, 'accounts_data', 'current_config'), (snap) => {
-                    // Only update if we are not currently saving to avoid race conditions/flicker
-                    // Or if it's the first load.
-                    // For simplicity in this non-React version, we update state if data changed remotely.
                     if (snap.exists()) {
                         const d = snap.data();
-                        
-                        // Simple check to see if we should overwrite local state
-                        // If we are "saving", we expect an update soon, but we might have typed more since.
-                        // Ideally we only update if the remote data is "newer" or different significantly.
-                        // Here we just load it if we aren't in the middle of a debounce cycle? 
-                        // Actually, Firestore snapshots trigger on our own local writes too (latency compensation).
-                        // Let's just load it.
-                        
-                        // We only want to sort on INITIAL load, not every update.
                         const isInitial = state.debts.length === 0 && state.bills.length === 0;
 
                         let loadedDebts = (d.debts || []).map(debt => ({ ...debt, type: debt.type || 'Card' }));
@@ -511,20 +713,19 @@
                             loadedDebts.sort((a, b) => a.dueDay - b.dueDay);
                             loadedBills.sort((a, b) => a.dueDay - b.dueDay);
                         }
-
-                        // Update state only if we aren't currently editing (this is hard to track without React)
-                        // OR: only update if the data is actually different from what we last saved/loaded?
-                        // For this "No Build" demo, we'll assume single user and accept that remote updates might clobber local unsaved typing if simultaneous.
-                        // But since we debounce save, local state is truth.
                         
                         if (!state.hasUnsavedChanges) {
                              state.debts = loadedDebts;
                              state.bills = loadedBills;
+                             state.extraPayment = d.extraPayment || 0;
+                             state.history = d.history || [];
                              render();
                         }
                     } else {
                         state.debts = [];
                         state.bills = [];
+                        state.history = [];
+                        state.extraPayment = 0;
                         render();
                     }
                 });
