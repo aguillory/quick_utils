@@ -14,10 +14,10 @@ async function loadCloudPreferences(uid) {
         const doc = await window.db.collection('user_preferences').doc(uid).get();
         if (doc.exists) {
             state.userPrefs = { ...state.userPrefs, ...doc.data() };
-        } else {
+            } else {
             state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: [], todoSortOrder: [], collapsed: {} };
         }
-    } catch (e) {
+        } catch (e) {
         console.error("Error loading cloud prefs:", e);
     }
 }
@@ -44,13 +44,13 @@ async function initUsers() {
             const parsed = JSON.parse(stored);
             if (parsed.isTogetherMode) {
                 setTogetherState(parsed.users);
-            } else if (parsed.users && parsed.users.length === 1) {
+                } else if (parsed.users && parsed.users.length === 1) {
                 await setActiveUser(parsed.users[0], true);
-            } else {
+                } else {
                 await setActiveUser(ALL_USERS[0].uid, true);
             }
         } catch (e) { await setActiveUser(ALL_USERS[0].uid, true); }
-    } else {
+        } else {
         await setActiveUser(ALL_USERS[0].uid, true);
     }
 }
@@ -65,12 +65,12 @@ async function setActiveUser(uid, skipSave = false) {
     state.activeUsers = [uid];
     state.currentSplitDivisor = 1;
     document.getElementById('together-drawer').classList.remove('visible');
-
+    
     ALL_USERS.forEach(user => {
         const el = document.getElementById(`toggle-${user.uid}`);
         if (user.uid === uid) {
             el.classList.add('active'); el.classList.remove('inactive');
-        } else {
+            } else {
             el.classList.add('inactive'); el.classList.remove('active');
         }
     });
@@ -78,16 +78,16 @@ async function setActiveUser(uid, skipSave = false) {
     const togEl = document.getElementById('toggle-together');
     togEl.classList.add('inactive');
     togEl.classList.remove('active');
-
+    
     // --- FETCH CLOUD PREFERENCES ---
     await loadCloudPreferences(uid);
-
+    
     let userTheme = state.userPrefs.theme || 'boring';
     applyTheme(userTheme);
-
+    
     let savedHistoryView = state.userPrefs.historyView || 'everyone';
     setHistoryView(savedHistoryView, true); 
-
+    
     if(!skipSave) saveUserState();
     updateFloatingIndicator();
     renderTasks();
@@ -110,7 +110,7 @@ function updateFloatingIndicator() {
         indBox.style.borderColor = 'var(--danger)';
         return;
     }
-
+    
     let borderColors = [];
     state.activeUsers.forEach(uid => {
         const user = ALL_USERS.find(u => u.uid === uid);
@@ -119,7 +119,7 @@ function updateFloatingIndicator() {
             container.innerHTML += `<div class="floating-avatar" style="background: ${user.color};">${user.name}</div>`;
         }
     });
-
+    
     indBox.style.borderColor = state.isTogetherMode ? 'var(--text-muted)' : borderColors[0];
 }
 
@@ -130,24 +130,24 @@ function toggleTogetherMode() {
         alert("You cannot edit the dashboard while in 'Together' mode. Please select a specific person to edit their dashboard.");
         return;
     }
-
+    
     state.isTogetherMode = true;
     
     if (state.activeUsers.length <= 1) {
         state.activeUsers = ["NMRQaRQbvCwBaJbiMFId", "RMNUTP8VOHD9PDzNjf0g"];
         updateTogetherCheckboxes();
     }
-
+    
     ALL_USERS.forEach(user => {
         const el = document.getElementById(`toggle-${user.uid}`);
         el.classList.add('inactive');
         el.classList.remove('active');
     });
-
+    
     const togEl = document.getElementById('toggle-together');
     togEl.classList.remove('inactive');
     togEl.classList.add('active');
-
+    
     document.getElementById('together-drawer').classList.add('visible');
     
     processTogetherSelection(true);
@@ -164,10 +164,10 @@ function populateTogetherCheckboxes() {
     container.innerHTML = '';
     ALL_USERS.forEach(u => {
         container.innerHTML += `
-            <label class="together-label" style="border-left: 4px solid ${u.color};">
-                <input type="checkbox" value="${u.uid}" class="t-check" onchange="processTogetherSelection()">
-                ${u.name}
-            </label>
+        <label class="together-label" style="border-left: 4px solid ${u.color};">
+        <input type="checkbox" value="${u.uid}" class="t-check" onchange="processTogetherSelection()">
+        ${u.name}
+        </label>
         `;
     });
 }
@@ -198,7 +198,7 @@ function toggleViewAll() {
         btn.innerText = "🏠 View My Dashboard";
         btn.style.backgroundColor = "var(--text-muted)";
         btn.style.color = "white";
-    } else {
+        } else {
         btn.innerText = "🔍 View All Tasks";
         btn.style.backgroundColor = "";
         btn.style.color = "";
@@ -222,13 +222,13 @@ async function toggleEditMode() {
         alert("Please select a specific person's button before clicking Edit Dashboard.");
         return;
     }
-
+    
     const btn = document.getElementById('editBtn');
     const floatingBtn = document.getElementById('floating-save-btn');
     const syncBtn = document.getElementById('syncNiptoBtn');
     const statusDiv = document.getElementById('status');
     const viewAllBtn = document.getElementById('viewAllBtn');
-
+    
     if (!state.isEditMode) {
         state.isEditMode = true;
         btn.innerText = "💾 Save Dashboard";
@@ -246,12 +246,12 @@ async function toggleEditMode() {
         state.tempEditPrefs = getUserPreferences();
         state.hasEnteredTaskPin = false; 
         document.getElementById('addTaskSection').style.display = 'block';
-
+        
         if (state.isViewAllMode) toggleViewAll();
-
+        
         renderTasks();
         renderChores();
-    } else {
+        } else {
         btn.innerText = "⏳ Saving...";
         btn.disabled = true;
         floatingBtn.innerText = "⏳ Saving...";
@@ -259,7 +259,7 @@ async function toggleEditMode() {
         if(syncBtn) syncBtn.disabled = true;
         
         await savePreferencesToFirestore();
-
+        
         state.isEditMode = false;
         state.hasEnteredTaskPin = false; 
         btn.innerText = "✏️ Edit Dashboard";
@@ -276,10 +276,10 @@ async function toggleEditMode() {
         
         statusDiv.innerText = "";
         statusDiv.style.color = "var(--text-main)";
-
+        
         document.getElementById('addTaskSection').style.display = 'none';
         cancelAddTask();
-
+        
         renderTasks();
         renderChores();
     }
@@ -289,7 +289,7 @@ async function savePreferencesToFirestore() {
     const targetUid = state.activeUsers[0];
     let batch = window.db.batch();
     let hasChanges = false;
-
+    
     state.tasks.forEach(task => {
         const wantsItOnDash = state.tempEditPrefs.has(task.uid);
         const hasItCurrently = task.dashboardUsers && task.dashboardUsers.includes(targetUid);
@@ -306,7 +306,7 @@ async function savePreferencesToFirestore() {
             batch.update(docRef, { dashboardUsers: newUsersList });
         }
     });
-
+    
     if (hasChanges) {
         try { await batch.commit(); } 
         catch (error) { console.error("Error saving preferences:", error); alert("Failed to save dashboard."); }
@@ -322,12 +322,12 @@ async function updateLeaderboardUI() {
             const el = document.getElementById(`points-${user.uid}`);
             if (el) el.innerText = points[user.uid] + " pts";
         });
-
+        
         document.querySelectorAll('.leader-crown').forEach(el => el.remove());
-
+        
         let topUser = null;
         let maxPts = 0;
-
+        
         ALL_USERS.forEach(user => {
             let userPts = points[user.uid] || 0;
             if (userPts > maxPts) {
@@ -335,24 +335,24 @@ async function updateLeaderboardUI() {
                 topUser = user.uid;
             }
         });
-
+        
         if (topUser && maxPts > 0) {
             const topUserElement = document.getElementById(`toggle-${topUser}`);
             if (topUserElement) topUserElement.innerHTML += '<div class="leader-crown">👑</div>';
         }
-
+        
         let sortedUsers = ALL_USERS.map(u => ({ name: u.name, pts: points[u.uid], color: u.color })).sort((a, b) => b.pts - a.pts);
         let leaderboardHtml = sortedUsers.map((u, index) => {
             let medal = index === 0 ? '🥇 1.' : index === 1 ? '🥈 2. ' : index === 2 ? '🥉 3.' : `${index + 1}.`;
             return `<div><span style="color: var(--text-muted); margin-right: 3px;">${medal}</span> <span style="color: ${u.color}; font-weight: 800;">${u.name}: ${u.pts} pts</span></div>`;
         }).join('<div style="width: 1px; background: var(--border-color); margin: 0 10px;"></div>'); 
-
+        
         const adultContainer = document.getElementById('leaderboard-container');
         if(adultContainer) adultContainer.innerHTML = leaderboardHtml;
-
+        
         updateHistoryDisplay();
         syncRoutinesWithNiptoHistory();
-    } catch (error) {
+        } catch (error) {
         if (error.message === "Token Expired") document.getElementById('pinModal').style.display = 'flex';
         console.error("Error drawing points:", error);
         document.getElementById('historyContainer').innerHTML = "<div class='empty-history'>Error loading history.</div>";
@@ -375,28 +375,28 @@ function renderHistory(activities) {
     if (activities.length === 0) {
         container.innerHTML = '<div class="empty-history">No tasks found.</div>'; return;
     }
-
+    
     activities.sort((a, b) => b.parsedDate - a.parsedDate);
     const timeOptions = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
-
+    
     activities.forEach(act => {
         const knownUser = ALL_USERS.find(u => u.uid === (act.user && act.user.uid));
         const userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Unknown User");
         const taskName = act.task ? act.task.name : "Deleted Task";
         const taskValue = act.awardedPts !== undefined ? act.awardedPts : (act.task ? act.task.value : 0);
         const color = knownUser ? knownUser.color : 'var(--text-muted)';
-
+        
         const itemDiv = document.createElement('div');
         itemDiv.className = 'history-item';
         itemDiv.innerHTML = `
-            <div class="history-item-content">
-                <div class="history-task-name">${taskName}</div>
-                <div class="history-details">
-                    <span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>
-                    <span>${act.parsedDate.toLocaleDateString(undefined, timeOptions)}</span>
-                </div>
-            </div>
-            <button class="delete-activity-btn" onclick="deleteTaskActivity('${act.uid}', this)" title="Delete Activity">🗑️</button>
+        <div class="history-item-content">
+        <div class="history-task-name">${taskName}</div>
+        <div class="history-details">
+        <span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>
+        <span>${act.parsedDate.toLocaleDateString(undefined, timeOptions)}</span>
+        </div>
+        </div>
+        <button class="delete-activity-btn" onclick="deleteTaskActivity('${act.uid}', this)" title="Delete Activity">🗑️</button>
         `;
         container.appendChild(itemDiv);
     });
@@ -410,10 +410,10 @@ const toastCounts = {};
 function showToast(taskUid, taskName, points, namesString) {
     let container = document.getElementById('toast-container');
     if (!container) return;
-
+    
     const toastId = `toast-${taskUid}`;
     let existingToast = document.getElementById(toastId);
-
+    
     if (existingToast) {
         // Increment multiplier if tapped rapidly
         toastCounts[taskUid] = (toastCounts[taskUid] || 1) + 1;
@@ -429,7 +429,7 @@ function showToast(taskUid, taskName, points, namesString) {
             existingToast.remove();
             delete toastCounts[taskUid];
         }, 3000);
-    } else {
+        } else {
         // Create new toast
         toastCounts[taskUid] = 1;
         const toast = document.createElement('div');
@@ -437,7 +437,7 @@ function showToast(taskUid, taskName, points, namesString) {
         toast.style.cssText = 'background: var(--success, #22c55e); color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px; animation: slideUpFade 0.3s ease-out; transition: opacity 0.3s, transform 0.3s;';
         toast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> (+${points} pts)`;
         container.appendChild(toast);
-
+        
         toastTimeouts[taskUid] = setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateY(10px)';
@@ -455,7 +455,7 @@ async function logTask(buttonElement, taskUid, taskName) {
         alert("No users selected! Please select someone at the top of the dashboard.");
         return false;
     }
-
+    
     // Immediate Visual Feedback
     buttonElement.style.transition = 'border 0.1s, transform 0.1s';
     buttonElement.style.border = '2px solid var(--success, #22c55e)';
@@ -464,7 +464,7 @@ async function logTask(buttonElement, taskUid, taskName) {
         buttonElement.style.border = ''; 
         buttonElement.style.transform = 'scale(1)';
     }, 250);
-
+    
     const statusDiv = document.getElementById('status');
     let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
     
@@ -473,11 +473,11 @@ async function logTask(buttonElement, taskUid, taskName) {
         statusDiv.style.color = 'var(--danger)';
         return false;
     }
-
+    
     let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
     const taskObj = state.tasks.find(t => t.uid === taskUid);
     const points = taskObj ? Math.ceil(taskObj.value / state.currentSplitDivisor) : 0;
-
+    
     try {
         const logPromise = api.logActivityToNipto(taskUid, targetDate.toISOString());
         showToast(taskUid, taskName, points, namesString);
@@ -493,29 +493,29 @@ async function logTask(buttonElement, taskUid, taskName) {
             for (const routine of linkedRoutines) {
                 let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
                 let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-
+                
                 if (routine.completionType === 'shared') {
                     newLastCompleted['shared'] = targetDate.toISOString();
                     newLastCompletedBy['shared'] = namesString;
-                } else {
+                    } else {
                     state.activeUsers.forEach(uid => {
                         newLastCompleted[uid] = targetDate.toISOString();
                         const uObj = ALL_USERS.find(u=>u.uid===uid);
                         newLastCompletedBy[uid] = uObj ? uObj.name : "Unknown";
                     });
                 }
-
+                
                 routine.lastCompleted = newLastCompleted;
                 routine.lastCompletedBy = newLastCompletedBy;
                 requiresRoutineRender = true;
-
+                
                 // Update Firebase quietly in the background
                 api.updateFirestoreDocument('routines', routine.uid, {
                     lastCompleted: newLastCompleted,
                     lastCompletedBy: newLastCompletedBy
                 }).catch(e => console.error("Routine auto-update failed:", e));
             }
-
+            
             // Immediately redraw the UI so the routine vanishes from the sidebar
             if (requiresRoutineRender) {
                 if (typeof renderRoutines === 'function') renderRoutines();
@@ -523,10 +523,10 @@ async function logTask(buttonElement, taskUid, taskName) {
             }
         }
         // ---------------------------------
-
+        
         updateLeaderboardUI();
         return true;
-    } catch (error) {
+        } catch (error) {
         statusDiv.innerText = `Error logging ${taskName}: ${error.message}`;
         statusDiv.style.color = 'var(--danger)';
         return false;
@@ -535,12 +535,12 @@ async function logTask(buttonElement, taskUid, taskName) {
 async function deleteTaskActivity(activityUid, btnElement) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
     if (!confirm("Are you sure you want to delete this logged task?")) return;
-
+    
     const statusDiv = document.getElementById('status');
     const originalHtml = btnElement.innerHTML;
     btnElement.disabled = true;
     btnElement.innerHTML = "⏳";
-
+    
     try {
         await api.deleteActivityFromNipto(activityUid);
         
@@ -555,13 +555,13 @@ async function deleteTaskActivity(activityUid, btnElement) {
             await api.loadChoresFromFirestore();
             renderChores();
         }
-
+        
         statusDiv.innerText = `Activity deleted successfully!`;
         statusDiv.style.color = 'var(--success)';
         updateLeaderboardUI();
         setTimeout(() => { statusDiv.innerText = ""; statusDiv.style.color = 'var(--text-main)'; }, 3000);
-
-    } catch (error) {
+        
+        } catch (error) {
         console.error("Delete Error:", error);
         statusDiv.innerText = `Error: ${error.message}`;
         statusDiv.style.color = 'var(--danger)';
@@ -576,12 +576,12 @@ function handleTaskClick(btn, taskUid, taskName) {
             state.tempEditPrefs.delete(taskUid);
             btn.classList.remove('selected-pref');
             btn.classList.add('unselected-pref');
-        } else {
+            } else {
             state.tempEditPrefs.add(taskUid);
             btn.classList.add('selected-pref');
             btn.classList.remove('unselected-pref');
         }
-    } else {
+        } else {
         logTask(btn, taskUid, taskName);
     }
 }
@@ -589,18 +589,18 @@ function handleTaskClick(btn, taskUid, taskName) {
 async function togglePinTask(taskUid) {
     const task = state.tasks.find(t => t.uid === taskUid);
     if (!task) return;
-
+    
     const targetUid = state.activeUsers[0];
     if(!targetUid) return;
-
+    
     let pinned = task.pinnedUsers ? [...task.pinnedUsers] : [];
     if (pinned.includes(targetUid)) pinned = pinned.filter(id => id !== targetUid);
     else pinned.push(targetUid);
-
+    
     task.pinnedUsers = pinned;
     renderTasks();
     renderPinnedTasks();
-
+    
     try { 
         await api.updateFirestoreDocument('nipto_tasks', taskUid, { pinnedUsers: pinned });
     } catch (error) { console.error("Error updating pin:", error); }
@@ -619,23 +619,23 @@ function renderTasks() {
     let visibleTasks = [];
     if (state.isEditMode || state.isViewAllMode) {
         visibleTasks = state.tasks;
-    } else {
+        } else {
         visibleTasks = state.tasks.filter(t => {
             return state.activeUsers.some(uid => t.dashboardUsers && t.dashboardUsers.includes(uid));
         });
     }
-
+    
     if (visibleTasks.length === 0 && !state.isEditMode) {
         container.innerHTML = '<div class="empty-dashboard-msg">Your dashboard is empty. Click the pencil icon to add tasks!</div>';
         return;
     }
-
+    
     const groupedTasks = visibleTasks.reduce((acc, task) => {
         if (!acc[task.category]) acc[task.category] = [];
         acc[task.category].push(task);
         return acc;
     }, {});
-
+    
     let savedOrder = state.userPrefs.niptoSortOrder || [];
     let keys = Object.keys(groupedTasks);
     
@@ -647,19 +647,19 @@ function renderTasks() {
         if (idxB !== -1) return 1;
         return a.localeCompare(b);
     });
-
+    
     keys.forEach(category => {
         const section = document.createElement('div');
         section.className = 'category-section';
-
+        
         // Read cloud preference for collapsed state
         const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
-
+        
         const orderControls = `<span class="sort-controls" style="font-size: 14px; margin-left: 10px; opacity: 0.5;">
-            <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
-            <button onclick="moveCategory('${category}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
+        <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
+        <button onclick="moveCategory('${category}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
         </span>`;
-
+        
         const header = document.createElement('h3');
         header.className = 'category-header collapsible-header';
         header.innerHTML = `${category} ${orderControls} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}" style="margin-left: auto;">▼</span>`;
@@ -677,27 +677,27 @@ function renderTasks() {
         };
         
         section.appendChild(header);
-
+        
         const grid = document.createElement('div');
         grid.className = 'task-grid';
-
+        
         groupedTasks[category].forEach(task => {
             const btn = document.createElement('button');
             btn.className = 'task-btn';
             
             const displayValue = Math.ceil(task.value / state.currentSplitDivisor);
             const taskContentHtml = `<span>${task.name}</span><span style="display:block; margin-top:5px; font-weight:bold; color:var(--primary); font-size:13px;">${displayValue} pts</span>`;
-
+            
             if (state.isEditMode) {
                 btn.classList.add('edit-mode');
                 if (state.tempEditPrefs.has(task.uid)) {
                     btn.classList.add('selected-pref');
                     btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
-                } else {
+                    } else {
                     btn.classList.add('unselected-pref');
                     btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
                 }
-
+                
                 // PIN BUTTON INJECTED ONLY IN EDIT MODE
                 const targetUid = state.activeUsers[0];
                 const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);
@@ -711,7 +711,7 @@ function renderTasks() {
                     togglePinTask(task.uid);
                 };
                 btn.appendChild(pinBtn);
-            } else {
+                } else {
                 btn.innerHTML = taskContentHtml;
             }
             
@@ -719,7 +719,7 @@ function renderTasks() {
             btn.onclick = () => handleTaskClick(btn, task.uid, task.name);
             grid.appendChild(btn);
         });
-
+        
         gridWrapper.appendChild(grid);
         section.appendChild(gridWrapper);
         container.appendChild(section);
@@ -732,27 +732,27 @@ function renderPinnedTasks() {
     
     const targetUid = state.activeUsers[0]; 
     const myPinnedTasks = state.tasks.filter(t => t.pinnedUsers && t.pinnedUsers.includes(targetUid));
-
+    
     if (myPinnedTasks.length === 0) {
         container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No pinned tasks.</div>';
         return;
     }
-
+    
     myPinnedTasks.forEach(task => {
         const displayValue = Math.ceil(task.value / state.currentSplitDivisor);
         const card = document.createElement('div');
         card.className = 'chore-card';
         card.innerHTML = `
-            <div class="chore-header">
-                <div class="chore-title-area">
-                    <div class="chore-title">📌 ${task.name}</div>
-                    <div class="chore-points">+${displayValue} pts</div>
-                </div>
-                <div class="chore-actions">
-                    <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">✅</button>
-                    <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">❌</button>
-                </div>
-            </div>
+        <div class="chore-header">
+        <div class="chore-title-area">
+        <div class="chore-title">📌 ${task.name}</div>
+        <div class="chore-points">+${displayValue} pts</div>
+        </div>
+        <div class="chore-actions">
+        <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">✅</button>
+        <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">❌</button>
+        </div>
+        </div>
         `;
         container.appendChild(card);
     });
@@ -765,12 +765,12 @@ function renderChores() {
     
     let visibleChores = state.customChores.filter(c => c.assignees && state.activeUsers.some(uid => c.assignees.includes(uid)));
     visibleChores.sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1);
-
+    
     if (visibleChores.length === 0) {
         container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No assigned tasks.</div>';
         return;
     }
-
+    
     visibleChores.forEach(chore => {
         const linkedTask = state.tasks.find(t => t.uid === chore.linkedNiptoTask);
         const basePoints = linkedTask ? linkedTask.value : 0;
@@ -782,49 +782,49 @@ function renderChores() {
             const color = user ? user.color : "var(--text-main)"; 
             return `<span style="color: ${color}; font-size: 11px; font-weight: bold; margin-right: 6px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${name}</span>`;
         }).join('');
-
+        
         const card = document.createElement('div');
         card.className = `chore-card ${chore.completed ? 'completed' : ''}`;
         
         let actionHtml = '';
         if (state.isEditMode) {
             actionHtml = `<button class="chore-btn delete-btn" onclick="deleteChoreDB('${chore.uid}')" title="Delete Task permanently">🗑️</button>`;
-        } else {
+            } else {
             if (chore.completed) {
                 let uidsJson = JSON.stringify(chore.completedActivityUids || []).replace(/"/g, '&quot;'); 
                 let legacyUid = chore.completedActivityUid || "null";
                 actionHtml = `<button class="chore-btn undo-btn" onclick="undoChore('${chore.uid}', '${legacyUid}', '${uidsJson}')" title="Undo Complete">↩️</button>`;
-            } else {
+                } else {
                 actionHtml = `<button class="chore-btn complete-btn" onclick="completeChore('${chore.uid}', '${chore.linkedNiptoTask}')" title="Mark Complete">✅</button>`;
             }
         }
-
+        
         let completedUiHtml = '';
         if (chore.completed && chore.completedInfo) {
             const formattedDate = new Date(chore.completedInfo.date).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
             const eachText = chore.completedInfo.names.includes(',') ? 'each' : '';
             completedUiHtml = `
-                <div class="chore-completion-info">
-                    <b>✓ Logged by:</b> ${chore.completedInfo.names}<br>
-                    <b>🕒 When:</b> ${formattedDate}<br>
-                    <b>⭐ Awarded:</b> +${chore.completedInfo.pointsEach} pts ${eachText}
-                </div>`;
+            <div class="chore-completion-info">
+            <b>✓ Logged by:</b> ${chore.completedInfo.names}<br>
+            <b>🕒 When:</b> ${formattedDate}<br>
+            <b>⭐ Awarded:</b> +${chore.completedInfo.pointsEach} pts ${eachText}
+            </div>`;
         }
-
+        
         card.innerHTML = `
-            <div class="chore-header">
-                <div class="chore-title-area" onclick="document.getElementById('desc-${chore.uid}').classList.toggle('open'); document.getElementById('icon-${chore.uid}').classList.toggle('open');">
-                    <div class="chore-title">${chore.title} <span class="chore-expand-icon" id="icon-${chore.uid}">▼</span></div>
-                    <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">${assigneesHtml}</div>
-                    <div class="chore-points">+${displayPoints} pts</div>
-                </div>
-                <div class="chore-actions">${actionHtml}</div>
-            </div>
-            ${completedUiHtml}
-            <div class="chore-desc" id="desc-${chore.uid}">
-                ${chore.description ? chore.description.replace(/\n/g, '<br>') : '<i>No additional details</i>'}
-                ${state.isEditMode ? `<br><span style="font-size:11px; color:var(--primary); margin-top:5px; display:block;">Linked Task: ${linkedTask ? linkedTask.name : 'Unknown'}</span>` : ''}
-            </div>
+        <div class="chore-header">
+        <div class="chore-title-area" onclick="document.getElementById('desc-${chore.uid}').classList.toggle('open'); document.getElementById('icon-${chore.uid}').classList.toggle('open');">
+        <div class="chore-title">${chore.title} <span class="chore-expand-icon" id="icon-${chore.uid}">▼</span></div>
+        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">${assigneesHtml}</div>
+        <div class="chore-points">+${displayPoints} pts</div>
+        </div>
+        <div class="chore-actions">${actionHtml}</div>
+        </div>
+        ${completedUiHtml}
+        <div class="chore-desc" id="desc-${chore.uid}">
+        ${chore.description ? chore.description.replace(/\n/g, '<br>') : '<i>No additional details</i>'}
+        ${state.isEditMode ? `<br><span style="font-size:11px; color:var(--primary); margin-top:5px; display:block;">Linked Task: ${linkedTask ? linkedTask.name : 'Unknown'}</span>` : ''}
+        </div>
         `;
         container.appendChild(card);
     });
@@ -833,21 +833,21 @@ function renderChores() {
 async function completeChore(choreUid, linkedTaskUid) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
     if (state.activeUsers.length === 0) { alert("Select at least one user first!"); return; }
-
+    
     try {
         let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
         const exactFormatString = targetDate.toISOString();
         const baseTask = state.tasks.find(t => t.uid === linkedTaskUid);
         const pointsGiven = baseTask && baseTask.value > 0 ? Math.ceil(baseTask.value / state.currentSplitDivisor) : 0;
-
+        
         const activityUids = await api.logActivityToNipto(linkedTaskUid, exactFormatString);
         let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
-
+        
         await api.updateFirestoreDocument('custom_chores', choreUid, {
             completed: true, completedActivityUids: activityUids,
             completedInfo: { names: namesString, date: exactFormatString, pointsEach: pointsGiven }
         });
-
+        
         await api.loadChoresFromFirestore();
         renderChores();
         updateLeaderboardUI();
@@ -861,7 +861,7 @@ async function undoChore(choreUid, legacyActivityUid, activityUidsJson) {
         let uidsToDelete = [];
         if (activityUidsJson && activityUidsJson !== "undefined") uidsToDelete = JSON.parse(activityUidsJson.replace(/&quot;/g, '"'));
         if (uidsToDelete.length === 0 && legacyActivityUid && legacyActivityUid !== "null") uidsToDelete = [legacyActivityUid];
-
+        
         for (const uid of uidsToDelete) {
             await api.deleteActivityFromNipto(uid);
         }
@@ -900,7 +900,7 @@ function showAddTaskForm() {
     ALL_USERS.forEach(u => {
         assigneesContainer.innerHTML += `<label style="font-size: 13px; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="${u.uid}" class="chore-assignee-cb"> ${u.name}</label>`;
     });
-
+    
     const linkedTaskSelect = document.getElementById('choreLinkedTask');
     linkedTaskSelect.innerHTML = '<option value="">-- Select Linked Nipto Task --</option>';
     const assignedTasks = [
@@ -922,11 +922,11 @@ async function saveNewChore() {
     const desc = document.getElementById('choreDesc').value.trim();
     const linkedTask = document.getElementById('choreLinkedTask').value;
     const assignees = Array.from(document.querySelectorAll('.chore-assignee-cb:checked')).map(cb => cb.value);
-
+    
     if (!title || !linkedTask || assignees.length === 0) {
         alert("Please provide a title, assign at least one person, and link a Nipto task."); return;
     }
-
+    
     try {
         await api.addFirestoreDocument('custom_chores', {
             title: title, description: desc, linkedNiptoTask: linkedTask, assignees: assignees,
@@ -943,19 +943,19 @@ function renderTodoTasks() {
     const viewSelect = document.getElementById('viewSelect');
     const viewBy = viewSelect ? viewSelect.value : 'category';
     container.innerHTML = '';
-
+    
     if (!state.todoTasksData || state.todoTasksData.length === 0) {
         container.innerHTML = '<div class="empty-dashboard-msg" style="padding: 20px; text-align: center; color: var(--text-muted);">No general tasks found. Click "Add Task" to get started.</div>';
         return;
     }
-
+    
     const grouped = state.todoTasksData.reduce((acc, task) => {
         const key = task[viewBy] || 'Uncategorized';
         if (!acc[key]) acc[key] = [];
         acc[key].push(task);
         return acc;
     }, {});
-
+    
     // Sort categories based on User's saved preference
     let activeUser = state.activeUsers[0] || 'default';
     let savedOrder = JSON.parse(localStorage.getItem(`todo_sort_order_${activeUser}`) || '[]');
@@ -969,20 +969,20 @@ function renderTodoTasks() {
         if (idxB !== -1) return 1;
         return a.localeCompare(b);
     });
-
+    
     keys.forEach(key => {
         const section = document.createElement('div');
         section.className = 'group-section category-section';
         
         // Track collapsibility per user
         const isCatCollapsed = localStorage.getItem(`todo_cat_${activeUser}_${key}`) === 'true';
-
+        
         // Custom Sort Arrows HTML
         const orderControls = `<span class="sort-controls" style="font-size: 14px; margin-left: 10px; opacity: 0.5;">
-            <button onclick="moveCategory('${key}', -1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
-            <button onclick="moveCategory('${key}', 1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
+        <button onclick="moveCategory('${key}', -1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
+        <button onclick="moveCategory('${key}', 1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
         </span>`;
-
+        
         const header = document.createElement('h3');
         header.className = 'category-header collapsible-header';
         header.innerHTML = `${key} ${orderControls} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}" style="margin-left: auto;">▼</span>`;
@@ -990,31 +990,31 @@ function renderTodoTasks() {
         header.style.alignItems = 'center';
         header.style.color = 'var(--primary)';
         header.style.textTransform = 'capitalize';
-
+        
         const contentWrapper = document.createElement('div');
         contentWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
-
+        
         header.onclick = (e) => {
             if(e.target.tagName === 'BUTTON') return; // Ignore clicks on the arrow buttons
             const collapsed = contentWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
             saveCloudCollapsed("todo_" + key, collapsed)
         };
-
+        
         section.appendChild(header);
         grouped[key].sort((a, b) => {
-    // 1. Completed items drop to the bottom
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    
-    // 2. Individual tasks above multi-person tasks
-    const aIsIndividual = (a.assignees || []).length === 1;
-    const bIsIndividual = (b.assignees || []).length === 1;
-    if (aIsIndividual && !bIsIndividual) return -1;
-    if (!aIsIndividual && bIsIndividual) return 1;
-
-    return 0;
-});
-
+            // 1. Completed items drop to the bottom
+            if (a.completed !== b.completed) return a.completed ? 1 : -1;
+            
+            // 2. Individual tasks above multi-person tasks
+            const aIsIndividual = (a.assignees || []).length === 1;
+            const bIsIndividual = (b.assignees || []).length === 1;
+            if (aIsIndividual && !bIsIndividual) return -1;
+            if (!aIsIndividual && bIsIndividual) return 1;
+            
+            return 0;
+        });
+        
         grouped[key].forEach(task => {
             const card = document.createElement('div');
             card.className = `chore-card ${task.completed ? 'completed' : ''}`;
@@ -1026,7 +1026,7 @@ function renderTodoTasks() {
                 const pts = linkedTaskInfo ? Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor) : '?';
                 pointsDisplay = `<span style="color: var(--primary); font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">⭐ ${pts} pts</span>`;
             }
-
+            
             // Build Assignees HTML
             let assigneesHtml = '';
             if (task.assignees && task.assignees.length > 0) {
@@ -1035,30 +1035,30 @@ function renderTodoTasks() {
                     return u ? `<span style="color: ${u.color}; font-size: 11px; font-weight: bold; margin-right: 4px; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">👤 ${u.name}</span>` : '';
                 }).join('');
             }
-
+            
             const linkedTaskArg = task.linkedNiptoTask ? `'${task.linkedNiptoTask}'` : 'null';
-
+            
             card.innerHTML = `
-                <div class="chore-header">
-                    <div class="chore-title-area">
-                        <div class="chore-title" style="${task.completed ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${task.name}</div>
-                        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📁 ${task.category || 'None'}</span>
-                            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📍 ${task.location || 'N/A'}</span>
-                            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">⚡ ${task.priority}</span>
-                            ${assigneesHtml}
-                            ${pointsDisplay}
-                        </div>
-                    </div>
-                    <div class="chore-actions">
-                        <button class="chore-btn complete-btn" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})" title="Mark Complete/Incomplete">
-                            ${task.completed ? '⏪' : '✅'}
-                        </button>
-                        <button class="chore-btn" onclick="editTask('${task.id}')" title="Edit">✏️</button>
-                        <button class="chore-btn delete-btn" onclick="deleteTask('${task.id}')" title="Delete">🗑️</button>
-                    </div>
-                </div>
-                ${task.notes ? `<div class="chore-desc" style="display: block; margin-top: 8px;">${task.notes}</div>` : ''}
+            <div class="chore-header">
+            <div class="chore-title-area">
+            <div class="chore-title" style="${task.completed ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${task.name}</div>
+            <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📁 ${task.category || 'None'}</span>
+            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📍 ${task.location || 'N/A'}</span>
+            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">⚡ ${task.priority}</span>
+            ${assigneesHtml}
+            ${pointsDisplay}
+            </div>
+            </div>
+            <div class="chore-actions">
+            <button class="chore-btn complete-btn" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})" title="Mark Complete/Incomplete">
+            ${task.completed ? '⏪' : '✅'}
+            </button>
+            <button class="chore-btn" onclick="editTask('${task.id}')" title="Edit">✏️</button>
+            <button class="chore-btn delete-btn" onclick="deleteTask('${task.id}')" title="Delete">🗑️</button>
+            </div>
+            </div>
+            ${task.notes ? `<div class="chore-desc" style="display: block; margin-top: 8px;">${task.notes}</div>` : ''}
             `;
             contentWrapper.appendChild(card);
         });
@@ -1070,7 +1070,7 @@ function renderTodoTasks() {
 function updateTaskDatalists() {
     const categories = new Set();
     const locations = new Set();
-
+    
     // Pull from General To-Do Tasks
     if (state.todoTasksData) {
         state.todoTasksData.forEach(task => {
@@ -1078,7 +1078,7 @@ function updateTaskDatalists() {
             if (task.location && task.location.trim() !== "") locations.add(task.location.trim());
         });
     }
-
+    
     // Pull categories from Nipto Tasks
     if (state.tasks) {
         state.tasks.forEach(task => {
@@ -1087,10 +1087,10 @@ function updateTaskDatalists() {
             }
         });
     }
-
+    
     const catDatalist = document.getElementById('categoryOptions');
     const locDatalist = document.getElementById('locationOptions');
-
+    
     if (catDatalist) {
         catDatalist.innerHTML = Array.from(categories).sort().map(c => `<option value="${c}"></option>`).join('');
     }
@@ -1145,12 +1145,12 @@ async function saveTask() {
         notes: document.getElementById('taskNotes').value.trim(),
         assignees: assignees 
     };
-
+    
     if (!taskData.name) { alert("Task name is required!"); return; }
-
+    
     if (id) {
         await api.updateFirestoreDocument('custom_tasks', id, taskData);
-    } else {
+        } else {
         taskData.completed = false;
         await api.addFirestoreDocument('custom_tasks', taskData);
     }
@@ -1172,7 +1172,7 @@ async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
     if (!currentStatus && linkedNiptoTask && linkedNiptoTask !== 'null') {
         if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
         if (state.activeUsers.length === 0) { alert("Select who completed this task at the top of the dashboard first!"); return; }
-
+        
         let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
         
         try {
@@ -1185,7 +1185,7 @@ async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
             });
             updateLeaderboardUI();
         } catch (error) { alert("Error awarding points: " + error.message); }
-    } else {
+        } else {
         // Handling unlinked tasks or un-checking tasks
         await api.updateFirestoreDocument('custom_tasks', taskId, { 
             completed: !currentStatus,
@@ -1227,7 +1227,7 @@ function switchTab(tabName) {
         const pane = document.getElementById(`pane-${t}`);
         if(pane) pane.style.display = 'none';
     });
-
+    
     // Apply active styles to selected tab
     const activeBtn = document.getElementById(`tab-${tabName}`);
     if (activeBtn) {
@@ -1256,7 +1256,7 @@ function setMode(mode) {
         document.getElementById('btnLive').classList.add('active');
         document.getElementById('btnCustom').classList.remove('active');
         document.getElementById('customTimeBox').classList.remove('visible');
-    } else {
+        } else {
         document.getElementById('btnCustom').classList.add('active');
         document.getElementById('btnLive').classList.remove('active');
         document.getElementById('customTimeBox').classList.add('visible');
@@ -1345,7 +1345,7 @@ window.moveCategory = function(category, direction, type, event) {
         const containerId = type === 'todo' ? 'todoContainer' : 'mainContainer';
         const container = document.getElementById(containerId);
         savedOrder = Array.from(container.querySelectorAll('.category-header'))
-            .map(el => el.childNodes[0].textContent.trim());
+        .map(el => el.childNodes[0].textContent.trim());
     }
     
     const idx = savedOrder.indexOf(category);
@@ -1359,7 +1359,7 @@ window.moveCategory = function(category, direction, type, event) {
     if (type === 'todo') {
         saveCloudPreference('todoSortOrder', savedOrder);
         renderTodoTasks();
-    } else {
+        } else {
         saveCloudPreference('niptoSortOrder', savedOrder);
         renderTasks();
     }
@@ -1368,7 +1368,7 @@ window.moveCategory = function(category, direction, type, event) {
 function applyTheme(themeId) {
     let link = document.getElementById('dynamic-theme-css');
     if (link) link.remove();
-
+    
     if (THEMES[themeId]) {
         link = document.createElement('link');
         link.id = 'dynamic-theme-css';
@@ -1376,7 +1376,7 @@ function applyTheme(themeId) {
         link.href = THEMES[themeId];
         document.head.appendChild(link);
     }
-
+    
     document.querySelectorAll('.theme-option').forEach(btn => btn.classList.remove('active-theme'));
     const activeBtn = document.getElementById(`theme-opt-${themeId}`);
     if (activeBtn) activeBtn.classList.add('active-theme');
@@ -1419,7 +1419,7 @@ api.checkAuth(
             state.todoTasksData = [];
             const now = Date.now();
             const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
-
+            
             snapshot.forEach(doc => {
                 const data = doc.data();
                 
@@ -1497,7 +1497,7 @@ window.runSync = async () => {
         await api.loadTasksFromFirestore(); // 2. Pull the fresh data
         renderTasks();                      // 3. Redraw the UI
         renderPinnedTasks();
-    } else {
+        } else {
         alert("Sync script not loaded.");
     }
 };
@@ -1511,7 +1511,7 @@ function populateTodoAssignees(selectedUids = []) {
         const isChecked = selectedUids.includes(u.uid) ? 'checked' : '';
         container.innerHTML += `
         <label style="font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-            <input type="checkbox" value="${u.uid}" class="todo-assignee-cb" ${isChecked}> ${u.name}
+        <input type="checkbox" value="${u.uid}" class="todo-assignee-cb" ${isChecked}> ${u.name}
         </label>`;
     });
 }
@@ -1547,7 +1547,7 @@ function closeRoutineModal() {
 function editRoutine(routineId) {
     const routine = state.routines.find(r => r.uid === routineId);
     if (!routine) return;
-
+    
     document.getElementById('routineModalTitle').innerText = "Edit Routine";
     document.getElementById('routineId').value = routine.uid;
     document.getElementById('routineName').value = routine.name;
@@ -1561,15 +1561,15 @@ function editRoutine(routineId) {
         if (routine.schedule.resetType === 'specific') {
             document.getElementById('routineSpecificTimes').value = (routine.schedule.specificTimes || []).join(', ');
         }
-    } else if (freq === 'weekly') {
+        } else if (freq === 'weekly') {
         document.querySelectorAll('.routine-day-cb').forEach(cb => {
             cb.checked = (routine.schedule.daysOfWeek || []).includes(parseInt(cb.value));
         });
-    } else if (freq === 'interval') {
+        } else if (freq === 'interval') {
         document.getElementById('routineIntervalValue').value = routine.schedule.value || 1;
         document.getElementById('routineIntervalUnit').value = routine.schedule.unit || 'months';
     }
-
+    
     // Populate dropdowns and checkboxes
     populateRoutineAssignees(routine.assignees || []);
     populateRoutinePointsSelect();
@@ -1605,7 +1605,7 @@ function populateRoutineAssignees(selectedUids = []) {
         const isChecked = selectedUids.includes(u.uid) ? 'checked' : '';
         container.innerHTML += `
         <label style="font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-            <input type="checkbox" value="${u.uid}" class="routine-assignee-cb" ${isChecked}> ${u.name}
+        <input type="checkbox" value="${u.uid}" class="routine-assignee-cb" ${isChecked}> ${u.name}
         </label>`;
     });
 }
@@ -1613,9 +1613,9 @@ function populateRoutineAssignees(selectedUids = []) {
 function populateRoutinePointsSelect() {
     const select = document.getElementById('routinePoints');
     select.innerHTML = '<option value="">-- No Points --</option>';
-
+    
     if (!state.tasks || state.tasks.length === 0) return;
-
+    
     // 1. Group all database tasks by their category
     const groupedTasks = state.tasks.reduce((acc, task) => {
         // Fallback to 'Uncategorized' if a task somehow lacks a category
@@ -1623,29 +1623,29 @@ function populateRoutinePointsSelect() {
         
         // Skip the temporary pinned category if it exists
         if (categoryName === "📌") return acc;
-
+        
         if (!acc[categoryName]) {
             acc[categoryName] = [];
         }
         acc[categoryName].push(task);
         return acc;
     }, {});
-
+    
     // 2. Sort the categories alphabetically so the dropdown is organized
     const sortedCategories = Object.keys(groupedTasks).sort((a, b) => a.localeCompare(b));
-
+    
     // 3. Build the <optgroup> for each category
     sortedCategories.forEach(category => {
         const optGroup = document.createElement('optgroup');
         optGroup.label = category;
-
+        
         // Sort the tasks within this specific category alphabetically
         const tasksInCat = groupedTasks[category].sort((a, b) => a.name.localeCompare(b.name));
-
+        
         tasksInCat.forEach(t => {
             optGroup.innerHTML += `<option value="${t.uid}">${t.name} (${t.value} pts)</option>`;
         });
-
+        
         select.appendChild(optGroup);
     });
 }
@@ -1653,13 +1653,13 @@ function populateRoutinePointsSelect() {
 async function saveRoutine() {
     const name = document.getElementById('routineName').value.trim();
     if (!name) { alert("Routine Name is required!"); return; }
-
+    
     const assignees = Array.from(document.querySelectorAll('.routine-assignee-cb:checked')).map(cb => cb.value);
     if (assignees.length === 0) { alert("Assign the routine to at least one person!"); return; }
-
+    
     const freq = document.getElementById('routineFrequency').value;
     let scheduleData = { type: freq };
-
+    
     // Package the specific schedule rules based on selection
     if (freq === 'daily') {
         const resetType = document.getElementById('routineDailyReset').value;
@@ -1673,15 +1673,15 @@ async function saveRoutine() {
             // Sort times sequentially (e.g., 05:00 comes before 17:00)
             scheduleData.specificTimes.sort(); 
         }
-    } else if (freq === 'weekly') {
+        } else if (freq === 'weekly') {
         const days = Array.from(document.querySelectorAll('.routine-day-cb:checked')).map(cb => parseInt(cb.value));
         if (days.length === 0) { alert("Select at least one day of the week!"); return; }
         scheduleData.daysOfWeek = days;
-    } else if (freq === 'interval') {
+        } else if (freq === 'interval') {
         scheduleData.value = parseInt(document.getElementById('routineIntervalValue').value);
         scheduleData.unit = document.getElementById('routineIntervalUnit').value;
     }
-
+    
     // Define the base data that updates on both creation AND edit
     let routineData = {
         name: name,
@@ -1690,13 +1690,13 @@ async function saveRoutine() {
         schedule: scheduleData,
         linkedNiptoTask: document.getElementById('routinePoints').value || null
     };
-
+    
     const id = document.getElementById('routineId').value;
     try {
         if (id) {
             // UPDATE: Only update the settings, preserve the history
             await api.updateFirestoreDocument('routines', id, routineData);
-        } else {
+            } else {
             // NEW: Add creation timestamps and empty history objects
             routineData.createdAt = new Date().toISOString();
             routineData.lastCompleted = {};
@@ -1714,7 +1714,7 @@ async function saveRoutine() {
         if (typeof renderRoutines === 'function') renderRoutines();
         if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
         
-    } catch (error) {
+        } catch (error) {
         alert("Error saving routine: " + error.message);
     }
 }
@@ -1726,11 +1726,11 @@ async function saveRoutine() {
 function getRoutineStatus(routine, targetUids) {
     let lastComp = null;
     let compNames = "";
-
+    
     if (routine.completionType === 'shared') {
         lastComp = routine.lastCompleted ? routine.lastCompleted['shared'] : null;
         compNames = routine.lastCompletedBy ? routine.lastCompletedBy['shared'] : "Someone";
-    } else {
+        } else {
         let oldest = null;
         let allDone = true;
         let names = [];
@@ -1749,21 +1749,21 @@ function getRoutineStatus(routine, targetUids) {
             compNames = names.join(', ');
         }
     }
-
+    
     const now = new Date();
     
     if (!lastComp) {
         return { status: 'overdue', nextDue: new Date(0), isCompleted: false, compNames: "" }; 
     }
-
+    
     const baseDate = new Date(lastComp);
     let nextDue = new Date(baseDate);
-
+    
     if (routine.schedule.type === 'daily') {
         if (routine.schedule.resetType === 'midnight') {
             nextDue.setDate(nextDue.getDate() + 1);
             nextDue.setHours(0,0,0,0);
-        } else if (routine.schedule.resetType === 'specific') {
+            } else if (routine.schedule.resetType === 'specific') {
             let foundNext = false;
             
             // NEW: Cleans up AM/PM formats automatically so the math doesn't break
@@ -1779,10 +1779,10 @@ function getRoutineStatus(routine, targetUids) {
                 if (isAM && h === 12) h = 0;
                 return { h, m, orig: t };
             });
-
+            
             // Sort chronologically just in case
             cleanTimes.sort((a, b) => (a.h * 60 + a.m) - (b.h * 60 + b.m));
-
+            
             for (let timeObj of cleanTimes) {
                 let candidate = new Date(baseDate);
                 candidate.setHours(timeObj.h, timeObj.m, 0, 0);
@@ -1797,7 +1797,7 @@ function getRoutineStatus(routine, targetUids) {
                 nextDue.setHours(cleanTimes[0].h, cleanTimes[0].m, 0, 0);
             }
         }
-    } else if (routine.schedule.type === 'weekly') {
+        } else if (routine.schedule.type === 'weekly') {
         nextDue.setDate(nextDue.getDate() + 1); 
         nextDue.setHours(0,0,0,0);
         let safety = 0;
@@ -1805,7 +1805,7 @@ function getRoutineStatus(routine, targetUids) {
             nextDue.setDate(nextDue.getDate() + 1);
             safety++;
         }
-    } else if (routine.schedule.type === 'interval') {
+        } else if (routine.schedule.type === 'interval') {
         const val = routine.schedule.value;
         const unit = routine.schedule.unit;
         if (unit === 'days') nextDue.setDate(nextDue.getDate() + val);
@@ -1813,15 +1813,16 @@ function getRoutineStatus(routine, targetUids) {
         if (unit === 'months') nextDue.setMonth(nextDue.getMonth() + val);
         if (unit === 'years') nextDue.setFullYear(nextDue.getFullYear() + val);
     }
-
+    
     if (now >= nextDue) {
         let isOverdue = (now.getTime() - nextDue.getTime()) > (12 * 60 * 60 * 1000);
         return { status: isOverdue ? 'overdue' : 'due', nextDue: nextDue, isCompleted: false, compNames: "" };
-    } else {
+        } else {
         return { status: 'completed', nextDue: nextDue, isCompleted: true, compNames: compNames, completedAt: baseDate };
     }
 }
 
+// MAIN TAB RENDERER
 // MAIN TAB RENDERER
 function renderRoutines() {
     const container = document.getElementById('routinesContainer');
@@ -1831,41 +1832,44 @@ function renderRoutines() {
     if (!state.routines || state.routines.length === 0) {
         container.innerHTML = '<div class="empty-dashboard-msg">No routines set up yet.</div>'; return;
     }
-
-    // Filter routines applicable to the actively selected users
-    let visibleRoutines = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
     
-    // Calculate statuses
-    let evaluatedRoutines = visibleRoutines.map(r => {
-        return { routine: r, evaluation: getRoutineStatus(r, state.activeUsers) };
+    // Calculate statuses for ALL routines using their actual assignees, not just the active user
+    let evaluatedRoutines = state.routines.map(r => {
+        return { routine: r, evaluation: getRoutineStatus(r, r.assignees) };
     });
-
+    
     // Sort: Overdue -> Due -> Completed
-evaluatedRoutines.sort((a, b) => {
-    // 1. Overdue at the very top
-    if (a.evaluation.status === 'overdue' && b.evaluation.status !== 'overdue') return -1;
-    if (a.evaluation.status !== 'overdue' && b.evaluation.status === 'overdue') return 1;
-
-    // 2. Completed at the bottom
-    if (a.evaluation.isCompleted && !b.evaluation.isCompleted) return 1;
-    if (!a.evaluation.isCompleted && b.evaluation.isCompleted) return -1;
-
-    // 3. Individual tasks vs Multiple assignees (group tasks)
-    const aIsIndividual = a.routine.assignees.length === 1;
-    const bIsIndividual = b.routine.assignees.length === 1;
-    if (aIsIndividual && !bIsIndividual) return -1;
-    if (!aIsIndividual && bIsIndividual) return 1;
-
-    // 4. Default to next due date
-    return a.evaluation.nextDue - b.evaluation.nextDue;
-});
-
+    evaluatedRoutines.sort((a, b) => {
+        // 1. Overdue at the very top
+        if (a.evaluation.status === 'overdue' && b.evaluation.status !== 'overdue') return -1;
+        if (a.evaluation.status !== 'overdue' && b.evaluation.status === 'overdue') return 1;
+        
+        // 2. Completed at the bottom
+        if (a.evaluation.isCompleted && !b.evaluation.isCompleted) return 1;
+        if (!a.evaluation.isCompleted && b.evaluation.isCompleted) return -1;
+        
+        // 3. Individual tasks vs Multiple assignees (group tasks)
+        const aIsIndividual = a.routine.assignees.length === 1;
+        const bIsIndividual = b.routine.assignees.length === 1;
+        if (aIsIndividual && !bIsIndividual) return -1;
+        if (!aIsIndividual && bIsIndividual) return 1;
+        
+        // 4. Default to next due date
+        return a.evaluation.nextDue - b.evaluation.nextDue;
+    });
+    
     evaluatedRoutines.forEach(item => {
         const r = item.routine;
         const ev = item.evaluation;
         const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
         const ptsDisplay = linkedTaskInfo && linkedTaskInfo.value > 0 ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
-
+        
+        // Build Assignees HTML so you can see who it belongs to in the global list
+        const assigneesHtml = r.assignees.map(uid => {
+            const u = ALL_USERS.find(user => user.uid === uid);
+            return u ? `<span style="color: ${u.color}; font-size: 11px; font-weight: bold; margin-right: 4px; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">👤 ${u.name}</span>` : '';
+        }).join('');
+        
         const card = document.createElement('div');
         card.className = `chore-card ${ev.isCompleted ? 'completed' : ''}`;
         
@@ -1876,39 +1880,39 @@ evaluatedRoutines.sort((a, b) => {
         let completedText = '';
         if (ev.isCompleted) {
             completedText = `<div style="font-size: 12px; color: var(--success); margin-top: 5px; font-weight: bold;">
-                ✓ Completed by ${ev.compNames} (Resets ${ev.nextDue.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})})
+            ✓ Completed by ${ev.compNames} (Resets ${ev.nextDue.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})})
             </div>`;
         }
-
-let primaryActionBtn = '';
+        
+        let primaryActionBtn = '';
         if (ev.isCompleted) {
             primaryActionBtn = `<button class="chore-btn undo-btn" onclick="undoRoutine('${r.uid}')" title="Undo Complete">↩️</button>`;
-        } else {
+            } else {
             primaryActionBtn = `<button class="chore-btn complete-btn" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>`;
         }
-
-        // Always render all three buttons, just like the to-do list
+        
         let actionsHtml = `
-            ${primaryActionBtn}
-            <button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit">✏️</button>
-            <button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete">🗑️</button>
+        ${primaryActionBtn}
+        <button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit">✏️</button>
+        <button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete">🗑️</button>
         `;
-
+        
         card.innerHTML = `
-            <div class="chore-header">
-                <div class="chore-title-area">
-                    <div class="chore-title" style="${ev.isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">
-                        ${r.completionType === 'shared' ? '🤝' : '👤'} ${r.name}
-                    </div>
-                    <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                        ${statusBadge}
-                        <span style="font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); padding: 2px 6px; border-radius: 4px;">↻ ${r.schedule.type}</span>
-                        ${ptsDisplay ? `<span style="font-size: 11px; color: var(--primary); background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${ptsDisplay}</span>` : ''}
-                    </div>
-                    ${completedText}
-                </div>
-                <div class="chore-actions">${actionsHtml}</div>
-            </div>
+        <div class="chore-header">
+        <div class="chore-title-area">
+        <div class="chore-title" style="${ev.isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">
+        ${r.completionType === 'shared' ? '🤝' : '📋'} ${r.name}
+        </div>
+        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+        ${statusBadge}
+        ${assigneesHtml}
+        <span style="font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); padding: 2px 6px; border-radius: 4px;">↻ ${r.schedule.type}</span>
+        ${ptsDisplay ? `<span style="font-size: 11px; color: var(--primary); background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${ptsDisplay}</span>` : ''}
+        </div>
+        ${completedText}
+        </div>
+        <div class="chore-actions">${actionsHtml}</div>
+        </div>
         `;
         container.appendChild(card);
     });
@@ -1921,43 +1925,43 @@ function renderSidebarRoutines() {
     container.innerHTML = '';
     
     if (!state.routines) return;
-
+    
     let visibleRoutines = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
     let dueRoutines = visibleRoutines.map(r => ({ routine: r, evaluation: getRoutineStatus(r, state.activeUsers) }))
-                                     .filter(item => !item.evaluation.isCompleted); // Only show what needs doing
-
+    .filter(item => !item.evaluation.isCompleted); // Only show what needs doing
+    
     if (dueRoutines.length === 0) {
         container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">All caught up! 🎉</div>'; return;
     }
-
+    
     dueRoutines.forEach(item => {
         const r = item.routine;
         const card = document.createElement('div');
         card.className = 'chore-card';
         // Build Assignee Badges
-const assigneesHtml = r.assignees.map(uid => {
-    const u = ALL_USERS.find(user => user.uid === uid);
-    return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
-}).join('');
-
-// Format Schedule & Points
-const timeStr = item.evaluation.nextDue.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
-const pts = linkedTaskInfo && linkedTaskInfo.value > 0 ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
-
-card.innerHTML = `
-    <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        const assigneesHtml = r.assignees.map(uid => {
+            const u = ALL_USERS.find(user => user.uid === uid);
+            return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
+        }).join('');
+        
+        // Format Schedule & Points
+        const timeStr = item.evaluation.nextDue.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
+        const pts = linkedTaskInfo && linkedTaskInfo.value > 0 ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
+        
+        card.innerHTML = `
+        <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
         <div style="display: flex; justify-content: space-between; width: 100%;">
-            <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
-            <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
+        <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
+        <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
         </div>
         <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
-            <span>👥 ${assigneesHtml}</span>
-            <span>🕒 ${timeStr}</span>
-            ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
+        <span>👥 ${assigneesHtml}</span>
+        <span>🕒 ${timeStr}</span>
+        ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
         </div>
-    </div>
-`;
+        </div>
+        `;
         container.appendChild(card);
     });
 }
@@ -1966,45 +1970,45 @@ function renderSidebarTodos() {
     const container = document.getElementById('sidebarTodosContainer');
     if (!container) return;
     container.innerHTML = '';
-
+    
     if (!state.todoTasksData) return;
-
+    
     let visibleTodos = state.todoTasksData.filter(t => !t.completed && t.assignees && state.activeUsers.some(uid => t.assignees.includes(uid)));
     
     if (visibleTodos.length === 0) {
         container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No general to-dos assigned.</div>'; return;
     }
-
+    
     visibleTodos.forEach(task => {
         const linkedTaskArg = task.linkedNiptoTask ? `'${task.linkedNiptoTask}'` : 'null';
         const card = document.createElement('div');
         card.className = 'chore-card';
         // Build Assignee Badges
-const assigneesHtml = (task.assignees || []).map(uid => {
-    const u = ALL_USERS.find(user => user.uid === uid);
-    return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
-}).join('');
-
-// Get Points
-let pts = '';
-if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
-    const linkedTaskInfo = state.tasks.find(t => t.uid === task.linkedNiptoTask);
-    if (linkedTaskInfo) pts = `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts`;
-}
-
-card.innerHTML = `
-    <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        const assigneesHtml = (task.assignees || []).map(uid => {
+            const u = ALL_USERS.find(user => user.uid === uid);
+            return u ? `<span style="color: ${u.color}; font-size: 10px; margin-right: 3px;">${u.name}</span>` : '';
+        }).join('');
+        
+        // Get Points
+        let pts = '';
+        if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
+            const linkedTaskInfo = state.tasks.find(t => t.uid === task.linkedNiptoTask);
+            if (linkedTaskInfo) pts = `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts`;
+        }
+        
+        card.innerHTML = `
+        <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
         <div style="display: flex; justify-content: space-between; width: 100%;">
-            <div class="chore-title" style="font-size: 13px;">📋 ${task.name}</div>
-            <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})">✅</button>
+        <div class="chore-title" style="font-size: 13px;">📋 ${task.name}</div>
+        <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})">✅</button>
         </div>
         <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
-            <span>👥 ${assigneesHtml || 'Anyone'}</span>
-            <span style="color: ${task.priority === 'High' ? 'var(--danger)' : 'inherit'}">⚡ ${task.priority || 'Medium'}</span>
-            ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
+        <span>👥 ${assigneesHtml || 'Anyone'}</span>
+        <span style="color: ${task.priority === 'High' ? 'var(--danger)' : 'inherit'}">⚡ ${task.priority || 'Medium'}</span>
+        ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
         </div>
-    </div>
-`;
+        </div>
+        `;
         container.appendChild(card);
     });
 }
@@ -2013,10 +2017,10 @@ card.innerHTML = `
 async function completeRoutine(routineId, linkedNiptoTask) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
     if (state.activeUsers.length === 0) { alert("Select at least one user first!"); return; }
-
+    
     const routine = state.routines.find(r => r.uid === routineId);
     if (!routine) return;
-
+    
     let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
     let namesString = state.activeUsers.map(uid => ALL_USERS.find(u=>u.uid===uid).name).join(', ');
     
@@ -2027,30 +2031,30 @@ async function completeRoutine(routineId, linkedNiptoTask) {
             const tObj = state.tasks.find(t => t.uid === linkedNiptoTask);
             if(tObj) showToast(linkedNiptoTask, routine.name, Math.ceil(tObj.value / state.currentSplitDivisor), namesString);
         }
-
+        
         let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
         let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-
+        
         if (routine.completionType === 'shared') {
             newLastCompleted['shared'] = targetDate.toISOString();
             newLastCompletedBy['shared'] = namesString;
-        } else {
+            } else {
             state.activeUsers.forEach(uid => {
                 newLastCompleted[uid] = targetDate.toISOString();
                 newLastCompletedBy[uid] = ALL_USERS.find(u=>u.uid===uid).name;
             });
         }
-
+        
         await api.updateFirestoreDocument('routines', routineId, {
             lastCompleted: newLastCompleted,
             lastCompletedBy: newLastCompletedBy
         });
-
+        
         await api.loadRoutinesFromFirestore();
         renderRoutines();
         renderSidebarRoutines();
         updateLeaderboardUI();
-    } catch (error) {
+        } catch (error) {
         alert("Error completing routine: " + error.message);
     }
 }
@@ -2077,12 +2081,12 @@ window.renderSidebarTodos = renderSidebarTodos;
 // ==========================================
 async function syncRoutinesWithNiptoHistory() {
     if (!state.routines || !state.allWeekActivities) return;
-
+    
     let requiresDbUpdate = false;
-
+    
     for (const routine of state.routines) {
         if (!routine.linkedNiptoTask) continue; 
-
+        
         // Get the actual linked task object so we can match by name if the ID fails
         const linkedObj = state.tasks.find(t => t.uid === routine.linkedNiptoTask);
         
@@ -2098,18 +2102,18 @@ async function syncRoutinesWithNiptoHistory() {
         });
         
         if (matchingActivities.length === 0) continue;
-
+        
         matchingActivities.sort((a, b) => a.parsedDate - b.parsedDate);
-
+        
         let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
         let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
         let updatedThisRoutine = false;
-
+        
         for (const act of matchingActivities) {
             const actDateStr = act.parsedDate.toISOString();
             const actUserUid = (act.user && (act.user.uid || act.user.id)) || act.userId || "unknown";
             const actUserName = (act.user && act.user.name) ? act.user.name : "Someone";
-
+            
             if (routine.completionType === 'shared') {
                 const currentSharedDate = newLastCompleted['shared'];
                 if (!currentSharedDate || new Date(actDateStr) > new Date(currentSharedDate)) {
@@ -2117,7 +2121,7 @@ async function syncRoutinesWithNiptoHistory() {
                     newLastCompletedBy['shared'] = actUserName; 
                     updatedThisRoutine = true;
                 }
-            } else {
+                } else {
                 const currentUserDate = newLastCompleted[actUserUid];
                 if (!currentUserDate || new Date(actDateStr) > new Date(currentUserDate)) {
                     newLastCompleted[actUserUid] = actDateStr;
@@ -2126,7 +2130,7 @@ async function syncRoutinesWithNiptoHistory() {
                 }
             }
         }
-
+        
         if (updatedThisRoutine) {
             routine.lastCompleted = newLastCompleted;
             routine.lastCompletedBy = newLastCompletedBy;
@@ -2138,7 +2142,7 @@ async function syncRoutinesWithNiptoHistory() {
             }).catch(err => console.error("History auto-sync error:", err));
         }
     }
-
+    
     if (requiresDbUpdate) {
         if (typeof renderRoutines === 'function') renderRoutines();
         if (typeof renderSidebarRoutines === 'function') renderSidebarRoutines();
@@ -2148,7 +2152,7 @@ async function syncRoutinesWithNiptoHistory() {
 window.refreshDashboard = async () => {
     const btn = document.getElementById('refreshBtn');
     if (btn) { btn.innerText = "⏳ Syncing..."; btn.disabled = true; }
-
+    
     try {
         await api.loadTasksFromFirestore();
         await api.loadChoresFromFirestore();
@@ -2162,10 +2166,10 @@ window.refreshDashboard = async () => {
         renderSidebarRoutines();
         if (typeof renderTodoTasks === 'function') renderTodoTasks();
         if (typeof renderSidebarTodos === 'function') renderSidebarTodos();
-    } catch (e) {
+        } catch (e) {
         console.error("Refresh failed:", e);
     }
-
+    
     if (btn) { btn.innerText = "🔄 Refresh"; btn.disabled = false; }
 };
 
@@ -2173,22 +2177,22 @@ async function undoRoutine(routineId) {
     const routine = state.routines.find(r => r.uid === routineId);
     if (!routine) return;
     if (!confirm("Undo this routine? (Remember to delete the extra points in Nipto if applicable)")) return;
-
+    
     // Create copies of the records to modify
     let newLastCompleted = { ...routine.lastCompleted };
     let newLastCompletedBy = { ...routine.lastCompletedBy };
-
+    
     // Wipe the most recent completion for the active users or the shared group
     if (routine.completionType === 'shared') {
         delete newLastCompleted['shared'];
         delete newLastCompletedBy['shared'];
-    } else {
+        } else {
         state.activeUsers.forEach(uid => {
             delete newLastCompleted[uid];
             delete newLastCompletedBy[uid];
         });
     }
-
+    
     try {
         await api.updateFirestoreDocument('routines', routineId, {
             lastCompleted: newLastCompleted,
@@ -2197,7 +2201,7 @@ async function undoRoutine(routineId) {
         await api.loadRoutinesFromFirestore();
         renderRoutines();
         renderSidebarRoutines();
-    } catch (error) {
+        } catch (error) {
         alert("Error undoing routine: " + error.message);
     }
 }
