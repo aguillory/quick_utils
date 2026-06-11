@@ -204,3 +204,77 @@ select:focus, input[type="datetime-local"]:focus, .modal-content input:focus {
     0%, 100% { transform: translateY(0) rotate(15deg); }
     50% { transform: translateY(-8px) rotate(15deg); }
 }
+/* ==========================================
+   NEW ELEMENTS: MINECRAFT OVERRIDES
+   ========================================== */
+
+/* Floating User Indicator */
+#floating-user-indicator {
+    background: var(--card-bg);
+    border: 4px solid var(--border-color);
+    border-radius: 0px; /* No round corners in Minecraft */
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.4);
+    color: var(--text-main);
+    font-family: 'VT323', monospace;
+}
+.floating-avatar {
+    background: #9E9E9E; /* Stone */
+    border: 2px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--text-main);
+}
+
+/* Together Drawer */
+#together-drawer {
+    background: #7D7D7D; /* Stone background */
+    border: 4px solid var(--border-color);
+    border-radius: 0px;
+}
+.together-label {
+    background: #9E9E9E;
+    border: 4px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--text-main);
+    font-family: 'VT323', monospace;
+    box-shadow: inset -2px -2px 0px rgba(0,0,0,0.3), inset 2px 2px 0px rgba(255,255,255,0.4);
+}
+.together-label:hover {
+    background: var(--primary);
+}
+
+/* Theme Menu Options */
+.theme-option {
+    color: var(--text-main);
+    border-bottom: 4px solid var(--border-color);
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+}
+.theme-option:hover {
+    background: var(--primary);
+}
+.theme-option.active-theme {
+    color: #fff;
+    background: var(--primary-hover);
+}
+
+/* Datalist Input Override */
+input[list] {
+    background-color: #DDDDDD;
+    border: 4px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--text-main);
+    font-family: 'VT323', monospace;
+    box-shadow: inset 4px 4px 0px rgba(0,0,0,0.2);
+}
+
+/* Toast Notifications (Achievement Style) */
+.toast {
+    background: #212121;
+    border: 4px solid #555555;
+    color: var(--success); /* Experience Green */
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    border-radius: 0px;
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.6);
+    padding: 15px 20px;
+}

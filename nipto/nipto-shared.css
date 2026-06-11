@@ -88,7 +88,6 @@ h2 { font-size: 28px; margin-bottom: 5px; }
 }
 
 #status:empty { display: none; }
-
 /* ==========================================
    SIDEBARS (LEFT & RIGHT)
    ========================================== */
@@ -100,14 +99,14 @@ h2 { font-size: 28px; margin-bottom: 5px; }
     border-radius: 16px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     height: fit-content;
-    max-height: 85vh;
-    overflow-y: auto;
-    position: sticky;
-    top: 40px;
     box-sizing: border-box;
 }
 
-.sidebar h3 { font-size: 18px; margin-top: 0; margin-bottom: 12px; }
+.sidebar h3 { 
+    font-size: 18px; 
+    margin-top: 0; 
+    margin-bottom: 12px; 
+}
 
 .right-sidebar {
     grid-column: 3;
@@ -115,11 +114,15 @@ h2 { font-size: 28px; margin-bottom: 5px; }
     display: flex;
     flex-direction: column;
     gap: 20px;
-    position: sticky;
-    top: 40px;
     height: fit-content;
-    max-height: 85vh;
-    overflow-y: auto;
+}
+
+/* Limit just the left sidebar */
+.sidebar.left-sidebar {
+    max-height: 85vh;   /* Caps the height to 85% of your browser window */
+    overflow-y: auto;   /* Adds the scrollbar back */
+    position: sticky;   /* Keeps it pinned to the screen as you scroll down */
+    top: 40px;          /* Gives it a little breathing room from the top */
 }
 
 /* ==========================================

@@ -761,6 +761,7 @@ function renderPinnedTasks() {
 // --- ASSIGNED CHORES ---
 function renderChores() {
     const container = document.getElementById('choresContainer');
+    if (!container) return;
     container.innerHTML = '';
     
     let visibleChores = state.customChores.filter(c => c.assignees && state.activeUsers.some(uid => c.assignees.includes(uid)));
@@ -1300,7 +1301,8 @@ function initCollapsibles(sectionsArray) {
 const THEMES = {
     'boring': null, 
     'pixel': 'minecraft.css',
-    'tactical': 'blackops.css'
+    'tactical': 'blackops.css',
+    'homestead': 'homestead.css'
 };
 
 let currentTheme = localStorage.getItem('nipto_theme') || 'boring';

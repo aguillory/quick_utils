@@ -60,6 +60,7 @@
                             <button class="theme-option" id="theme-opt-boring" onclick="setTheme('boring')">👔 Boring Mode</button>
                             <button class="theme-option" id="theme-opt-pixel" onclick="setTheme('pixel')">⛏️ Pixel Mode</button>
                             <button class="theme-option" id="theme-opt-tactical" onclick="setTheme('tactical')">🎯 Tactical Mode</button>
+                            <button class="theme-option" id="theme-opt-homestead" onclick="setTheme('homestead')">🏡 Homestead Mode</button>
                         </div>
                     </div>
                     <button id="refreshBtn" class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212);">🔄 Refresh</button>
@@ -203,34 +204,7 @@
     </div>
 </div>
 
-            <div class="widget-panel">
-                <h4 class="collapsible-header" onclick="toggleSection('assigned-content', 'assign-icon', 'nipto_assign_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-                    📋 Assigned Tasks <span class="toggle-icon" id="assign-icon">▼</span>
-                </h4>
-                <div id="assigned-content" class="collapsible-content">
-                    <div id="choresContainer"></div>
-                    
-                    <div id="addTaskSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                        <button id="showAddTaskBtn" class="action-btn" onclick="promptAddTask()" style="width: 100%;">➕ Create Custom Task</button>
-                        
-                        <div id="addTaskForm" style="display: none; background: #f9fafb; padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-top: 10px; flex-direction: column; gap: 10px;">
-                            <input type="text" id="choreTitle" placeholder="Task Title" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
-                            <textarea id="choreDesc" placeholder="Description & Details..." rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-family: inherit; resize: vertical;"></textarea>
-                            
-                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To:</label>
-                            <div id="choreAssignees" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-
-                            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted); margin-top: 5px;">Link Nipto Task:</label>
-                            <select id="choreLinkedTask" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;"></select>
-
-                            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                                <button class="action-btn save-mode" onclick="saveNewChore()" style="flex: 1;">Save</button>
-                                <button class="action-btn" onclick="cancelAddTask()" style="flex: 1;">Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            
         </div>
 
     </div>
@@ -359,7 +333,7 @@
             </div>
         </div>
 
-        <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
+<label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
         <select id="routinePoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px;">
             </select>
         

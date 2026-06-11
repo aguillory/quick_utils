@@ -275,3 +275,151 @@ select:focus, input[type="datetime-local"]:focus, .modal-content input:focus {
 .adult-points-container {
 	background: #222;
 }
+
+/* ==========================================
+   NEW ELEMENTS: BLACK OPS OVERRIDES
+   ========================================== */
+
+/* Floating User Indicator */
+#floating-user-indicator {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0px; /* Sharp corners */
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(0,0,0,0.5);
+    color: var(--text-main);
+    font-family: 'Rajdhani', sans-serif;
+    text-transform: uppercase;
+}
+.floating-avatar {
+    background: var(--bg-color);
+    border: 1px solid var(--text-muted);
+    border-radius: 0px;
+}
+
+/* Together Drawer */
+#together-drawer {
+    background: rgba(10, 10, 10, 0.9);
+    border: 1px solid var(--border-color);
+    border-radius: 0px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+}
+.together-label {
+    background: #111111;
+    border: 1px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--text-main);
+    font-family: 'Rajdhani', sans-serif;
+    text-transform: uppercase;
+}
+.together-label:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 10px rgba(255, 115, 0, 0.3);
+}
+
+/* Theme Menu Options */
+.theme-option {
+    color: var(--text-main);
+    border-bottom: 1px solid var(--border-color);
+    font-family: 'Rajdhani', sans-serif;
+    text-transform: uppercase;
+}
+.theme-option:hover {
+    background: rgba(255, 115, 0, 0.1);
+    color: var(--primary);
+}
+.theme-option.active-theme {
+    color: var(--primary);
+    background: rgba(255, 115, 0, 0.15);
+    border-left: 3px solid var(--primary);
+}
+
+/* Datalist Input Override */
+input[list] {
+    background-color: #0D0D0D;
+    border: 1px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--primary);
+    font-family: 'Rajdhani', sans-serif;
+}
+input[list]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 10px rgba(255, 115, 0, 0.3);
+}
+
+/* Toast Notifications (Tactical Alerts) */
+.toast {
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid var(--primary);
+    border-left: 4px solid var(--primary);
+    color: var(--text-main);
+    font-family: 'Rajdhani', sans-serif;
+    border-radius: 0px;
+    text-transform: uppercase;
+    box-shadow: 0 0 15px rgba(255, 115, 0, 0.2);
+    padding: 12px 20px;
+}
+
+/* ==========================================
+   CHORE CARDS: BLACK OPS OVERRIDES
+   ========================================== */
+.chore-card { 
+    background: rgba(15, 15, 15, 0.9) !important; 
+    border: 1px solid var(--border-color) !important; 
+    border-radius: 0px !important; 
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8) !important;
+}
+
+.chore-card.completed { 
+    background: rgba(5, 5, 5, 0.7) !important; 
+    border-color: #222 !important; 
+    opacity: 0.5;
+}
+
+.chore-title { 
+    color: var(--text-main) !important; 
+    font-family: 'Rajdhani', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.chore-points { 
+    background: rgba(255, 115, 0, 0.15) !important; 
+    color: var(--primary) !important; 
+    border: 1px solid var(--primary);
+    border-radius: 0px !important;
+}
+
+.chore-desc { 
+    background: #080808 !important; 
+    color: var(--text-muted) !important; 
+    border: 1px solid #222; 
+    border-radius: 0px !important; 
+    font-family: 'Rajdhani', sans-serif;
+}
+
+.chore-btn { 
+    color: var(--text-main) !important; 
+    border-radius: 0px !important; 
+}
+
+.chore-btn:hover { 
+    background: rgba(255, 255, 255, 0.1) !important; 
+}
+
+.chore-btn.complete-btn:hover { 
+    background: rgba(57, 255, 20, 0.15) !important; 
+    color: var(--success) !important; 
+}
+
+.chore-btn.delete-btn:hover { 
+    background: rgba(255, 0, 0, 0.15) !important; 
+    color: var(--danger) !important; 
+}
+
+.chore-completion-info { 
+    background: rgba(57, 255, 20, 0.1) !important; 
+    color: var(--success) !important; 
+    border: 1px solid var(--success) !important; 
+    border-radius: 0px !important; 
+    font-family: 'Rajdhani', sans-serif;
+}
