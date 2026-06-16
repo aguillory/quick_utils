@@ -1,0 +1,317 @@
+/* ==========================================
+   GLOBAL VARIABLES & FULL RUSTIC OVERHAUL
+   ========================================== */
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Rye&family=Zilla+Slab:wght@400;600;700&display=swap');
+
+:root {
+    /* Deep Homestead Palette */
+    --primary: #8B3A3A;       /* Barn / Pomegranate Red */
+    --primary-hover: #6B2C2C; /* Darker Red */
+    --success: #4A5D23;       /* Fig Leaf / Sage */
+    --danger: #A33A3A;        /* Faded Rust */
+    --bg-color: #DCD3C6;      /* Aged Canvas / Burlap */
+    --card-bg: #F8F5F0;       /* Old Paper / Tallow Cream */
+    --text-main: #2C231E;     /* Deep Espresso / Soot */
+    --text-muted: #6B5C52;    /* Weathered Wood */
+    --border-color: #8C7A6B;  /* Twine */
+    
+    /* Dark Wood Elements */
+    --wood-dark: #3A2E28;
+    --wood-light: #5C4A42;
+}
+
+body { 
+    font-family: 'Zilla Slab', serif; 
+    margin: 0; 
+    background-color: var(--bg-color); 
+    color: var(--text-main);
+    /* Heavy canvas/burlap texture */
+    background-image: 
+        repeating-linear-gradient(45deg, rgba(44, 35, 30, 0.03) 25%, transparent 25%, transparent 75%, rgba(44, 35, 30, 0.03) 75%, rgba(44, 35, 30, 0.03)),
+        repeating-linear-gradient(45deg, rgba(44, 35, 30, 0.03) 25%, var(--bg-color) 25%, var(--bg-color) 75%, rgba(44, 35, 30, 0.03) 75%, rgba(44, 35, 30, 0.03));
+    background-position: 0 0, 10px 10px;
+    background-size: 20px 20px;
+}
+
+h1, h2, h3, h4 { 
+    font-family: 'Rye', cursive; /* Western/Rustic display font */
+    color: var(--text-main); 
+    letter-spacing: 1px;
+    text-shadow: 1px 1px 0px rgba(255,255,255,0.5);
+}
+
+/* ==========================================
+   CONTAINERS & LAYOUT (STITCHED LEATHER/CANVAS)
+   ========================================== */
+.header, .sidebar, .widget-panel, .modal-content {
+    background: var(--card-bg);
+    border: 3px dashed var(--border-color); /* Stitched look */
+    border-radius: 2px;
+    box-shadow: 4px 4px 0px rgba(44, 35, 30, 0.15); /* Hard, physical shadow */
+    position: relative;
+}
+
+/* Add "brass tacks" to the corners of the main header */
+.header::before, .header::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    background: #A67C52;
+    border: 2px solid #5C3A21;
+    border-radius: 50%;
+    top: 10px;
+    box-shadow: inset -2px -2px 4px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.3);
+}
+.header::before { left: 10px; }
+.header::after { right: 10px; }
+
+/* ==========================================
+   BUTTONS (CARVED WOOD)
+   ========================================== */
+.task-btn, .action-btn, .qt-btn, .ht-btn, .mode-btn { 
+    font-family: 'Zilla Slab', serif;
+    font-weight: 700;
+    font-size: 16px;
+    border-radius: 3px; 
+    border: 2px solid #1A1411;
+    background-color: var(--wood-dark); 
+    color: #F8F5F0;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 2px 2px 4px rgba(0,0,0,0.2);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.1s;
+}
+
+.task-btn:hover:not(:disabled), .action-btn:hover { 
+    background-color: var(--wood-light);
+    color: #FFF;
+    border-color: #1A1411;
+    transform: translateY(1px);
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.task-btn:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 2px 2px 8px rgba(0,0,0,0.8);
+}
+
+.task-btn.success, .action-btn.save-mode { 
+    background-color: var(--success); 
+    border-color: #2A3614;
+    color: #F8F5F0; 
+}
+
+/* ==========================================
+   USER TOGGLES (STAMPED TAGS)
+   ========================================== */
+.user-toggle {
+    background: var(--bg-color);
+    border: 2px dashed var(--border-color);
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+.user-name { 
+    font-family: 'Rye', cursive; 
+    color: var(--text-main); 
+    font-size: 24px;
+}
+
+.user-toggle.active {
+    background-color: var(--wood-dark);
+    border: 2px solid #1A1411;
+    border-style: solid;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+}
+.user-toggle.active .user-name { color: #F8F5F0; text-shadow: none; }
+.user-toggle.active .user-points { color: #DCD3C6; }
+
+/* ==========================================
+   CHORE CARDS (RECIPE CARDS)
+   ========================================== */
+.chore-card { 
+    background: #FFFfff !important; 
+    /* The red line at the top of an index card */
+    border-top: 12px solid var(--primary) !important; 
+    border-bottom: 2px solid var(--border-color) !important; 
+    border-left: 2px solid var(--border-color) !important; 
+    border-right: 2px solid var(--border-color) !important; 
+    border-radius: 2px !important; 
+    box-shadow: 2px 2px 5px rgba(44, 35, 30, 0.2) !important;
+    /* Faint blue ruled lines */
+    background-image: repeating-linear-gradient(transparent, transparent 24px, rgba(0, 100, 200, 0.1) 24px, rgba(0, 100, 200, 0.1) 25px) !important;
+    background-position: 0 10px !important;
+}
+
+.chore-title { 
+    font-family: 'Courier Prime', monospace; /* Typewriter font */
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text-main) !important; 
+}
+
+.chore-points { 
+    background: var(--bg-color) !important; 
+    color: var(--text-main) !important; 
+    border: 1px dashed var(--border-color);
+    border-radius: 0px !important;
+    font-family: 'Courier Prime', monospace;
+    font-weight: bold;
+}
+
+.chore-desc { 
+    background: transparent !important; 
+    border: none !important;
+    color: var(--text-main) !important; 
+    font-family: 'Courier Prime', monospace;
+    font-style: italic;
+}
+
+.chore-btn { color: var(--text-muted) !important; }
+.chore-btn:hover { background: var(--bg-color) !important; color: var(--text-main) !important; }
+
+.chore-btn.complete-btn:hover { 
+    background: rgba(74, 93, 35, 0.2) !important; 
+    color: var(--success) !important; 
+}
+
+.chore-completion-info { 
+    background: rgba(74, 93, 35, 0.1) !important; 
+    color: var(--success) !important; 
+    border: 1px dashed var(--success) !important; 
+    font-family: 'Courier Prime', monospace;
+}
+
+/* ==========================================
+   NEW UI ELEMENTS (DRAWER, TOASTS, ETC)
+   ========================================== */
+#floating-user-indicator {
+    background: var(--wood-dark);
+    border: 2px solid #1A1411;
+    border-radius: 4px;
+    box-shadow: 4px 4px 0px rgba(44, 35, 30, 0.4);
+    color: #F8F5F0;
+    font-family: 'Rye', cursive;
+    letter-spacing: 1px;
+}
+.floating-avatar {
+    background: var(--primary);
+    border: 1px solid #1A1411;
+    color: white;
+    font-family: 'Zilla Slab', serif;
+}
+
+#together-drawer {
+    background: var(--card-bg);
+    border: 3px dashed var(--border-color);
+    border-radius: 2px;
+}
+.together-label {
+    background: var(--bg-color);
+    border: 2px solid var(--border-color);
+    border-radius: 2px;
+    color: var(--text-main);
+    font-family: 'Zilla Slab', serif;
+    font-weight: 700;
+}
+.together-label:hover {
+    border-color: var(--wood-dark);
+    background: var(--border-color);
+}
+
+.theme-option {
+    font-family: 'Zilla Slab', serif;
+    font-weight: 600;
+    color: var(--text-main);
+    border-bottom: 2px dashed var(--border-color);
+}
+.theme-option:hover {
+    background: var(--bg-color);
+}
+.theme-option.active-theme {
+    color: var(--primary);
+    background: transparent;
+    font-weight: 700;
+}
+
+/* Select & Datalist Inputs (Typewriter style) */
+select, input[type="datetime-local"], .modal-content input, input[list] {
+    background-color: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 0px;
+    color: var(--text-main);
+    font-family: 'Courier Prime', monospace;
+    font-weight: bold;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05);
+}
+select:focus, input[type="datetime-local"]:focus, input[list]:focus {
+    border-color: var(--wood-dark);
+    outline: none;
+}
+
+/* Toast Notifications (Stamped paper) */
+.toast {
+    background: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-left: 8px solid var(--success);
+    color: var(--text-main);
+    font-family: 'Courier Prime', monospace;
+    font-weight: bold;
+    border-radius: 2px;
+    box-shadow: 4px 4px 0px rgba(44, 35, 30, 0.2);
+    padding: 12px 20px;
+}
+
+/* ==========================================
+   THE CROWN REPLACEMENT (COUNTY FAIR RIBBON)
+   ========================================== */
+.leader-crown {
+    font-size: 0 !important; /* Hides the default emoji */
+    position: absolute;
+    top: -20px;
+    right: -10px;
+    pointer-events: none;
+    z-index: 10;
+    /* Gentle flutter animation */
+    animation: flutter-ribbon 4s infinite ease-in-out; 
+    transform-origin: top center;
+    display: flex;
+    justify-content: center;
+}
+
+/* The Ribbon Tails */
+.leader-crown::before {
+    content: '';
+    position: absolute;
+    top: 20px; /* Sits just underneath the round badge */
+    width: 28px;
+    height: 40px;
+    background: var(--danger); /* Faded rust color for the tails */
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%);
+    z-index: 0;
+}
+
+/* The Round Rosette Badge */
+.leader-crown::after {
+    content: "1st";
+    font-family: 'Rye', cursive;
+    font-size: 16px;
+    color: #F8F5F0; /* Tallow cream text */
+    background: var(--primary); /* Deep Barn Red */
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 50%;
+    border: 2px dashed #DCD3C6; /* Canvas stitching effect */
+    box-shadow: 0 4px 6px rgba(44, 35, 30, 0.4);
+    box-sizing: border-box;
+    z-index: 1;
+    padding-top: 2px; /* Optical alignment for the Rye font */
+}
+
+@keyframes flutter-ribbon {
+    0%, 100% { transform: rotate(3deg) translateY(0); }
+    50% { transform: rotate(-3deg) translateY(-2px); }
+}
