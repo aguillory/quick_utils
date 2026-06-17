@@ -141,7 +141,7 @@ function decodeKey(pin) {
 }
 
 
-async function syncNiptoTasks() {
+export async function syncNiptoTasks() {
     // 1. Updated to match the IDs in common.html
     const statusText = document.getElementById('status');
     const syncBtn = document.getElementById('syncNiptoBtn');
@@ -258,3 +258,28 @@ async function syncNiptoTasks() {
     }
 }
 
+
+
+// Loads the activityUid → real-name map used to relabel generic "assigned task" history rows.
+export async function loadActivityLabelsFromFirestore() {
+    try {
+        const snapshot = await window.db.collection('activity_labels').get();
+        state.activityLabels = {};
+        snapshot.forEach(doc => { state.activityLabels[doc.id] = doc.data().name; });
+    } catch (e) {
+        console.error("Error loading activity labels:", e);
+        state.activityLabels = state.activityLabels || {};
+    }
+}
+
+// Stores the real (routine/to-do) name against each Nipto activity UID it created.
+export async function saveActivityLabels(activityUids, name) {
+    if (!activityUids || !activityUids.length || !name) return;
+    if (!state.activityLabels) state.activityLabels = {};
+    const batch = window.db.batch();
+    activityUids.forEach(uid => {
+        batch.set(window.db.collection('activity_labels').doc(uid), { name });
+        state.activityLabels[uid] = name;
+    });
+    try { await batch.commit(); } catch (e) { console.error("Error saving activity labels:", e); }
+}

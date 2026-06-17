@@ -28,6 +28,7 @@ export const state = {
     tempEditPrefs: new Set(),
     hasEnteredTaskPin: false,
     apiToken: localStorage.getItem("nipto_api_token") || ""
+
 };
 
 export function saveUserState() {
@@ -36,3 +37,4 @@ export function saveUserState() {
         users: state.activeUsers
     }));
 }
+state.activityLabels = {};
