@@ -40,7 +40,7 @@ export async function logTask(buttonElement, taskUid, taskName) {
         statusDiv.innerText = "";
 
         await logPromise;
-
+        
         if (state.routines) {
             const linkedRoutines = state.routines.filter(r => r.linkedNiptoTask === taskUid);
             let requiresRoutineRender = false;
@@ -122,14 +122,17 @@ export async function deleteTaskActivity(activityUid, btnElement) {
 // Either toggles a dashboard preference (edit mode) or logs the task.
 export function handleTaskClick(btn, taskUid, taskName) {
     if (state.isEditMode) {
+        const label = btn.querySelector('.edit-status-label');
         if (state.tempEditPrefs.has(taskUid)) {
             state.tempEditPrefs.delete(taskUid);
             btn.classList.remove('selected-pref');
             btn.classList.add('unselected-pref');
+            if (label) label.textContent = '❌ Hidden';
         } else {
             state.tempEditPrefs.add(taskUid);
             btn.classList.add('selected-pref');
             btn.classList.remove('unselected-pref');
+            if (label) label.textContent = '✅ Selected';
         }
     } else {
         logTask(btn, taskUid, taskName);
@@ -259,12 +262,12 @@ const orderControls = `
             if (state.isEditMode) {
                 btn.classList.add('edit-mode');
                 if (state.tempEditPrefs.has(task.uid)) {
-                    btn.classList.add('selected-pref');
-                    btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>`;
-                } else {
-                    btn.classList.add('unselected-pref');
-                    btn.innerHTML = `${taskContentHtml}<span style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>`;
-                }
+    btn.classList.add('selected-pref');
+    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>';
+} else {
+    btn.classList.add('unselected-pref');
+    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>';
+}
 
                 const targetUid = state.activeUsers[0];
                 const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);

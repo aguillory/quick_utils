@@ -102,3 +102,112 @@ export function initCollapsibles(sectionsArray) {
         }
     });
 }
+// Toggles the header between full view and a compact mini-bar.
+export function toggleHeaderCollapse() {
+    const full = document.getElementById('headerFullContent');
+    const mini = document.getElementById('headerMiniBar');
+    const btn = document.getElementById('headerCollapseBtn');
+    if (!full || !mini || !btn) return;
+
+    const collapsing = full.style.display !== 'none';
+    if (collapsing) {
+        full.style.display = 'none';
+        mini.style.display = 'flex'; // Changed to flex to respect our new single-line layout
+        btn.innerHTML = '🔽 Expand';
+        updateMiniUserDisplay();
+    } else {
+        full.style.display = 'block';
+        mini.style.display = 'none';
+        btn.innerHTML = '🔼 Collapse';
+    }
+    localStorage.setItem('nipto_header_collapsed', collapsing);
+}
+// Toggles the mini user dropdown
+export function toggleMiniUserMenu(event) {
+    // Stop the click from bubbling up and instantly triggering the document close listener
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    const menu = document.getElementById('miniUserMenu');
+    const toggleBtn = document.getElementById('miniUserToggleBtn');
+    if (!menu || !toggleBtn) return;
+    
+    // Toggle visibility
+    if (menu.style.display === 'flex') {
+        menu.style.display = 'none';
+        return;
+    }
+
+    menu.style.display = 'flex';
+    
+    // Populate the list items the first time it is opened
+    if (menu.children.length === 0) {
+        import('./state.js').then(function (mod) {
+            const ALL_USERS = mod.ALL_USERS;
+            let html = '';
+            
+            ALL_USERS.forEach(u => {
+                html += `<button type="button" class="theme-option" onclick="setActiveUser('${u.uid}')">👤 ${u.name}</button>`;
+            });
+            
+            menu.innerHTML = html;
+        });
+    }
+
+    // THE FIX: Move the menu to the body and position it absolutely 
+    // based on the button's coordinates to escape any CSS clipping masks
+    document.body.appendChild(menu);
+    
+    const rect = toggleBtn.getBoundingClientRect();
+    menu.style.position = 'absolute';
+    // Add window.scrollY to account for page scrolling
+    menu.style.top = `${rect.bottom + window.scrollY + 5}px`; 
+    menu.style.left = `${rect.left + window.scrollX}px`;
+    menu.style.zIndex = '99999'; // Ensure it's on top of everything
+}
+
+// Make it available to the inline HTML onclick
+window.toggleMiniUserMenu = toggleMiniUserMenu;
+
+// Close the menu if the user clicks anywhere (either outside the menu or selecting an item inside it)
+document.addEventListener('click', function () {
+    const menu = document.getElementById('miniUserMenu');
+    if (menu && menu.style.display === 'flex') {
+        menu.style.display = 'none';
+    }
+});
+// Refreshes the mini header bar to show the active user text on the button
+export function updateMiniUserDisplay() {
+    const btnText = document.getElementById('miniUserBtnText');
+    if (!btnText) return;
+
+    import('./state.js').then(function (mod) {
+        const state = mod.state;
+        const ALL_USERS = mod.ALL_USERS;
+        
+        if (!state.activeUsers || state.activeUsers.length === 0) {
+            btnText.innerText = '👤 Select User';
+            return;
+        }
+        
+        if (state.isTogetherMode) {
+            btnText.innerText = '🤝 Together';
+            return;
+        }
+
+        let names = state.activeUsers.map(uid => {
+            const u = ALL_USERS.find(user => user.uid === uid);
+            return u ? u.name : null;
+        }).filter(Boolean);
+        
+        btnText.innerText = '👤 ' + (names.length ? names.join(', ') : 'Select User');
+    });
+}
+// Restores the collapsed header state on load.
+export function initHeaderCollapse() {
+    if (localStorage.getItem('nipto_header_collapsed') === 'true') {
+        toggleHeaderCollapse();
+    }
+}

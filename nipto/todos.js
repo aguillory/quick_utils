@@ -8,147 +8,219 @@ import { populateTaskPointsSelect } from './niptoTasks.js';
 import { enableDragSort } from './dragSort.js';
 import { saveCloudPreference } from './preferences.js';
 
+// Priority ranking for sorting (high -> low)
+const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
+
+// Reads a filter <select> value safely.
+function getFilterValue(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : 'all';
+}
+// Hides a filter when it matches the current sort, and resets it so a
+// hidden filter never silently restricts the list.
+function updateTodoFilterVisibility(viewBy) {
+    const map = {
+        assigneeFilter: 'assignee',
+        categoryFilter: 'category',
+        locationFilter: 'location',
+        priorityFilter: 'priority'
+    };
+    Object.keys(map).forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const wrapper = el.closest('.todo-filter') || el;
+        if (viewBy === map[id]) {
+            el.value = 'all';
+            wrapper.style.display = 'none';
+        } else {
+            wrapper.style.display = '';
+        }
+    });
+}
 // Renders the grouped to-do list in the main pane.
 export function renderTodoTasks() {
     const container = document.getElementById('todoContainer');
+    populateTodoFilters();
     const viewSelect = document.getElementById('viewSelect');
-    const viewBy = viewSelect ? viewSelect.value : 'category'
-    const assigneeSel = document.getElementById('assigneeFilter');
-const assigneeFilter = assigneeSel ? assigneeSel.value : 'all';
-
-let sourceTasks = state.todoTasksData;
-if (assigneeFilter === 'unassigned') {
-    sourceTasks = sourceTasks.filter(t => !t.assignees || t.assignees.length === 0);
-} else if (assigneeFilter !== 'all') {
-    sourceTasks = sourceTasks.filter(t => t.assignees && t.assignees.includes(assigneeFilter));
-};
+    const viewBy = viewSelect ? viewSelect.value : 'category';
+    updateTodoFilterVisibility(viewBy);
+    const assigneeFilter = getFilterValue('assigneeFilter');
+    const categoryFilter = getFilterValue('categoryFilter');
+    const locationFilter = getFilterValue('locationFilter');
+    const priorityFilter = getFilterValue('priorityFilter');
+    let sourceTasks = state.todoTasksData || [];
+    if (viewBy !== 'assignee' && assigneeFilter !== 'all') {
+        if (assigneeFilter === 'unassigned') {
+            sourceTasks = sourceTasks.filter(function (t) { return !t.assignees || t.assignees.length === 0; });
+        } else {
+            sourceTasks = sourceTasks.filter(function (t) { return t.assignees && t.assignees.includes(assigneeFilter); });
+        }
+    }
+    if (viewBy !== 'category' && categoryFilter !== 'all') {
+        sourceTasks = sourceTasks.filter(function (t) { return (t.category || 'Uncategorized') === categoryFilter; });
+    }
+    if (viewBy !== 'location' && locationFilter !== 'all') {
+        sourceTasks = sourceTasks.filter(function (t) { return (t.location || 'N/A') === locationFilter; });
+    }
+    if (viewBy !== 'priority' && priorityFilter !== 'all') {
+        sourceTasks = sourceTasks.filter(function (t) { return (t.priority || 'Medium') === priorityFilter; });
+    }
     container.innerHTML = '';
-
-    if (!state.todoTasksData || sourceTasks.length === 0) {
+    if (sourceTasks.length === 0) {
         container.innerHTML = '<div class="empty-dashboard-msg" style="padding: 20px; text-align: center; color: var(--text-muted);">No general tasks found. Click "Add Task" to get started.</div>';
         return;
     }
-
-const grouped = sourceTasks.reduce((acc, task) => {
-        const key = task[viewBy] || 'Uncategorized';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(task);
-        return acc;
-    }, {});
-
-let activeUser = state.activeUsers[0] || 'default';
-let savedOrder = state.userPrefs.todoSortOrder || [];
-    let keys = Object.keys(grouped);
-
-    keys.sort((a, b) => {
-        let idxA = savedOrder.indexOf(a);
-        let idxB = savedOrder.indexOf(b);
-        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-        if (idxA !== -1) return -1;
-        if (idxB !== -1) return 1;
-        return a.localeCompare(b);
+    const grouped = {};
+    sourceTasks.forEach(function (task) {
+        if (viewBy === 'assignee') {
+            if (!task.assignees || task.assignees.length === 0) {
+                (grouped['Unassigned'] = grouped['Unassigned'] || []).push(task);
+            } else {
+                task.assignees.forEach(function (uid) {
+                    const u = ALL_USERS.find(function (user) { return user.uid === uid; });
+                    const name = u ? u.name : 'Unknown';
+                    (grouped[name] = grouped[name] || []).push(task);
+                });
+            }
+        } else {
+            let key;
+            if (viewBy === 'category') key = task.category || 'Uncategorized';
+            else if (viewBy === 'location') key = task.location || 'N/A';
+            else if (viewBy === 'priority') key = task.priority || 'Medium';
+            else key = task[viewBy] || 'Uncategorized';
+            (grouped[key] = grouped[key] || []).push(task);
+        }
     });
-
-    keys.forEach(key => {
+    const activeUser = state.activeUsers[0] || 'default';
+    let keys = Object.keys(grouped);
+    if (viewBy === 'priority') {
+        keys.sort(function (a, b) { return (PRIORITY_RANK[b] || 0) - (PRIORITY_RANK[a] || 0); });
+    } else {
+        const savedOrder = state.userPrefs.todoSortOrder || [];
+        keys.sort(function (a, b) {
+            const idxA = savedOrder.indexOf(a);
+            const idxB = savedOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b);
+        });
+    }
+    keys.forEach(function (key) {
         const section = document.createElement('div');
         section.className = 'group-section category-section';
-
-        const isCatCollapsed = localStorage.getItem(`todo_cat_${activeUser}_${key}`) === 'true';
-
-        const orderControls = `<span class="sort-controls" style="font-size: 14px; margin-left: 10px; opacity: 0.5;">
-        <button onclick="moveCategory('${key}', -1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
-        <button onclick="moveCategory('${key}', 1, 'todo', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
-        </span>`;
-
+        const isCatCollapsed = localStorage.getItem('todo_cat_' + activeUser + '_' + key) === 'true';
+        const orderControls =
+            '<span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">&#9776;</span>' +
+            '<span class="sort-controls" style="font-size: 14px; opacity: 0.5;">' +
+            '<button onclick="moveCategory(\'' + key + '\', -1, \'todo\', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">&#9650;</button>' +
+            '<button onclick="moveCategory(\'' + key + '\', 1, \'todo\', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">&#9660;</button>' +
+            '</span>';
         const header = document.createElement('h3');
         header.className = 'category-header collapsible-header';
-        header.innerHTML = `${key} ${orderControls} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}" style="margin-left: auto;">▼</span>`;
+        header.innerHTML = key + ' ' + orderControls +
+            ' <span class="toggle-icon ' + (isCatCollapsed ? 'collapsed' : '') + '" style="margin-left: auto;">&#9660;</span>';
         header.style.display = 'flex';
         header.style.alignItems = 'center';
         header.style.color = 'var(--primary)';
         header.style.textTransform = 'capitalize';
-
         const contentWrapper = document.createElement('div');
-        contentWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
-
-        header.onclick = (e) => {
-            if (e.target.tagName === 'BUTTON') return;
+        contentWrapper.className = 'collapsible-content ' + (isCatCollapsed ? 'collapsed' : '');
+        header.onclick = function (e) {
+            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('drag-handle')) return;
             const collapsed = contentWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
-            saveCloudCollapsed("todo_" + key, collapsed);
+            saveCloudCollapsed('todo_' + key, collapsed);
         };
-
         section.appendChild(header);
-        grouped[key].sort((a, b) => {
+        grouped[key].sort(function (a, b) {
             if (a.completed !== b.completed) return a.completed ? 1 : -1;
+            if (viewBy !== 'priority') {
+                const pr = (PRIORITY_RANK[b.priority] || 2) - (PRIORITY_RANK[a.priority] || 2);
+                if (pr !== 0) return pr;
+            }
             const aIsIndividual = (a.assignees || []).length === 1;
             const bIsIndividual = (b.assignees || []).length === 1;
             if (aIsIndividual && !bIsIndividual) return -1;
             if (!aIsIndividual && bIsIndividual) return 1;
             return 0;
         });
-
-        grouped[key].forEach(task => {
+        grouped[key].forEach(function (task) {
             const card = document.createElement('div');
-            card.className = `chore-card ${task.completed ? 'completed' : ''}`;
-
+            card.className = 'chore-card ' + (task.completed ? 'completed' : '');
             let pointsDisplay = '';
             if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
-                const linkedTaskInfo = state.tasks.find(t => t.uid === task.linkedNiptoTask);
+                const linkedTaskInfo = state.tasks.find(function (t) { return t.uid === task.linkedNiptoTask; });
                 const pts = linkedTaskInfo ? Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor) : '?';
-                pointsDisplay = `<span style="color: var(--primary); font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">⭐ ${pts} pts</span>`;
+                pointsDisplay = '<span style="color: var(--primary); font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">&#11088; ' + pts + ' pts</span>';
             }
-
             let assigneesHtml = '';
             if (task.assignees && task.assignees.length > 0) {
-                assigneesHtml = task.assignees.map(uid => {
-                    const u = ALL_USERS.find(user => user.uid === uid);
-                    return u ? `<span style="color: ${u.color}; font-size: 11px; font-weight: bold; margin-right: 4px; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">👤 ${u.name}</span>` : '';
+                assigneesHtml = task.assignees.map(function (uid) {
+                    const u = ALL_USERS.find(function (user) { return user.uid === uid; });
+                    return u ? '<span style="color: ' + u.color + '; font-size: 11px; font-weight: bold; margin-right: 4px; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128100; ' + u.name + '</span>' : '';
                 }).join('');
             }
-
-            const linkedTaskArg = task.linkedNiptoTask ? `'${task.linkedNiptoTask}'` : 'null';
-
-            card.innerHTML = `
-            <div class="chore-header">
-            <div class="chore-title-area">
-            <div class="chore-title" style="${task.completed ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${task.name}</div>
-            <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📁 ${task.category || 'None'}</span>
-            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">📍 ${task.location || 'N/A'}</span>
-            <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">⚡ ${task.priority}</span>
-            ${assigneesHtml}
-            ${pointsDisplay}
-            </div>
-            </div>
-            <div class="chore-actions">
-            <button class="chore-btn complete-btn" onclick="toggleTaskStatus('${task.id}', ${task.completed}, ${linkedTaskArg})" title="Mark Complete/Incomplete">
-            ${task.completed ? '⏪' : '✅'}
-            </button>
-            <button class="chore-btn" onclick="editTask('${task.id}')" title="Edit">✏️</button>
-            <button class="chore-btn delete-btn" onclick="deleteTask('${task.id}')" title="Delete">🗑️</button>
-            </div>
-            </div>
-            ${task.notes ? `<div class="chore-desc" style="display: block; margin-top: 8px;">${task.notes}</div>` : ''}
-            `;
+            const linkedTaskArg = task.linkedNiptoTask ? "'" + task.linkedNiptoTask + "'" : 'null';
+            card.innerHTML =
+                '<div class="chore-header">' +
+                '<div class="chore-title-area">' +
+                '<div class="chore-title" style="' + (task.completed ? 'text-decoration: line-through; color: var(--text-muted);' : '') + '">' + task.name + '</div>' +
+                '<div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">' +
+                '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128193; ' + (task.category || 'None') + '</span>' +
+                '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128205; ' + (task.location || 'N/A') + '</span>' +
+                '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#9889; ' + task.priority + '</span>' +
+                assigneesHtml +
+                pointsDisplay +
+                '</div>' +
+                '</div>' +
+                '<div class="chore-actions">' +
+                '<button class="chore-btn complete-btn" onclick="toggleTaskStatus(\'' + task.id + '\', ' + task.completed + ', ' + linkedTaskArg + ')" title="Mark Complete/Incomplete">' + (task.completed ? '&#9194;' : '&#9989;') + '</button>' +
+                '<button class="chore-btn" onclick="editTask(\'' + task.id + '\')" title="Edit">&#9999;&#65039;</button>' +
+                '<button class="chore-btn delete-btn" onclick="deleteTask(\'' + task.id + '\')" title="Delete">&#128465;&#65039;</button>' +
+                '</div>' +
+                '</div>' +
+                (task.notes ? '<div class="chore-desc" style="display: block; margin-top: 8px;">' + task.notes + '</div>' : '');
             contentWrapper.appendChild(card);
         });
         section.appendChild(contentWrapper);
         container.appendChild(section);
     });
-enableDragSort('todoContainer', (order) => saveCloudPreference('todoSortOrder', order));
+    enableDragSort('todoContainer', function (order) { saveCloudPreference('todoSortOrder', order); });
 }
-
-// Fills the assignee filter dropdown (keeps the static All/Unassigned options).
+// Fills the assignee filter dropdown and refreshes category/location filters.
 export function populateTodoAssigneeFilter() {
     const select = document.getElementById('assigneeFilter');
-    if (!select) return;
-    const current = select.value || 'all';
-    select.innerHTML = `
-        <option value="all">All Assignees</option>
-        <option value="unassigned">Anyone / Unassigned</option>`;
-    ALL_USERS.forEach(u => { select.innerHTML += `<option value="${u.uid}">${u.name}</option>`; });
-    select.value = current;
+    if (select) {
+        const current = select.value || 'all';
+        select.innerHTML = '<option value="all">All Assignees</option><option value="unassigned">Anyone / Unassigned</option>';
+        ALL_USERS.forEach(function (u) { select.innerHTML += '<option value="' + u.uid + '">' + u.name + '</option>'; });
+        select.value = current;
+    }
+    populateTodoFilters();
+}
+// Populates the category/location filter dropdowns from current task data.
+export function populateTodoFilters() {
+    const categories = new Set();
+    const locations = new Set();
+    (state.todoTasksData || []).forEach(function (t) {
+        if (t.category && t.category.trim() !== '') categories.add(t.category.trim());
+        if (t.location && t.location.trim() !== '') locations.add(t.location.trim());
+    });
+    const catSel = document.getElementById('categoryFilter');
+    if (catSel) {
+        const cur = catSel.value || 'all';
+        catSel.innerHTML = '<option value="all">All Categories</option>';
+        Array.from(categories).sort().forEach(function (c) { catSel.innerHTML += '<option value="' + c + '">' + c + '</option>'; });
+        catSel.value = Array.from(catSel.options).some(function (o) { return o.value === cur; }) ? cur : 'all';
+    }
+    const locSel = document.getElementById('locationFilter');
+    if (locSel) {
+        const cur = locSel.value || 'all';
+        locSel.innerHTML = '<option value="all">All Locations</option>';
+        Array.from(locations).sort().forEach(function (l) { locSel.innerHTML += '<option value="' + l + '">' + l + '</option>'; });
+        locSel.value = Array.from(locSel.options).some(function (o) { return o.value === cur; }) ? cur : 'all';
+    }
 }
 
 // Refreshes the category/location autocomplete datalists.

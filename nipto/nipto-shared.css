@@ -250,7 +250,17 @@ h2 { font-size: 28px; margin-bottom: 5px; }
 
 .task-btn.edit-mode { cursor: pointer; border-style: dashed; }
 .task-btn.edit-mode.selected-pref { border-color: var(--success); border-style: solid; background-color: rgba(16, 185, 129, 0.1); }
-.task-btn.edit-mode.unselected-pref { opacity: 0.4; filter: grayscale(100%); }
+.task-btn.edit-mode.unselected-pref {
+    opacity: 1;
+    filter: none;
+    border-color: var(--border-color);
+    background-color: #F9FAFB;
+    color: var(--text-muted);
+}
+.task-btn.edit-mode.unselected-pref .pin-task-btn.active {
+    opacity: 1;
+    filter: grayscale(0%);
+}
 
 .user-select-container { margin-bottom: 30px; }
 select, input[type="datetime-local"] { padding: 10px; font-size: 15px; border-radius: 8px; border: 2px solid var(--border-color); background-color: #F9FAFB; color: var(--text-main); font-family: inherit; outline: none; cursor: pointer; }

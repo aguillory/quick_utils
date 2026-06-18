@@ -37,8 +37,9 @@ export async function toggleEditMode() {
         alert("Please select a specific person's button before clicking Edit Dashboard.");
         return;
     }
-
+    
     const btn = document.getElementById('editBtn');
+    const miniBtn = document.getElementById('miniEditBtn'); // NEW
     const floatingBtn = document.getElementById('floating-save-btn');
     const syncBtn = document.getElementById('syncNiptoBtn');
     const statusDiv = document.getElementById('status');
@@ -46,43 +47,75 @@ export async function toggleEditMode() {
 
     if (!state.isEditMode) {
         state.isEditMode = true;
-        btn.innerText = "💾 Save Dashboard";
-        btn.classList.add('save-mode');
+        
+        // Update main edit button
+        if (btn) {
+            btn.innerHTML = "💾 Save Dashboard";
+            btn.classList.add('save-mode');
+        }
+        
+        // Update mini-bar edit button
+        if (miniBtn) {
+            miniBtn.innerHTML = "💾 Save";
+            miniBtn.classList.add('save-mode');
+        }
 
-        floatingBtn.style.display = 'block';
-        floatingBtn.innerText = "💾 Save Dashboard";
-        floatingBtn.disabled = false;
-
+        if (floatingBtn) {
+            floatingBtn.style.display = 'block';
+            floatingBtn.innerHTML = "💾 Save Dashboard";
+            floatingBtn.disabled = false;
+        }
+        
         if (syncBtn) syncBtn.style.display = 'inline-block';
-        viewAllBtn.style.display = 'none';
+        if (viewAllBtn) viewAllBtn.style.display = 'none';
+        
         statusDiv.innerText = `EDIT MODE: Modifying dashboard for ${ALL_USERS.find(u => u.uid === state.activeUsers[0]).name}`;
         statusDiv.style.color = "var(--primary)";
-
         state.tempEditPrefs = getUserPreferences();
         state.hasEnteredTaskPin = false;
-
         if (state.isViewAllMode) toggleViewAll();
         renderTasks();
     } else {
-        btn.innerText = "⏳ Saving...";
-        btn.disabled = true;
-        floatingBtn.innerText = "⏳ Saving...";
-        floatingBtn.disabled = true;
+        // Saving state...
+        if (btn) {
+            btn.innerHTML = "💾 Saving...";
+            btn.disabled = true;
+        }
+        if (miniBtn) {
+            miniBtn.innerHTML = "💾 Saving...";
+            miniBtn.disabled = true;
+        }
+        if (floatingBtn) {
+            floatingBtn.innerHTML = "💾 Saving...";
+            floatingBtn.disabled = true;
+        }
         if (syncBtn) syncBtn.disabled = true;
-
+        
         await savePreferencesToFirestore();
-
+        
+        // Reset state
         state.isEditMode = false;
         state.hasEnteredTaskPin = false;
-        btn.innerText = "✏️ Edit Dashboard";
-        btn.classList.remove('save-mode');
-        btn.disabled = false;
-
-        floatingBtn.style.display = 'none';
-
-        if (syncBtn) { syncBtn.style.display = 'none'; syncBtn.disabled = false; }
-        viewAllBtn.style.display = 'inline-block';
-
+        
+        if (btn) {
+            btn.innerHTML = "✏️ Edit Dashboard";
+            btn.classList.remove('save-mode');
+            btn.disabled = false;
+        }
+        
+        if (miniBtn) {
+            miniBtn.innerHTML = "✏️ Edit";
+            miniBtn.classList.remove('save-mode');
+            miniBtn.disabled = false;
+        }
+        
+        if (floatingBtn) floatingBtn.style.display = 'none';
+        if (syncBtn) { 
+            syncBtn.style.display = 'none'; 
+            syncBtn.disabled = false; 
+        }
+        if (viewAllBtn) viewAllBtn.style.display = 'inline-block';
+        
         statusDiv.innerText = "";
         statusDiv.style.color = "var(--text-main)";
         renderTasks();

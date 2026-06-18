@@ -48,98 +48,117 @@
             </div>
         </div>
 
-        <div class="header">
-            <div class="dashboard-header-controls" style="margin-bottom: 15px;">
-                <h2 style="margin: 0;">Household Dashboard</h2>
+<div class="header" id="dashboardHeader" style="position: relative; z-index: 100;">    <!-- NEW: Unified top row to keep everything on one exact line -->
+    <div id="headerTopRow" style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: nowrap; overflow: visible;">
+        
+        <!-- Mini Bar Content (Hidden when expanded) -->
+        <div id="headerMiniBar" style="display: none; align-items: center; gap: 10px; flex-grow: 1; flex-wrap: nowrap;">
+            
+            <!-- NEW: User Dropdown Button -->
+            <div class="user-selector-container" style="position: relative; display: inline-block; flex-shrink: 0;">
+                <button id="miniUserToggleBtn" class="action-btn" onclick="toggleMiniUserMenu(event)" style="white-space: nowrap; display: flex; align-items: center; gap: 5px;">
+                    <span id="miniUserBtnText">👤 User</span>
+                    <span style="font-size: 10px;">▼</span>
+                </button>
                 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    
-                    <div class="theme-selector-container" style="position: relative; display: inline-block;">
-                        <button id="themeToggleBtn" class="action-btn" onclick="toggleThemeMenu()">🎨 Theme ▼</button>
-                        <div id="themeMenu" style="display: none; position: absolute; top: 100%; left: 0; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; flex-direction: column; min-width: 160px; overflow: hidden; margin-top: 5px;">
-                            <button class="theme-option" id="theme-opt-boring" onclick="setTheme('boring')">👔 Boring Mode</button>
-                            <button class="theme-option" id="theme-opt-pixel" onclick="setTheme('pixel')">⛏️ Pixel Mode</button>
-                            <button class="theme-option" id="theme-opt-tactical" onclick="setTheme('tactical')">🎯 Tactical Mode</button>
-                            <button class="theme-option" id="theme-opt-homestead" onclick="setTheme('homestead')">🏡 Homestead Mode</button>
-                        </div>
-                    </div>
-                    <button id="refreshBtn" class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212);">🔄 Refresh</button>
-                    <button id="syncNiptoBtn" class="action-btn" onclick="runSync()" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄 Sync Tasks</button>
-                    <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
-                    <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
+                <!-- Hidden Dropdown Menu -->
+                <div id="miniUserMenu" style="display: none; position: absolute; top: 100%; left: 0; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; flex-direction: column; min-width: 140px; overflow: hidden; margin-top: 5px;">
+                    <!-- Populated dynamically by JavaScript -->
                 </div>
             </div>
             
-            <div class="controls-wrapper" style="margin-top: 0; margin-bottom: 25px;">
-                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                    <div style="font-weight: bold; color: var(--text-main); font-size: 15px;">When was the task completed?</div>
-                    <div class="mode-toggle" style="margin: 0;">
-                        <button class="mode-btn active" id="btnLive" onclick="setMode('live')">Now</button>
-                        <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Earlier</button>
-                    </div>
-                </div>
-
-                <div class="custom-time-container" id="customTimeBox">
-                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                        <input type="datetime-local" id="taskDate">
-                        <div class="quick-times">
-                            <button class="qt-btn" onclick="setTimeOffset(-15)">-15m</button>
-                            <button class="qt-btn" onclick="setTimeOffset(-60)">-1h</button>
-                            <button class="qt-btn" onclick="setTimeOffset(-1440)">-1 Day</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="status" style="margin: 0; font-weight: bold; min-height: 0;"></div>
-            </div>
-
-            <div style="text-align: center; font-weight: 800; margin-bottom: 10px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
-            
-            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px;">
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
-                    <div class="user-toggle active" style="max-width: 250px;" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
-                        <div class="user-name">Ayden</div>
-                        <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
-                    </div>
-                    <div class="user-toggle inactive" style="max-width: 250px;" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
-                        <div class="user-name">DJ</div>
-                        <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
-                    </div>
-                </div>
-                
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
-                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-Llb9JjyTDvMnn8SJWfizXgthxl83" onclick="setActiveUser('Llb9JjyTDvMnn8SJWfizXgthxl83')">
-                        <div class="user-name">Alyssa</div>
-                        <div class="user-points" id="points-Llb9JjyTDvMnn8SJWfizXgthxl83">-- pts</div>
-                    </div>
-                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-cHnAKABalRf0gETPsDt9EiJLyZd2" onclick="setActiveUser('cHnAKABalRf0gETPsDt9EiJLyZd2')">
-                        <div class="user-name">Devyn</div>
-                        <div class="user-points" id="points-cHnAKABalRf0gETPsDt9EiJLyZd2">-- pts</div>
-                    </div>
-                    <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2" onclick="setActiveUser('2pxnC1oGlZbLQLmu9UJJVPYOEmZ2')">
-                        <div class="user-name">Carrina</div>
-                        <div class="user-points" id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2">-- pts</div>
-                    </div>
-                </div>
-
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
-                    <div class="user-toggle inactive" style="max-width: 300px;" id="toggle-together" onclick="toggleTogetherMode()">
-                        <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
-                        <div class="user-points" style="font-size: 11px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="together-drawer">
-                <div style="text-align: center; font-size: 13px; font-weight: bold; color: var(--text-muted); margin-bottom: 5px;">Select everyone who helped:</div>
-                <div class="together-checkboxes" id="together-checkbox-container">
-                    </div>
-            </div>
-
-            <div id="leaderboard-container" class="adult-points-container" style="margin-top: 10px;">
-                Loading rankings...
+            <!-- Action buttons pushed to the right -->
+            <div style="display: flex; gap: 8px; margin-left: auto; flex-shrink: 0;">
+                <button id="miniEditBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="white-space: nowrap;">✏️ Edit</button>
+                <button class="action-btn" onclick="toggleViewAll()" style="white-space: nowrap;">👀 All Tasks</button>
+                <button class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212); padding: 8px 12px;" title="Refresh">🔄</button>
             </div>
         </div>
 
+        <!-- Collapse Button (Always visible on the right) -->
+        <button id="headerCollapseBtn" class="action-btn" onclick="toggleHeaderCollapse()" style="white-space: nowrap; flex-shrink: 0;">🔼 Collapse</button>
+    </div>
+
+    <div id="headerFullContent">
+        <div class="dashboard-header-controls" style="margin-bottom: 15px;">
+            <h2 style="margin: 0;">Household Dashboard</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <div class="theme-selector-container" style="position: relative; display: inline-block;">
+                    <button id="themeToggleBtn" class="action-btn" onclick="toggleThemeMenu()">🎨 Theme ▼</button>
+                    <div id="themeMenu" style="display: none; position: absolute; top: 100%; left: 0; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; flex-direction: column; min-width: 160px; overflow: hidden; margin-top: 5px;">
+                        <button class="theme-option" id="theme-opt-boring" onclick="setTheme('boring')">👔 Boring Mode</button>
+                        <button class="theme-option" id="theme-opt-pixel" onclick="setTheme('pixel')">⛏️ Pixel Mode</button>
+                        <button class="theme-option" id="theme-opt-tactical" onclick="setTheme('tactical')">🎯 Tactical Mode</button>
+                        <button class="theme-option" id="theme-opt-homestead" onclick="setTheme('homestead')">🏡 Homestead Mode</button>
+                    </div>
+                </div>
+                <button id="refreshBtn" class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212);">🔄 Refresh</button>
+                <button id="syncNiptoBtn" class="action-btn" onclick="runSync()" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄 Sync Tasks</button>
+                <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
+                <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
+            </div>
+        </div>
+        <div class="controls-wrapper" style="margin-top: 0; margin-bottom: 25px;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <div style="font-weight: bold; color: var(--text-main); font-size: 15px;">When was the task completed?</div>
+                <div class="mode-toggle" style="margin: 0;">
+                    <button class="mode-btn active" id="btnLive" onclick="setMode('live')">Now</button>
+                    <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Earlier</button>
+                </div>
+            </div>
+            <div class="custom-time-container" id="customTimeBox">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <input type="datetime-local" id="taskDate">
+                    <div class="quick-times">
+                        <button class="qt-btn" onclick="setTimeOffset(-15)">-15m</button>
+                        <button class="qt-btn" onclick="setTimeOffset(-60)">-1h</button>
+                        <button class="qt-btn" onclick="setTimeOffset(-1440)">-1 Day</button>
+                    </div>
+                </div>
+            </div>
+            <div id="status" style="margin: 0; font-weight: bold; min-height: 0;"></div>
+        </div>
+        <div style="text-align: center; font-weight: 800; margin-bottom: 10px; color: var(--text-muted); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Who completed the task?</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                <div class="user-toggle active" style="max-width: 250px;" id="toggle-NMRQaRQbvCwBaJbiMFId" onclick="setActiveUser('NMRQaRQbvCwBaJbiMFId')">
+                    <div class="user-name">Ayden</div>
+                    <div class="user-points" id="points-NMRQaRQbvCwBaJbiMFId">-- pts</div>
+                </div>
+                <div class="user-toggle inactive" style="max-width: 250px;" id="toggle-RMNUTP8VOHD9PDzNjf0g" onclick="setActiveUser('RMNUTP8VOHD9PDzNjf0g')">
+                    <div class="user-name">DJ</div>
+                    <div class="user-points" id="points-RMNUTP8VOHD9PDzNjf0g">-- pts</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-Llb9JjyTDvMnn8SJWfizXgthxl83" onclick="setActiveUser('Llb9JjyTDvMnn8SJWfizXgthxl83')">
+                    <div class="user-name">Alyssa</div>
+                    <div class="user-points" id="points-Llb9JjyTDvMnn8SJWfizXgthxl83">-- pts</div>
+                </div>
+                <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-cHnAKABalRf0gETPsDt9EiJLyZd2" onclick="setActiveUser('cHnAKABalRf0gETPsDt9EiJLyZd2')">
+                    <div class="user-name">Devyn</div>
+                    <div class="user-points" id="points-cHnAKABalRf0gETPsDt9EiJLyZd2">-- pts</div>
+                </div>
+                <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2" onclick="setActiveUser('2pxnC1oGlZbLQLmu9UJJVPYOEmZ2')">
+                    <div class="user-name">Carrina</div>
+                    <div class="user-points" id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2">-- pts</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
+                <div class="user-toggle inactive" style="max-width: 300px;" id="toggle-together" onclick="toggleTogetherMode()">
+                    <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
+                    <div class="user-points" style="font-size: 11px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
+                </div>
+            </div>
+        </div>
+        <div id="together-drawer">
+            <div style="text-align: center; font-size: 13px; font-weight: bold; color: var(--text-muted); margin-bottom: 5px;">Select everyone who helped:</div>
+            <div class="together-checkboxes" id="together-checkbox-container"></div>
+        </div>
+        <div id="leaderboard-container" class="adult-points-container" style="margin-top: 10px;">
+            Loading rankings...
+        </div>
+    </div></div>
         <div class="main-content">
 <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px;">
         <button id="tab-nipto" class="action-btn active" onclick="switchTab('nipto')" style="flex: 1;">🔵 Nipto Chores</button>
@@ -179,20 +198,50 @@
         <div id="allRoutinesContainer"></div>
     </div>
 </div>
-
-    <div id="pane-todo" style="display: none;">
-        <div class="controls" style="display: flex; gap: 10px; margin-bottom: 15px;">
+  <div id="pane-todo" style="display: none;">
+    <div class="controls" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
+        <label class="todo-filter" style="font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+            Sort by:
+            <select id="viewSelect" onchange="renderTodoTasks()"
+                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="category">Category</option>
+                <option value="location">Location</option>
+                <option value="priority">Priority</option>
+                <option value="assignee">Assignee</option>
+            </select>
+        </label>
+        <label class="todo-filter" style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
             <select id="assigneeFilter" onchange="renderTodoTasks()"
-    style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
-    <option value="all">All Assignees</option>
-    <option value="unassigned">Anyone / Unassigned</option>
-</select>
-            <button class="action-btn save-mode" onclick="openTaskModal()">➕ Add Task</button>
-        </div>
-        <div id="todoContainer"></div>
+                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="all">All Assignees</option>
+                <option value="unassigned">Anyone / Unassigned</option>
+            </select>
+        </label>
+        <label class="todo-filter" style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+            <select id="categoryFilter" onchange="renderTodoTasks()"
+                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="all">All Categories</option>
+            </select>
+        </label>
+        <label class="todo-filter" style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+            <select id="locationFilter" onchange="renderTodoTasks()"
+                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="all">All Locations</option>
+            </select>
+        </label>
+        <label class="todo-filter" style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+            <select id="priorityFilter" onchange="renderTodoTasks()"
+                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="all">All Priorities</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+            </select>
+        </label>
+        <button class="action-btn save-mode" onclick="openTaskModal()">➕ Add Task</button>
     </div>
-</div>
-
+    <div id="todoContainer"></div>
+  </div></div>
 <div class="right-sidebar">
     <div class="widget-panel">
         <h4 class="collapsible-header" onclick="toggleSection('pinned-content', 'pin-icon', 'nipto_pin_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">

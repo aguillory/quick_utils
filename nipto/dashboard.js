@@ -5,7 +5,7 @@ import { state } from './state.js';
 import * as api from './api.js';
 
 import { saveCloudPreference } from './preferences.js';
-import { savePin, switchTab, setMode, setTimeOffset, toggleSection, initCollapsibles } from './utils.js';
+import { savePin, switchTab, setMode, setTimeOffset, toggleSection, initCollapsibles, toggleHeaderCollapse, updateMiniUserDisplay, initHeaderCollapse } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
 import { updateLeaderboardUI, setHistoryView } from './leaderboard.js';
 import {
@@ -23,7 +23,16 @@ import {
     renderSidebarRoutines, syncRoutinesWithNiptoHistory
 } from './routines.js';
 import { toggleViewAll, toggleEditMode } from './editMode.js';
-import { initUsers, setActiveUser, toggleTogetherMode, processTogetherSelection } from './users.js';
+import { initUsers, setActiveUser as _setActiveUser, toggleTogetherMode as _toggleTogetherMode, processTogetherSelection } from './users.js';
+
+function setActiveUser(uid) {
+    _setActiveUser(uid);
+    updateMiniUserDisplay();
+}
+function toggleTogetherMode() {
+    _toggleTogetherMode();
+    updateMiniUserDisplay();
+}
 
 // Reorders a task/todo category and saves the new order.
 function moveCategory(category, direction, type, event) {
@@ -74,7 +83,7 @@ Object.assign(window, {
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
     renderTodoTasks, updateTaskDatalists, renderSidebarTodos,
     savePin, switchTab, setMode, setTimeOffset, setHistoryView,
-    toggleSection, toggleThemeMenu, setTheme,
+    toggleSection, toggleThemeMenu, setTheme, toggleHeaderCollapse,
     openRoutineModal, closeRoutineModal, toggleRoutineFrequencyFields, saveRoutine,
     editRoutine, completeRoutine, deleteRoutine, skipRoutine, updateOverdueDefaults,
     renderRoutines, renderSidebarRoutines, undoRoutine, renderAllRoutines, renderMyRoutines,
@@ -123,6 +132,8 @@ window.refreshDashboard = async () => {
 // ---- Startup ----
 initTheme();
 initUsers();
+initHeaderCollapse();
+updateMiniUserDisplay();
 populateTodoAssigneeFilter();
 initCollapsibles([
     { content: 'activity-content', icon: 'activity-icon', key: 'nipto_merged_act_collapsed' },
