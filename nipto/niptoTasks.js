@@ -220,7 +220,9 @@ export function renderTasks() {
 
         const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
 
-        const orderControls = `<span class="sort-controls" style="font-size: 14px; margin-left: 10px; opacity: 0.5;">
+const orderControls = `
+        <span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">☰</span>
+        <span class="sort-controls" style="font-size: 14px; opacity: 0.5;">
         <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
         <button onclick="moveCategory('${category}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
         </span>`;
@@ -235,7 +237,8 @@ export function renderTasks() {
         gridWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
 
         header.onclick = (e) => {
-            if (e.target.tagName === 'BUTTON') return;
+            
+            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('drag-handle')) return; 
             const collapsed = gridWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
             saveCloudCollapsed(`nipto_${category}`, collapsed);
