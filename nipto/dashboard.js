@@ -3,7 +3,7 @@
 // HTML onclick attributes, defines moveCategory, and runs startup/auth/init.
 import { state } from './state.js';
 import * as api from './api.js';
-
+import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import { saveCloudPreference } from './preferences.js';
 import { savePin, switchTab, setMode, setTimeOffset, toggleSection, initCollapsibles, toggleHeaderCollapse, updateMiniUserDisplay, initHeaderCollapse } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
@@ -28,10 +28,23 @@ import { initUsers, setActiveUser as _setActiveUser, toggleTogetherMode as _togg
 function setActiveUser(uid) {
     _setActiveUser(uid);
     updateMiniUserDisplay();
+    refreshChatUser();
 }
 function toggleTogetherMode() {
     _toggleTogetherMode();
     updateMiniUserDisplay();
+    refreshChatUser();
+}
+// NEW: chat needs to know when its tab opens (to clear unreads)
+function switchTabWithChat(tab) {
+    switchTab(tab);
+    if (tab === 'messages') onChatTabOpened();
+}
+// NEW: together checkbox changes also affect chat (send lock / alignment)
+function processTogetherSelectionWithChat(...args) {
+    const result = processTogetherSelection(...args);
+    refreshChatUser();
+    return result;
 }
 
 // Reorders a task/todo category and saves the new order.
@@ -77,26 +90,23 @@ function moveCategory(category, direction, type, event) {
 
 // ---- Window bindings for inline HTML onclick handlers ----
 Object.assign(window, {
-    setActiveUser, toggleTogetherMode, processTogetherSelection,
+    setActiveUser, toggleTogetherMode, processTogetherSelection: processTogetherSelectionWithChat,
     toggleViewAll, toggleEditMode,
     deleteTaskActivity, togglePinTask, logPinnedTask, populateTaskPointsSelect,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
     renderTodoTasks, updateTaskDatalists, renderSidebarTodos,
-    savePin, switchTab, setMode, setTimeOffset, setHistoryView,
+    savePin, switchTab: switchTabWithChat, setMode, setTimeOffset, setHistoryView,
     toggleSection, toggleThemeMenu, setTheme, toggleHeaderCollapse,
     openRoutineModal, closeRoutineModal, toggleRoutineFrequencyFields, saveRoutine,
     editRoutine, completeRoutine, deleteRoutine, skipRoutine, updateOverdueDefaults,
     renderRoutines, renderSidebarRoutines, undoRoutine, renderAllRoutines, renderMyRoutines,
-    moveCategory
+    moveCategory, sendChatMessage, editChatMessage, deleteChatMessage
 });
 
 // ---- HTML button bridges ----
 window.submitPin = async () => {
     savePin();
-    await api.loadTasksFromFirestore();
-    renderTasks();
-    renderPinnedTasks();
-    updateLeaderboardUI();
+    await startDashboardData(); // Call the unified loader
 };
 
 window.runSync = async () => {
@@ -131,8 +141,8 @@ window.refreshDashboard = async () => {
 
 // ---- Startup ----
 initTheme();
-initUsers();
 initHeaderCollapse();
+initChat();
 updateMiniUserDisplay();
 populateTodoAssigneeFilter();
 initCollapsibles([
@@ -140,38 +150,56 @@ initCollapsibles([
     { content: 'pinned-content', icon: 'pin-icon', key: 'nipto_merged_pin_collapsed' },
     { content: 'assigned-content', icon: 'assign-icon', key: 'nipto_merged_assign_collapsed' }
 ]);
+// Extract all the data loading logic into one reusable function
+async function startDashboardData() {
+    await api.loadTasksFromFirestore();
+    await api.loadChoresFromFirestore();
+    await api.loadRoutinesFromFirestore();
+    await api.loadActivityLabelsFromFirestore();
+    
+    await initUsers();
+    
+    renderTasks();
+    renderPinnedTasks();
+    renderRoutines();
+    renderSidebarRoutines();
+    updateLeaderboardUI();
 
+    window.db.collection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+        state.todoTasksData = [];
+        const now = Date.now();
+        const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.completed && data.completedAt) {
+                const completedTime = new Date(data.completedAt).getTime();
+                if (now - completedTime > TWO_DAYS_MS) {
+                    api.deleteFirestoreDocument('custom_tasks', doc.id);
+                    return;
+                }
+            }
+            state.todoTasksData.push({ id: doc.id, ...data });
+        });
+        renderTodoTasks();
+        renderSidebarTodos();
+    });
+    
+    let firstActivitySignal = true;
+    let activitySignalTimer = null;
+    window.db.collection('sync_signals').doc('activity').onSnapshot(snap => {
+        if (firstActivitySignal) { firstActivitySignal = false; return; } 
+        if (snap.metadata.hasPendingWrites) return; 
+        if (window.__localActivityPingAt && (Date.now() - window.__localActivityPingAt < 5000)) return; 
+        clearTimeout(activitySignalTimer);
+        activitySignalTimer = setTimeout(() => updateLeaderboardUI(), 1500); 
+    });
+}
+
+// Run auth check and trigger the unified loader
 api.checkAuth(
     async () => {
-        await api.loadTasksFromFirestore();
-        await api.loadChoresFromFirestore();
-        await api.loadRoutinesFromFirestore();
-        await api.loadActivityLabelsFromFirestore();
-        renderTasks();
-        renderPinnedTasks();
-        renderRoutines();
-        renderSidebarRoutines();
-        updateLeaderboardUI();
-
-        window.db.collection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            state.todoTasksData = [];
-            const now = Date.now();
-            const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
-
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (data.completed && data.completedAt) {
-                    const completedTime = new Date(data.completedAt).getTime();
-                    if (now - completedTime > TWO_DAYS_MS) {
-                        api.deleteFirestoreDocument('custom_tasks', doc.id);
-                        return;
-                    }
-                }
-                state.todoTasksData.push({ id: doc.id, ...data });
-            });
-            renderTodoTasks();
-            renderSidebarTodos();
-        });
+        await startDashboardData();
     },
     () => { document.getElementById('pinModal').style.display = 'flex'; },
     (error) => { console.error("Database Auth Failed."); }

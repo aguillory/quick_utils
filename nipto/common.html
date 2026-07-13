@@ -170,6 +170,10 @@
         <button id="tab-nipto" class="action-btn active" onclick="switchTab('nipto')" style="flex: 1;">🔵 Nipto Chores</button>
         <button id="tab-routines" class="action-btn" onclick="switchTab('routines')" style="flex: 1; background-color: var(--card-bg); color: var(--text-main);">⏳ Routines</button>
         <button id="tab-todo" class="action-btn" onclick="switchTab('todo')" style="flex: 1; background-color: var(--card-bg); color: var(--text-main);">📋 General To-Do</button>
+        <!-- NEW: Messages tab -->
+        <button id="tab-messages" class="action-btn" onclick="switchTab('messages')" style="flex: 1; background-color: var(--card-bg); color: var(--text-main); position: relative;">
+            💬 Messages<span id="chatBadge" class="chat-badge" style="display: none;">0</span>
+        </button>
     </div>
 
     <div id="pane-nipto">
@@ -247,7 +251,23 @@
         <button class="action-btn save-mode" onclick="openTaskModal()">➕ Add Task</button>
     </div>
     <div id="todoContainer"></div>
-  </div></div>
+  </div>
+   <div id="pane-messages" style="display: none;">
+    <div class="chat-panel">
+        <div class="chat-panel-header">
+            <span>💬 Family Messages</span>
+            <span class="chat-sending-as">Sending as: <strong id="chatSenderName">—</strong></span>
+        </div>
+        <div id="chatMessages" class="chat-messages">
+            <div class="chat-empty">Loading messages…</div>
+        </div>
+        <div class="chat-input-row">
+            <textarea id="chatInput" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for new line)"></textarea>
+            <button id="chatSendBtn" class="action-btn save-mode" onclick="sendChatMessage()">Send ➤</button>
+        </div>
+    </div>
+  </div>
+  </div>
 <div class="right-sidebar">
     <div class="widget-panel">
         <h4 class="collapsible-header" onclick="toggleSection('pinned-content', 'pin-icon', 'nipto_pin_collapsed')" style="font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">

@@ -9,7 +9,7 @@ export const ALL_USERS = [
 ];
 
 export const state = {
-    activeUsers: ["NMRQaRQbvCwBaJbiMFId"],
+    activeUsers: ["Llb9JjyTDvMnn8SJWfizXgthxl83"],
     isTogetherMode: false,
     currentSplitDivisor: 1,
     historyViewMode: 'boys',

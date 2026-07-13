@@ -24,7 +24,7 @@ export function savePin(onSuccessCallback) {
 
 // Switches the visible main tab (nipto / routines / todo).
 export function switchTab(tabName) {
-    ['nipto', 'routines', 'todo'].forEach(t => {
+    ['nipto', 'routines', 'todo', 'messages'].forEach(t => {
         const tabBtn = document.getElementById(`tab-${t}`);
         if (tabBtn) {
             tabBtn.style.backgroundColor = 'var(--card-bg)';

@@ -100,11 +100,13 @@ export async function logActivityToNipto(taskUid, targetDateStr) {
         if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
         else if (data.createActivity.uid) activityUids = [data.createActivity.uid];
     }
+    pingActivitySignal();
     return activityUids;
 }
 
 export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
+    pingActivitySignal();
 }
 
 export async function updateFirestoreDocument(collection, docId, data) {
@@ -134,10 +136,15 @@ export async function loadRoutinesFromFirestore() {
     }
 }
 
-function decodeKey(pin) {
-    const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
-    const p1 = pin[0], p2 = pin[1], p3 = pin[2], p4 = pin[3];
-    return masked.replace(/\*/g, p1).replace(/#/g, p2).replace(/\$/g, p3).replace(/%/g, p4);
+// Notifies all other open dashboards that Nipto activity data changed,
+// so their leaderboards/history refresh automatically.
+function pingActivitySignal() {
+    try {
+        window.__localActivityPingAt = Date.now(); // lets this device ignore its own echo
+        window.db.collection('sync_signals').doc('activity').set({
+            updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(e => console.warn('Sync ping failed:', e));
+    } catch (e) { /* non-critical, never block logging */ }
 }
 
 
