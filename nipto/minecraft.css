@@ -278,3 +278,9 @@ input[list] {
     box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.6);
     padding: 15px 20px;
 }
+/* Kenny Minecraft styling */
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active,
+.user-toggle[data-user="Kenny"].active {
+    border-color: #FFAA00;
+    box-shadow: 6px 6px 0px #AA5500; /* Gold */
+}

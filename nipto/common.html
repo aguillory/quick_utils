@@ -69,6 +69,7 @@
             
             <!-- Action buttons pushed to the right -->
             <div style="display: flex; gap: 8px; margin-left: auto; flex-shrink: 0;">
+                <button id="miniQuickAddBtn" class="action-btn" onclick="openQuickAddModal()" style="background-color: var(--primary); color: white; white-space: nowrap;" title="Quick Add Points">⚡ Quick Add</button>
                 <button id="miniEditBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard" style="white-space: nowrap;">✏️ Edit</button>
                 <button class="action-btn" onclick="toggleViewAll()" style="white-space: nowrap;">👀 All Tasks</button>
                 <button class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212); padding: 8px 12px;" title="Refresh">🔄</button>
@@ -93,6 +94,7 @@
                     </div>
                 </div>
                 <button id="refreshBtn" class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212);">🔄 Refresh</button>
+                <button id="quickAddBtn" class="action-btn" onclick="openQuickAddModal()" style="background-color: var(--primary); color: white;" title="Quick Add Points">⚡ Quick Add</button>
                 <button id="syncNiptoBtn" class="action-btn" onclick="runSync()" style="display: none; background-color: var(--secondary);" title="Sync DB">🔄 Sync Tasks</button>
                 <button id="viewAllBtn" class="action-btn" onclick="toggleViewAll()">🔍 View All Tasks</button>
                 <button id="editBtn" class="action-btn" onclick="toggleEditMode()" title="Edit Dashboard">✏️ Edit Dashboard</button>
@@ -142,6 +144,10 @@
                 <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2" onclick="setActiveUser('2pxnC1oGlZbLQLmu9UJJVPYOEmZ2')">
                     <div class="user-name">Carrina</div>
                     <div class="user-points" id="points-2pxnC1oGlZbLQLmu9UJJVPYOEmZ2">-- pts</div>
+                </div>
+                <div class="user-toggle inactive" style="max-width: 200px;" id="toggle-TilLpLRDz4VWel79jVevmu3JsIH3" data-user="Kenny" onclick="setActiveUser(window.KENNY_UID || 'TilLpLRDz4VWel79jVevmu3JsIH3')">
+                    <div class="user-name">Kenny</div>
+                    <div class="user-points" id="points-TilLpLRDz4VWel79jVevmu3JsIH3">-- pts</div>
                 </div>
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%;">
@@ -248,6 +254,7 @@
                 <option value="Low">Low</option>
             </select>
         </label>
+        <button class="action-btn" onclick="openQuickAddModal()" style="background-color: var(--primary); color: white;" title="Quick Add Points">⚡ Quick Add</button>
         <button class="action-btn save-mode" onclick="openTaskModal()">➕ Add Task</button>
     </div>
     <div id="todoContainer"></div>
@@ -446,5 +453,35 @@
         </div>
     </div>
 </div>
+    <!-- Quick Add Modal -->
+    <div id="quickAddModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; padding: 15px; z-index: 1000;" onclick="if(event.target === this) closeQuickAddModal()">
+        <div class="modal" style="background: var(--card-bg, #fff); padding: 25px; border-radius: 12px; width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <h2 style="margin: 0; font-size: 22px; display: flex; align-items: center; gap: 8px;">⚡ Quick Add Points</h2>
+                <button type="button" onclick="closeQuickAddModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); line-height: 1;" title="Close">&times;</button>
+            </div>
+            <p style="margin: 0; font-size: 13px; color: var(--text-muted);">Quickly award points for a completed chore without creating a task or category first. Points will log to Nipto and appear in the left activity history.</p>
+            
+            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Chore Description</label>
+            <input type="text" id="quickAddDesc" placeholder="e.g., Folded laundry, Cleaned gutters, Washed truck..." style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;" onkeydown="if(event.key==='Enter') submitQuickAdd()">
+            
+            <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points to Award</label>
+            <div id="quickAddPillsContainer" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;"></div>
+            <select id="quickAddPoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); background: rgba(37, 99, 235, 0.05); font-size: 14px;">
+                <!-- Populated dynamically by populateTaskPointsSelect() -->
+            </select>
+            
+            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Who completed it?</label>
+            <div id="quickAddUsersContainer" style="display: flex; flex-wrap: wrap; gap: 8px; background: rgba(0,0,0,0.03); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <!-- Populated dynamically by populateQuickAddUsers() -->
+            </div>
+
+            <div class="modal-buttons" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                <button type="button" class="action-btn" onclick="closeQuickAddModal()" style="background: #e2e8f0; color: #333;">Cancel</button>
+                <button type="button" id="quickAddSubmitBtn" class="action-btn save-mode" onclick="submitQuickAdd()" style="background-color: var(--primary); color: white;">⚡ Award Points</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

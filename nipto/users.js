@@ -41,9 +41,12 @@ export async function setActiveUser(uid, skipSave = false) {
     document.getElementById('together-drawer').classList.remove('visible');
 
     ALL_USERS.forEach(user => {
-        const el = document.getElementById(`toggle-${user.uid}`);
-        if (user.uid === uid) { el.classList.add('active'); el.classList.remove('inactive'); }
-        else { el.classList.add('inactive'); el.classList.remove('active'); }
+        const el = document.getElementById(`toggle-${user.uid}`) || document.querySelector(`.user-toggle[data-user="${user.name}"]`);
+        if (el) {
+            const isUserActive = (user.uid === uid) || (user.name === 'Kenny' && (uid === user.uid || uid === 'TilLpLRDz4VWel79jVevmu3JsIH3' || uid === window.KENNY_UID));
+            if (isUserActive) { el.classList.add('active'); el.classList.remove('inactive'); }
+            else { el.classList.add('inactive'); el.classList.remove('active'); }
+        }
     });
 
     const togEl = document.getElementById('toggle-together');

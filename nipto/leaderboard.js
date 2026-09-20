@@ -11,8 +11,11 @@ export async function updateLeaderboardUI() {
         const { points } = await api.getWeeklyPointsData();
 
         ALL_USERS.forEach(user => {
-            const el = document.getElementById(`points-${user.uid}`);
-            if (el) el.innerText = points[user.uid] + " pts";
+            const el = document.getElementById(`points-${user.uid}`) || document.querySelector(`.user-toggle[data-user="${user.name}"] .user-points`);
+            if (el) {
+                const userPts = points[user.uid] !== undefined ? points[user.uid] : (points[window.KENNY_UID] || 0);
+                el.innerText = userPts + " pts";
+            }
         });
 
         document.querySelectorAll('.leader-crown').forEach(el => el.remove());
@@ -25,7 +28,7 @@ export async function updateLeaderboardUI() {
         });
 
         if (topUser && maxPts > 0) {
-            const topUserElement = document.getElementById(`toggle-${topUser}`);
+            const topUserElement = document.getElementById(`toggle-${topUser}`) || document.querySelector(`.user-toggle[data-user="${(ALL_USERS.find(u => u.uid === topUser) || {}).name}"]`);
             if (topUserElement) topUserElement.innerHTML += '<div class="leader-crown">👑</div>';
         }
 
@@ -74,8 +77,9 @@ function renderHistory(activities) {
         const knownUser = ALL_USERS.find(u => u.uid === (act.user && act.user.uid));
         const userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Unknown User");
         let taskName = act.task ? act.task.name : "Deleted Task";
-if (labels[act.uid] && /^assigned task/i.test(taskName)) {
-    taskName = `${labels[act.uid]} <span style="font-size:10px; color:var(--text-muted);">(${act.task.name})</span>`;
+if (labels[act.uid]) {
+    const sub = act.task ? `(${act.task.name})` : '';
+    taskName = `${labels[act.uid]} <span style="font-size:10px; color:var(--text-muted);">${sub}</span>`;
 }
         const taskValue = act.awardedPts !== undefined ? act.awardedPts : (act.task ? act.task.value : 0);
         const color = knownUser ? knownUser.color : 'var(--text-muted)';

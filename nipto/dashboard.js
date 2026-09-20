@@ -1,7 +1,8 @@
 // dashboard.js
 // App entry point: imports all modules, wires global window handlers for inline
 // HTML onclick attributes, defines moveCategory, and runs startup/auth/init.
-import { state } from './state.js';
+import { state, KENNY_UID } from './state.js';
+window.KENNY_UID = KENNY_UID;
 import * as api from './api.js';
 import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import { saveCloudPreference } from './preferences.js';
@@ -10,7 +11,8 @@ import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
 import { updateLeaderboardUI, setHistoryView } from './leaderboard.js';
 import {
     logPinnedTask, deleteTaskActivity, togglePinTask, populateTaskPointsSelect,
-    renderTasks, renderPinnedTasks
+    renderTasks, renderPinnedTasks,
+    openQuickAddModal, closeQuickAddModal, submitQuickAdd
 } from './niptoTasks.js';
 import {
     renderTodoTasks, updateTaskDatalists, openTaskModal, editTask, saveTask,
@@ -93,6 +95,7 @@ Object.assign(window, {
     setActiveUser, toggleTogetherMode, processTogetherSelection: processTogetherSelectionWithChat,
     toggleViewAll, toggleEditMode,
     deleteTaskActivity, togglePinTask, logPinnedTask, populateTaskPointsSelect,
+    openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
     renderTodoTasks, updateTaskDatalists, renderSidebarTodos,
     savePin, switchTab: switchTabWithChat, setMode, setTimeOffset, setHistoryView,

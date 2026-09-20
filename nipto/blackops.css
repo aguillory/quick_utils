@@ -423,3 +423,14 @@ input[list]:focus {
     border-radius: 0px !important; 
     font-family: 'Rajdhani', sans-serif;
 }
+/* Kenny Black Ops styling */
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active::before,
+.user-toggle[data-user="Kenny"].active::before {
+    border-color: #F59E0B;
+    border-left-color: #F59E0B;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active .user-points,
+.user-toggle[data-user="Kenny"].active .user-points {
+    color: #F59E0B;
+}

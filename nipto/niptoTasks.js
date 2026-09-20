@@ -164,20 +164,48 @@ export async function logPinnedTask(btnElement, taskUid, taskName) {
     await logTask(btnElement, taskUid, taskName);
 }
 
-// Populates the "points" dropdown from synced "Assigned task" entries.
-export function populateTaskPointsSelect(selectedValue = '') {
-    const select = document.getElementById('taskPoints');
+// Populates the "points" dropdown and quick pills from synced "Assigned task" entries.
+export function populateTaskPointsSelect(selectedValue = '', elementId = 'taskPoints') {
+    const select = document.getElementById(elementId);
     if (!select) return;
-    select.innerHTML = '<option value="">-- No Points --</option>';
+    select.innerHTML = '<option value="">-- Select Points --</option>';
     if (!state.tasks || state.tasks.length === 0) return;
 
-    const pointTasks = state.tasks.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task'));
+    let pointTasks = state.tasks.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task'));
+    if (pointTasks.length === 0) {
+        pointTasks = state.tasks.filter(t => t.value && t.value > 0);
+    }
     pointTasks.sort((a, b) => (a.value || 0) - (b.value || 0));
 
     pointTasks.forEach(t => {
         const selected = (t.uid === selectedValue) ? 'selected' : '';
-        select.innerHTML += `<option value="${t.uid}" ${selected}>${t.value} Points</option>`;
+        select.innerHTML += `<option value="${t.uid}" ${selected}>${t.value} Points (${t.name})</option>`;
     });
+
+    if (elementId === 'quickAddPoints') {
+        const pillsContainer = document.getElementById('quickAddPillsContainer');
+        if (pillsContainer) {
+            pillsContainer.innerHTML = '';
+            pointTasks.forEach(t => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'qa-point-pill' + (t.uid === selectedValue ? ' active' : '');
+                btn.innerText = `+${t.value} pts`;
+                btn.onclick = () => {
+                    select.value = t.uid;
+                    document.querySelectorAll('.qa-point-pill').forEach(p => p.classList.remove('active'));
+                    btn.classList.add('active');
+                };
+                pillsContainer.appendChild(btn);
+            });
+            select.onchange = () => {
+                const val = select.value;
+                document.querySelectorAll('.qa-point-pill').forEach((p, idx) => {
+                    p.classList.toggle('active', pointTasks[idx] && pointTasks[idx].uid === val);
+                });
+            };
+        }
+    }
 }
 
 // Renders the main Nipto task grid, grouped and ordered by category.
@@ -328,4 +356,152 @@ export function renderPinnedTasks() {
         `;
         container.appendChild(card);
     });
+}
+
+// =======================================================
+// QUICK ADD FEATURE
+// Quickly awards points and logs a completed chore to Nipto
+// =======================================================
+
+// Opens the Quick Add modal and prepares fields
+export function openQuickAddModal() {
+    const modal = document.getElementById('quickAddModal');
+    if (!modal) return;
+
+    const descInput = document.getElementById('quickAddDesc');
+    if (descInput) descInput.value = '';
+
+    // Populate points dropdown dynamically
+    populateTaskPointsSelect('', 'quickAddPoints');
+
+    // Populate user checkboxes
+    populateQuickAddUsers();
+
+    modal.style.display = 'flex';
+    if (descInput) setTimeout(() => descInput.focus(), 50);
+
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            closeQuickAddModal();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
+// Closes the Quick Add modal
+export function closeQuickAddModal() {
+    const modal = document.getElementById('quickAddModal');
+    if (modal) modal.style.display = 'none';
+}
+
+// Builds user checkboxes for who completed the quick task
+export function populateQuickAddUsers() {
+    const container = document.getElementById('quickAddUsersContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    // Default to the currently active user(s) on the dashboard
+    const activeUids = state.activeUsers && state.activeUsers.length > 0 
+        ? state.activeUsers 
+        : (ALL_USERS.length > 0 ? [ALL_USERS[0].uid] : []);
+
+    ALL_USERS.forEach(u => {
+        const isChecked = activeUids.includes(u.uid) ? 'checked' : '';
+        container.innerHTML += `
+            <label class="quick-add-user-label" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); cursor: pointer; user-select: none;">
+                <input type="checkbox" value="${u.uid}" class="qa-user-check" ${isChecked} style="accent-color: ${u.color}; cursor: pointer;">
+                <span style="color: ${u.color}; font-weight: bold; font-size: 13px;">${u.name}</span>
+            </label>
+        `;
+    });
+}
+
+// Submits the Quick Add chore, logs to Nipto and Firestore, and refreshes UI
+export async function submitQuickAdd() {
+    const descInput = document.getElementById('quickAddDesc');
+    const pointsSelect = document.getElementById('quickAddPoints');
+    const submitBtn = document.getElementById('quickAddSubmitBtn');
+
+    const description = descInput ? descInput.value.trim() : '';
+    if (!description) {
+        alert("Please enter a description for the completed task.");
+        if (descInput) descInput.focus();
+        return;
+    }
+
+    const linkedNiptoTask = pointsSelect ? pointsSelect.value : '';
+    if (!linkedNiptoTask) {
+        alert("Please select the number of points to award.");
+        if (pointsSelect) pointsSelect.focus();
+        return;
+    }
+
+    const selectedCheckboxes = document.querySelectorAll('.qa-user-check:checked');
+    const selectedUids = Array.from(selectedCheckboxes).map(cb => cb.value);
+    if (selectedUids.length === 0) {
+        alert("Please select at least one person who completed the chore.");
+        return;
+    }
+
+    if (!state.apiToken) {
+        document.getElementById('pinModal').style.display = 'flex';
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Awarding...";
+    }
+
+    let targetDate = state.currentMode === 'live' 
+        ? new Date() 
+        : new Date(document.getElementById('taskDate').value || new Date());
+
+    const taskObj = state.tasks ? state.tasks.find(t => t.uid === linkedNiptoTask) : null;
+    const rawPoints = taskObj ? taskObj.value : 0;
+    const splitDivisor = Math.max(1, selectedUids.length);
+    const pointsPerUser = Math.ceil(rawPoints / splitDivisor);
+    const doerNames = selectedUids.map(uid => {
+        const u = ALL_USERS.find(user => user.uid === uid);
+        return u ? u.name : 'Unknown';
+    }).join(', ');
+
+    try {
+        // 1. Log to Nipto API with specified doers
+        const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString(), selectedUids);
+
+        // 2. Save activity label so the custom description displays in the left sidebar activity history
+        await api.saveActivityLabels(activityUids, description);
+
+        // 3. Save as completed in Firestore custom_tasks for audit/history
+        await api.addFirestoreDocument('custom_tasks', {
+            name: description,
+            category: '⚡ Quick Add',
+            priority: 'Medium',
+            assignees: selectedUids,
+            linkedNiptoTask: linkedNiptoTask,
+            completed: true,
+            completedActivityUids: activityUids,
+            completedBy: selectedUids,
+            completedAt: targetDate.toISOString(),
+            notes: 'Quick added points'
+        });
+
+        // 4. Refresh leaderboard points, crown, and left sidebar history
+        await updateLeaderboardUI();
+
+        // 5. Show celebratory toast
+        showToast(linkedNiptoTask, description, pointsPerUser, doerNames);
+
+        closeQuickAddModal();
+    } catch (error) {
+        console.error("Error in submitQuickAdd:", error);
+        alert("Error awarding points: " + error.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = "⚡ Award Points";
+        }
+    }
 }

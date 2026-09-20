@@ -18,6 +18,7 @@
     --user-alyssa: #00848A; /* Deep Blue */
     --user-devyn: #EF4444;  /* Red */
     --user-carrina: #8B5CF6; /* Purple */
+    --user-kenny: #F59E0B;   /* Amber / Gold */
 }
 
 body { 
@@ -684,4 +685,74 @@ input[list]:focus {
 #chatInput:disabled, #chatSendBtn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+/* ==========================================
+   QUICK ADD STYLES
+   ========================================== */
+.quick-add-user-label {
+    transition: all 0.15s ease-in-out;
+}
+.quick-add-user-label:hover {
+    border-color: var(--primary);
+    background-color: rgba(37, 99, 235, 0.05);
+}
+.quick-add-user-label input[type="checkbox"]:checked + span {
+    text-decoration: underline;
+}
+
+/* ==========================================
+   KENNY USER SPECIFIC STYLES
+   ========================================== */
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active,
+.user-toggle[data-user="Kenny"].active {
+    border-color: var(--user-kenny);
+    background-color: rgba(245, 158, 11, 0.05);
+}
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active .user-name,
+.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active .user-points,
+.user-toggle[data-user="Kenny"].active .user-name,
+.user-toggle[data-user="Kenny"].active .user-points {
+    color: var(--user-kenny);
+}
+.history-user-TilLpLRDz4VWel79jVevmu3JsIH3,
+.history-user-kenny {
+    color: var(--user-kenny);
+    font-weight: bold;
+}
+.chat-sender-TilLpLRDz4VWel79jVevmu3JsIH3,
+.chat-sender-kenny {
+    color: var(--user-kenny);
+}
+.chat-row.received .chat-bubble-TilLpLRDz4VWel79jVevmu3JsIH3,
+.chat-row.received .chat-bubble-kenny {
+    border-left-color: var(--user-kenny);
+}
+
+/* ==========================================
+   QUICK ADD POINT PILLS
+   ========================================== */
+.qa-point-pill {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 2px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.qa-point-pill:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+.qa-point-pill.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }

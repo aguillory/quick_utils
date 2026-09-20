@@ -1,11 +1,15 @@
 // state.js
 
+// Kenny's UID can be set here once retrieved, or auto-read from localStorage
+export const KENNY_UID = localStorage.getItem("nipto_kenny_uid") || "TilLpLRDz4VWel79jVevmu3JsIH3";
+
 export const ALL_USERS = [
     { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden", color: "var(--user-ayden)" },
     { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ", color: "var(--user-dj)" },
     { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa", color: "var(--user-alyssa)"},
     { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn", color: "var(--user-devyn)"},
-    { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", color: "var(--user-carrina)"}
+    { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", color: "var(--user-carrina)"},
+    { uid: KENNY_UID, name: "Kenny", color: "var(--user-kenny)"}
 ];
 
 export const state = {

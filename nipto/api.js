@@ -77,6 +77,26 @@ export async function getWeeklyPointsData() {
         let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
         if (activity.user && points[activity.user.uid] !== undefined) {
             points[activity.user.uid] += awardedPts;
+        } else if (activity.user) {
+            if (activity.user.name && activity.user.name.toLowerCase() === 'kenny') {
+                const kennyObj = ALL_USERS.find(u => u.name.toLowerCase() === 'kenny');
+                if (kennyObj && (kennyObj.uid === 'TilLpLRDz4VWel79jVevmu3JsIH3' || !kennyObj.uid || kennyObj.uid.startsWith('KENNY_UID'))) {
+                    kennyObj.uid = activity.user.uid;
+                    localStorage.setItem("nipto_kenny_uid", activity.user.uid);
+                    window.KENNY_UID = activity.user.uid;
+                    points[activity.user.uid] = awardedPts;
+                    console.info(`[Nipto User Discovery] Auto-resolved Kenny UID: ${activity.user.uid}`);
+                    const oldToggle = document.getElementById('toggle-TilLpLRDz4VWel79jVevmu3JsIH3');
+                    if (oldToggle) {
+                        oldToggle.id = `toggle-${activity.user.uid}`;
+                        oldToggle.setAttribute('onclick', `setActiveUser('${activity.user.uid}')`);
+                    }
+                    const oldPts = document.getElementById('points-TilLpLRDz4VWel79jVevmu3JsIH3');
+                    if (oldPts) oldPts.id = `points-${activity.user.uid}`;
+                }
+            } else if (!ALL_USERS.some(u => u.uid === activity.user.uid)) {
+                console.info(`[Nipto User Discovery] Found unlisted user in activity: ${activity.user.name} (UID: ${activity.user.uid})`);
+            }
         }
         activities.push({
             ...activity,
@@ -89,10 +109,11 @@ export async function getWeeklyPointsData() {
     return { points, activities };
 }
 
-export async function logActivityToNipto(taskUid, targetDateStr) {
+export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
+    const activeDoers = (doers && doers.length > 0) ? doers : state.activeUsers;
     const data = await fetchNipto(
         `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`, 
-        { done: taskUid, doers: state.activeUsers, date: targetDateStr }
+        { done: taskUid, doers: activeDoers, date: targetDateStr }
     );
     
     let activityUids = [];
