@@ -1,3 +1,15 @@
+// Helper to safely escape HTML while preserving line breaks
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+import { showToast } from './toast.js';
 // todos.js
 // General to-do tasks: list rendering, the add/edit modal, status toggling, and sidebar.
 import { state, ALL_USERS } from './state.js';
@@ -161,6 +173,13 @@ export function renderTodoTasks() {
                     return u ? '<span style="color: ' + u.color + '; font-size: 11px; font-weight: bold; margin-right: 4px; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128100; ' + u.name + '</span>' : '';
                 }).join('');
             }
+            let completedByHtml = '';
+            if (task.completed && task.completedBy && task.completedBy.length > 0) {
+                completedByHtml = task.completedBy.map(function (uid) {
+                    const u = ALL_USERS.find(function (user) { return user.uid === uid; });
+                    return u ? '<span style="color: ' + u.color + '; font-size: 11px; font-weight: bold; margin-right: 4px; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--success);">&#9989; Done by: ' + u.name + '</span>' : '';
+                }).join('');
+            }
             const linkedTaskArg = task.linkedNiptoTask ? "'" + task.linkedNiptoTask + "'" : 'null';
             card.innerHTML =
                 '<div class="chore-header">' +
@@ -171,6 +190,7 @@ export function renderTodoTasks() {
                 '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128205; ' + (task.location || 'N/A') + '</span>' +
                 '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#9889; ' + task.priority + '</span>' +
                 assigneesHtml +
+                completedByHtml +
                 pointsDisplay +
                 '</div>' +
                 '</div>' +
@@ -180,7 +200,7 @@ export function renderTodoTasks() {
                 '<button class="chore-btn delete-btn" onclick="deleteTask(\'' + task.id + '\')" title="Delete">&#128465;&#65039;</button>' +
                 '</div>' +
                 '</div>' +
-                (task.notes ? '<div class="chore-desc" style="display: block; margin-top: 8px;">' + task.notes + '</div>' : '');
+                (task.notes ? '<div class="chore-desc" style="display: block; margin-top: 8px; white-space: pre-wrap; word-break: break-word;">' + escapeHtml(task.notes) + '</div>' : '');
             contentWrapper.appendChild(card);
         });
         section.appendChild(contentWrapper);
@@ -310,37 +330,104 @@ export function closeTaskModal() {
     document.getElementById('taskModal').style.display = 'none';
 }
 
-// Deletes a to-do task after confirmation.
+// Deletes a to-do task after confirmation, cleaning up any linked Nipto activity
 export async function deleteTask(id) {
     if (confirm("Are you sure you want to delete this task?")) {
+        const todo = state.todoTasksData ? state.todoTasksData.find(t => t.id === id) : null;
+        if (todo && todo.completedActivityUids && todo.completedActivityUids.length > 0) {
+            for (const actUid of todo.completedActivityUids) {
+                try { await api.deleteActivityFromNipto(actUid); } catch(e) { console.warn("Failed to delete activity on task delete:", e); }
+            }
+            await updateLeaderboardUI();
+        }
         await api.deleteFirestoreDocument('custom_tasks', id);
     }
 }
 
-// Toggles completion; awards points to Nipto if the task is linked.
+// Toggles completion; awards points to Nipto to whoever marked it off (active user)
 export async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
-    if (!currentStatus && linkedNiptoTask && linkedNiptoTask !== 'null') {
+    const todo = state.todoTasksData ? state.todoTasksData.find(t => t.id === taskId) : null;
+    const isCompleted = Boolean(currentStatus === true || currentStatus === 'true' || (todo && todo.completed === true));
+    const niptoTaskId = (linkedNiptoTask && linkedNiptoTask !== 'null' && linkedNiptoTask !== 'undefined')
+        ? linkedNiptoTask
+        : (todo ? todo.linkedNiptoTask : null);
+
+    if (!isCompleted) {
+        // Completing the task
         if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
-        if (state.activeUsers.length === 0) { alert("Select who completed this task at the top of the dashboard first!"); return; }
+        
+        // The person that marked it off gets the points, regardless of who it was assigned to
+        const doerUids = (state.activeUsers && state.activeUsers.length > 0) ? [...state.activeUsers] : [];
+        if (doerUids.length === 0) {
+            alert("Please select who completed this task at the top of the dashboard first!");
+            return;
+        }
 
-        let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
+        let targetDate = state.currentMode === 'live'
+            ? new Date()
+            : new Date(document.getElementById('taskDate')?.value || new Date());
+        if (isNaN(targetDate.getTime())) targetDate = new Date();
 
-        try {
-           const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString());
-const todo = state.todoTasksData.find(t => t.id === taskId);
-await api.saveActivityLabels(activityUids, todo ? todo.name : 'To-Do Task');   // NEW
-await api.updateFirestoreDocument('custom_tasks', taskId, {
-    completed: true,
-    completedActivityUids: activityUids,
-    completedBy: state.activeUsers,
-    completedAt: targetDate.toISOString()
-});
-            updateLeaderboardUI();
-        } catch (error) { alert("Error awarding points: " + error.message); }
+        const taskName = todo ? todo.name : 'To-Do Task';
+
+        if (niptoTaskId && niptoTaskId !== 'null') {
+            try {
+                // 1. Award points in Nipto to the active user(s) who marked it off
+                const activityUids = await api.logActivityToNipto(niptoTaskId, targetDate.toISOString(), doerUids);
+
+                // 2. Save activity label so description appears in the left activity history
+                await api.saveActivityLabels(activityUids, taskName);
+
+                // 3. Mark complete in Firestore with the doer who completed it
+                await api.updateFirestoreDocument('custom_tasks', taskId, {
+                    completed: true,
+                    completedActivityUids: activityUids,
+                    completedBy: doerUids,
+                    completedAt: targetDate.toISOString()
+                });
+
+                // 4. Update leaderboard and show celebratory toast
+                await updateLeaderboardUI();
+                const tObj = state.tasks ? state.tasks.find(t => t.uid === niptoTaskId) : null;
+                const rawPts = tObj ? tObj.value : 0;
+                const ptsPerUser = Math.ceil(rawPts / Math.max(1, doerUids.length));
+                const doerNames = doerUids.map(uid => {
+                    const u = ALL_USERS.find(user => user.uid === uid);
+                    return u ? u.name : 'Unknown';
+                }).join(', ');
+                showToast(niptoTaskId, taskName, ptsPerUser, doerNames);
+            } catch (error) {
+                console.error("Error awarding points:", error);
+                alert("Error awarding points: " + error.message);
+            }
+        } else {
+            // Completed without points linked
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                completed: true,
+                completedActivityUids: [],
+                completedBy: doerUids,
+                completedAt: targetDate.toISOString()
+            });
+            const doerNames = doerUids.map(uid => {
+                const u = ALL_USERS.find(user => user.uid === uid);
+                return u ? u.name : 'Unknown';
+            }).join(', ');
+            showToast('todo_' + taskId, taskName, 0, doerNames);
+        }
     } else {
+        // Uncompleting the task: remove any linked activities from Nipto
+        if (todo && todo.completedActivityUids && todo.completedActivityUids.length > 0) {
+            for (const actUid of todo.completedActivityUids) {
+                try { await api.deleteActivityFromNipto(actUid); } catch(e) { console.warn("Delete activity on uncomplete error:", e); }
+            }
+            await updateLeaderboardUI();
+        }
         await api.updateFirestoreDocument('custom_tasks', taskId, {
-            completed: !currentStatus,
-            completedAt: !currentStatus ? new Date().toISOString() : null
+            completed: false,
+            completedActivityUids: [],
+            completedActivityUid: null,
+            completedBy: null,
+            completedAt: null
         });
     }
 }

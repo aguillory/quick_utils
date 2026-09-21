@@ -14,7 +14,8 @@ export function showToast(taskUid, taskName, points, namesString) {
 
     if (existingToast) {
         toastCounts[taskUid] = (toastCounts[taskUid] || 1) + 1;
-        existingToast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> (+${points} pts) <span style="background: white; color: var(--success, #22c55e); padding: 2px 6px; border-radius: 10px; font-weight: bold; margin-left: 5px; font-size: 12px;">x${toastCounts[taskUid]}</span>`;
+        const ptsText = (points > 0) ? `(+${points} pts)` : ``;
+        existingToast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> ${ptsText} <span style="background: white; color: var(--success, #22c55e); padding: 2px 6px; border-radius: 10px; font-weight: bold; margin-left: 5px; font-size: 12px;">x${toastCounts[taskUid]}</span>`;
 
         existingToast.style.animation = 'none';
         existingToast.offsetHeight;
@@ -30,7 +31,8 @@ export function showToast(taskUid, taskName, points, namesString) {
         const toast = document.createElement('div');
         toast.id = toastId;
         toast.style.cssText = 'background: var(--success, #22c55e); color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px; animation: slideUpFade 0.3s ease-out; transition: opacity 0.3s, transform 0.3s;';
-        toast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b> (+${points} pts)`;
+        const ptsMsg = (points > 0) ? ` (+${points} pts)` : ``;
+        toast.innerHTML = `✅ Logged <b>${taskName}</b> for <b>${namesString}</b>${ptsMsg}`;
         container.appendChild(toast);
 
         toastTimeouts[taskUid] = setTimeout(() => {

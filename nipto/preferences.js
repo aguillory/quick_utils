@@ -8,7 +8,7 @@ state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: []
 export async function loadCloudPreferences(uid) {
     if (!uid || state.isTogetherMode) return;
     try {
-        const doc = await window.db.collection('user_preferences').doc(uid).get();
+        const doc = await window.getNiptoCollection('user_preferences').doc(uid).get();
         if (doc.exists) {
             state.userPrefs = { ...state.userPrefs, ...doc.data() };
         } else {
@@ -24,7 +24,7 @@ export function saveCloudPreference(key, value) {
     const uid = state.activeUsers[0];
     if (!uid || state.isTogetherMode) return;
     state.userPrefs[key] = value;
-    window.db.collection('user_preferences').doc(uid).set({ [key]: value }, { merge: true });
+    window.getNiptoCollection('user_preferences').doc(uid).set({ [key]: value }, { merge: true });
 }
 
 // Saves the collapsed/expanded state of a category section.
@@ -33,5 +33,5 @@ export function saveCloudCollapsed(catKey, isCollapsed) {
     if (!uid || state.isTogetherMode) return;
     if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
     state.userPrefs.collapsed[catKey] = isCollapsed;
-    window.db.collection('user_preferences').doc(uid).set({ collapsed: state.userPrefs.collapsed }, { merge: true });
+    window.getNiptoCollection('user_preferences').doc(uid).set({ collapsed: state.userPrefs.collapsed }, { merge: true });
 }

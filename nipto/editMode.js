@@ -139,7 +139,7 @@ async function savePreferencesToFirestore() {
             else newUsersList = newUsersList.filter(id => id !== targetUid);
 
             task.dashboardUsers = newUsersList;
-            const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+            const docRef = window.getNiptoCollection('nipto_tasks').doc(task.uid);
             batch.update(docRef, { dashboardUsers: newUsersList });
         }
     });

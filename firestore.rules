@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Nipto and Budget don't use Firebase Auth. 
+    // They rely on PIN obfuscation for the API key.
+    match /nipto/{document=**} {
+      allow read, write: if true;
+    }
+    
+    match /budget/{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Farm Manager uses Firebase Auth.
+    // TEMPORARY: Set to true to allow the clone script to run.
+    // IMPORTANT: Once you configure Auth in the new project, change this to:
+    // allow read, write: if request.auth != null;
+    match /farm_manager/{document=**} {
+      allow read, write: if true; 
+    }
+    
+    // Default deny for anything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -33,7 +33,7 @@
     </div>
 
     <script type="module">
-        import { db, auth } from './scripts/connection.js'; 
+        import { db, auth, getEnv, toggleEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -139,7 +139,7 @@
                     state.selectedPeriodId = newSchedule[0].id;
                 }
                 
-                await setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: newSchedule });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: newSchedule });
                 state.isEditorOpen = false;
                 render();
             },
@@ -177,7 +177,7 @@
                 const updatedSchedule = state.schedule.map(p => p.id === periodId ? { ...p, isSetup: true, bills: newBills } : p);
                 state.schedule = updatedSchedule; // Optimistic update
                 render();
-                await setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             updateBill: (periodId, billId, field, value) => {
                 // Handle type conversion
@@ -192,7 +192,7 @@
                 state.schedule = updatedSchedule;
                 render(); // Re-render immediately for responsiveness
                 // Debounce save in production, but for now direct save
-                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             addCustomExpense: (periodId) => {
                 const updatedSchedule = state.schedule.map(p => {
@@ -202,7 +202,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             deleteBill: (periodId, billId) => {
                 const updatedSchedule = state.schedule.map(p => {
@@ -211,7 +211,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             moveBill: (billId, targetPeriodId) => {
                 const currentPeriod = state.schedule.find(p => p.id === state.selectedPeriodId);
@@ -230,7 +230,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(doc(db, 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             }
         };
 
@@ -562,23 +562,23 @@
             
             if (u) {
                 // Initialize Listeners
-                onSnapshot(doc(db, 'users', u.uid, 'paycheck_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
                     state.masterPay = snap.data() || {};
                     render();
                 });
-                onSnapshot(doc(db, 'users', u.uid, 'accounts_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
                     state.masterAccounts = snap.data() || { bills: [], debts: [] };
                     render();
                 });
-                onSnapshot(doc(db, 'users', u.uid, 'budget_items_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.budgetItems = snap.data().items || [];
                     render();
                 });
-                onSnapshot(doc(db, 'users', u.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.savingsGoals = snap.data().goals || [];
                     render();
                 });
-                onSnapshot(doc(db, 'users', u.uid, 'planner_data', 'schedule'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
                         state.schedule = snap.data().periods;
                         // Auto select if first load
@@ -598,6 +598,16 @@
             }
         });
 
+    </script>
+
+    <button id="env-toggle" style="position:fixed; bottom: 10px; right: 10px; z-index: 9999; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="import('./scripts/connection.js').then(m => m.toggleEnv())"></button>
+    <script type="module">
+        import { getEnv } from './scripts/connection.js';
+        const btn = document.getElementById('env-toggle');
+        const env = getEnv();
+        btn.innerText = "Env: " + env.toUpperCase();
+        btn.style.backgroundColor = env === 'prod' ? '#ef4444' : '#3b82f6';
+        btn.style.color = 'white';
     </script>
 </body>
 </html>

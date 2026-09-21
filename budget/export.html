@@ -43,7 +43,7 @@
     </div>
 
     <script type="module">
-        import { db, auth } from './scripts/connection.js'; 
+        import { db, auth, getEnv, toggleEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -86,7 +86,7 @@
                 exportBtn.classList.add('opacity-75', 'cursor-not-allowed');
                 exportStatus.innerText = "Fetching records...";
 
-                const q = query(collection(db, COLLECTION_NAME), orderBy("date", "desc"));
+                const q = query(getBudgetCollection( COLLECTION_NAME), orderBy("date", "desc"));
                 const snapshot = await getDocs(q);
                 
                 if (snapshot.empty) {
@@ -142,6 +142,16 @@
                 exportBtn.classList.remove('opacity-75', 'cursor-not-allowed');
             }
         });
+    </script>
+
+    <button id="env-toggle" style="position:fixed; bottom: 10px; right: 10px; z-index: 9999; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="import('./scripts/connection.js').then(m => m.toggleEnv())"></button>
+    <script type="module">
+        import { getEnv } from './scripts/connection.js';
+        const btn = document.getElementById('env-toggle');
+        const env = getEnv();
+        btn.innerText = "Env: " + env.toUpperCase();
+        btn.style.backgroundColor = env === 'prod' ? '#ef4444' : '#3b82f6';
+        btn.style.color = 'white';
     </script>
 </body>
 </html>

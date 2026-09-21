@@ -45,7 +45,7 @@ export function checkAuth(onSuccess, onRequirePin, onFail) {
 
 // Firestore Loaders
 export async function loadTasksFromFirestore() {
-    const snapshot = await window.db.collection('nipto_tasks').get();
+    const snapshot = await window.getNiptoCollection('nipto_tasks').get();
     state.tasks = snapshot.docs.map(doc => ({
         uid: doc.id,
         name: doc.data().name,
@@ -57,7 +57,7 @@ export async function loadTasksFromFirestore() {
 }
 
 export async function loadChoresFromFirestore() {
-    const snapshot = await window.db.collection('custom_chores').get();
+    const snapshot = await window.getNiptoCollection('custom_chores').get();
     state.customChores = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
 }
 
@@ -131,15 +131,15 @@ export async function deleteActivityFromNipto(activityUid) {
 }
 
 export async function updateFirestoreDocument(collection, docId, data) {
-    await window.db.collection(collection).doc(docId).update(data);
+    await window.getNiptoCollection(collection).doc(docId).update(data);
 }
 
 export async function deleteFirestoreDocument(collection, docId) {
-    await window.db.collection(collection).doc(docId).delete();
+    await window.getNiptoCollection(collection).doc(docId).delete();
 }
 
 export async function addFirestoreDocument(collection, data) {
-    await window.db.collection(collection).add({
+    await window.getNiptoCollection(collection).add({
         ...data,
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -147,7 +147,7 @@ export async function addFirestoreDocument(collection, data) {
 
 export async function loadRoutinesFromFirestore() {
     try {
-        const snapshot = await window.db.collection('routines').get();
+        const snapshot = await window.getNiptoCollection('routines').get();
         state.routines = [];
         snapshot.forEach(doc => {
             state.routines.push({ uid: doc.id, ...doc.data() });
@@ -162,7 +162,7 @@ export async function loadRoutinesFromFirestore() {
 function pingActivitySignal() {
     try {
         window.__localActivityPingAt = Date.now(); // lets this device ignore its own echo
-        window.db.collection('sync_signals').doc('activity').set({
+        window.getNiptoCollection('sync_signals').doc('activity').set({
             updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
         }).catch(e => console.warn('Sync ping failed:', e));
     } catch (e) { /* non-critical, never block logging */ }
@@ -223,7 +223,7 @@ export async function syncNiptoTasks() {
         statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
 
         const activeNiptoTaskIds = new Set(tasks.map(task => task.uid));
-        const firebaseSnapshot = await window.db.collection('nipto_tasks').get();
+        const firebaseSnapshot = await window.getNiptoCollection('nipto_tasks').get();
         
         const uidsToDelete = [];
         firebaseSnapshot.forEach(doc => {
@@ -238,7 +238,7 @@ export async function syncNiptoTasks() {
         let totalDeleted = 0;
 
         for (const task of tasks) {
-            const docRef = window.db.collection('nipto_tasks').doc(task.uid);
+            const docRef = window.getNiptoCollection('nipto_tasks').doc(task.uid);
             batch.set(docRef, task, { merge: true });
             operationCount++;
             totalSynced++;
@@ -251,7 +251,7 @@ export async function syncNiptoTasks() {
         }
 
         for (const orphanId of uidsToDelete) {
-            const docRef = window.db.collection('nipto_tasks').doc(orphanId);
+            const docRef = window.getNiptoCollection('nipto_tasks').doc(orphanId);
             batch.delete(docRef);
             operationCount++;
             totalDeleted++;
@@ -291,7 +291,7 @@ export async function syncNiptoTasks() {
 // Loads the activityUid → real-name map used to relabel generic "assigned task" history rows.
 export async function loadActivityLabelsFromFirestore() {
     try {
-        const snapshot = await window.db.collection('activity_labels').get();
+        const snapshot = await window.getNiptoCollection('activity_labels').get();
         state.activityLabels = {};
         snapshot.forEach(doc => { state.activityLabels[doc.id] = doc.data().name; });
     } catch (e) {
@@ -306,7 +306,7 @@ export async function saveActivityLabels(activityUids, name) {
     if (!state.activityLabels) state.activityLabels = {};
     const batch = window.db.batch();
     activityUids.forEach(uid => {
-        batch.set(window.db.collection('activity_labels').doc(uid), { name });
+        batch.set(window.getNiptoCollection('activity_labels').doc(uid), { name });
         state.activityLabels[uid] = name;
     });
     try { await batch.commit(); } catch (e) { console.error("Error saving activity labels:", e); }

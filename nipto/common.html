@@ -483,5 +483,14 @@
         </div>
     </div>
 
+    <button id="env-toggle" style="position:fixed; bottom: 10px; right: 10px; z-index: 9999; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); background-color: #333; color: white; border:none;" onclick="window.toggleEnv()"></button>
+    <script>
+        setTimeout(() => {
+            const btn = document.getElementById('env-toggle');
+            const env = window.getEnv ? window.getEnv() : 'prod';
+            btn.innerText = "Env: " + env.toUpperCase();
+            btn.style.backgroundColor = env === 'prod' ? '#ef4444' : '#3b82f6';
+        }, 1000);
+    </script>
 </body>
 </html>

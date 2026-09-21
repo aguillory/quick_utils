@@ -59,14 +59,14 @@ function updateTitleBar() {
 function startChatListeners() {
     if (listenersStarted || !window.db) return;
     listenersStarted = true;
-    window.db.collection(CHAT_COLLECTION).orderBy('createdAt', 'asc').onSnapshot(snap => {
+    window.getNiptoCollection(CHAT_COLLECTION).orderBy('createdAt', 'asc').onSnapshot(snap => {
         chatMessagesCache = [];
         snap.forEach(doc => chatMessagesCache.push({ id: doc.id, ...doc.data() }));
         renderChat();
         updateUnreadBadge();
         if (isMessagesTabOpen() && document.visibilityState === 'visible') markAllRead();
     }, err => console.error('Chat listener error:', err));
-    window.db.collection(READS_COLLECTION).onSnapshot(snap => {
+    window.getNiptoCollection(READS_COLLECTION).onSnapshot(snap => {
         lastReads = {};
         snap.forEach(doc => { lastReads[doc.id] = doc.data().lastRead || null; });
         updateUnreadBadge();
@@ -104,7 +104,7 @@ async function markAllRead() {
     if (now - lastReadWrite < 2000) return; // throttle writes
     lastReadWrite = now;
     try {
-        await window.db.collection(READS_COLLECTION).doc(me.uid).set({
+        await window.getNiptoCollection(READS_COLLECTION).doc(me.uid).set({
             lastRead: window.firebase.firestore.FieldValue.serverTimestamp(),
             name: me.name
         }, { merge: true });
@@ -174,7 +174,7 @@ export async function sendChatMessage() {
     const me = getCurrentUser();
     input.value = '';
     try {
-        await window.db.collection(CHAT_COLLECTION).add({
+        await window.getNiptoCollection(CHAT_COLLECTION).add({
             text: text,
             senderUid: me.uid,
             senderName: me.name,
@@ -200,7 +200,7 @@ export async function deleteChatMessage(msgId) {
     }
     if (!confirm('Delete this message?')) return;
     try {
-        await window.db.collection(CHAT_COLLECTION).doc(msgId).update({
+        await window.getNiptoCollection(CHAT_COLLECTION).doc(msgId).update({
             deleted: true,
             deletedAt: new Date().toISOString(),
             deletedByUid: me.uid,
@@ -221,7 +221,7 @@ export async function editChatMessage(msgId) {
     const trimmed = newText.trim();
     if (!trimmed || trimmed === m.text) return;
     try {
-        await window.db.collection(CHAT_COLLECTION).doc(msgId).update({
+        await window.getNiptoCollection(CHAT_COLLECTION).doc(msgId).update({
             text: trimmed,
             edited: true,
             editHistory: window.firebase.firestore.FieldValue.arrayUnion({

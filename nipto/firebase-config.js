@@ -1,23 +1,29 @@
 // firebase-config.js
 const firebaseConfig = {
-  apiKey: "AIzaSyAvozMxlA1pCVvQos4faqm_7oFP53eK_NY",
-  authDomain: "farm-manager-7a8a5.firebaseapp.com",
-  projectId: "farm-manager-7a8a5",
-  storageBucket: "farm-manager-7a8a5.firebasestorage.app",
-  messagingSenderId: "207747657886",
-  appId: "1:207747657886:web:13616f4e1251876ab80b8f",
-  measurementId: "G-TR2E1SXLZJ"
+  apiKey: "AIzaSyBZEMURsXfHMi9E-sOPv5MEBBuqsnPuwEA",
+  authDomain: "quick-utils.firebaseapp.com",
+  projectId: "quick-utils",
+  storageBucket: "quick-utils.firebasestorage.app",
+  messagingSenderId: "761342715921",
+  appId: "1:761342715921:web:3f05487a9a40beaccfe9b0"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
-
-// Initialize Firestore
 const db = firebase.firestore();
-
-// Initialize Auth
 const auth = firebase.auth();
 
-// Export for use in other scripts
 window.db = db;
 window.auth = auth;
+
+const CURRENT_ENV = localStorage.getItem('quick_utils_env') || 'prod';
+window.getEnv = () => CURRENT_ENV;
+window.toggleEnv = () => {
+    const newEnv = CURRENT_ENV === 'prod' ? 'test' : 'prod';
+    localStorage.setItem('quick_utils_env', newEnv);
+    location.reload();
+};
+window.getNiptoCollection = (colName) => {
+    // If it's a dynamic path that already has prefix, be careful. 
+    // All known usages are direct string literals like 'custom_tasks'.
+    return db.collection('nipto/' + window.getEnv() + '/' + colName);
+};

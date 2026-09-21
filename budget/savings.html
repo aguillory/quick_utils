@@ -31,7 +31,7 @@
     </div>
 
     <script type="module">
-        import { db, auth } from './scripts/connection.js'; 
+        import { db, auth, getEnv, toggleEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -179,7 +179,7 @@
                     render();
 
                     try {
-                        await setDoc(doc(db, 'users', state.user.uid, 'savings_goals_data', 'current_config'), {
+                        await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), {
                             goals: state.goals,
                             updatedAt: new Date()
                         }, { merge: true });
@@ -561,7 +561,7 @@
             
             if (u) {
                 // Load Goals
-                onSnapshot(doc(db, 'users', u.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         if (!state.hasUnsavedChanges) {
                             state.goals = snap.data().goals || [];
@@ -573,7 +573,7 @@
                     }
                 });
                 // Load Schedule (Read-only for calculations)
-                onSnapshot(doc(db, 'users', u.uid, 'planner_data', 'schedule'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods) {
                         state.payPeriods = snap.data().periods;
                         render();
@@ -583,6 +583,16 @@
                 render();
             }
         });
+    </script>
+
+    <button id="env-toggle" style="position:fixed; bottom: 10px; right: 10px; z-index: 9999; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="import('./scripts/connection.js').then(m => m.toggleEnv())"></button>
+    <script type="module">
+        import { getEnv } from './scripts/connection.js';
+        const btn = document.getElementById('env-toggle');
+        const env = getEnv();
+        btn.innerText = "Env: " + env.toUpperCase();
+        btn.style.backgroundColor = env === 'prod' ? '#ef4444' : '#3b82f6';
+        btn.style.color = 'white';
     </script>
 </body>
 </html>

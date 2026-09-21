@@ -95,7 +95,11 @@ export async function deleteTaskActivity(activityUid, btnElement) {
     try {
         await api.deleteActivityFromNipto(activityUid);
 
-        const linkedChore = state.customChores.find(c => (c.completedActivityUids && c.completedActivityUids.includes(activityUid)) || c.completedActivityUid === activityUid);
+        // 1. Reset any linked routine / custom chore
+        const linkedChore = state.customChores ? state.customChores.find(c => 
+            (c.completedActivityUids && c.completedActivityUids.includes(activityUid)) || 
+            c.completedActivityUid === activityUid
+        ) : null;
         if (linkedChore) {
             await api.updateFirestoreDocument('custom_chores', linkedChore.uid, {
                 completed: false,
@@ -106,7 +110,61 @@ export async function deleteTaskActivity(activityUid, btnElement) {
             await api.loadChoresFromFirestore();
         }
 
-        statusDiv.innerText = `Activity deleted successfully!`;
+        // 2. Clean up from custom_tasks (Quick Add chores and General To-Dos)
+        const linkedTodo = state.todoTasksData ? state.todoTasksData.find(t =>
+            (t.completedActivityUids && t.completedActivityUids.includes(activityUid)) ||
+            t.completedActivityUid === activityUid
+        ) : null;
+
+        if (linkedTodo) {
+            if (linkedTodo.category === '⚡ Quick Add' || linkedTodo.notes === 'Quick added points') {
+                // Completely delete the quick add task from Firestore!
+                await api.deleteFirestoreDocument('custom_tasks', linkedTodo.id);
+                state.todoTasksData = state.todoTasksData.filter(t => t.id !== linkedTodo.id);
+            } else {
+                // Revert regular to-do to incomplete
+                await api.updateFirestoreDocument('custom_tasks', linkedTodo.id, {
+                    completed: false,
+                    completedActivityUids: [],
+                    completedActivityUid: null,
+                    completedBy: null,
+                    completedAt: null
+                });
+                linkedTodo.completed = false;
+                linkedTodo.completedActivityUids = [];
+                linkedTodo.completedBy = null;
+                linkedTodo.completedAt = null;
+            }
+        }
+
+        // Also query Firestore directly to ensure any tasks not in memory are cleaned up
+        try {
+            const snap = await window.getNiptoCollection('custom_tasks')
+                .where('completedActivityUids', 'array-contains', activityUid).get();
+            snap.forEach(async doc => {
+                const data = doc.data();
+                if (data.category === '⚡ Quick Add' || data.notes === 'Quick added points') {
+                    await api.deleteFirestoreDocument('custom_tasks', doc.id);
+                } else {
+                    await api.updateFirestoreDocument('custom_tasks', doc.id, {
+                        completed: false,
+                        completedActivityUids: [],
+                        completedActivityUid: null,
+                        completedBy: null,
+                        completedAt: null
+                    });
+                }
+            });
+        } catch (e) {
+            console.warn("Firestore custom_tasks cleanup query:", e);
+        }
+
+        // Re-render to-do lists if visible
+        const { renderTodoTasks, renderSidebarTodos } = await import('./todos.js');
+        renderTodoTasks();
+        renderSidebarTodos();
+
+        statusDiv.innerText = `Activity and task deleted successfully!`;
         statusDiv.style.color = 'var(--success)';
         updateLeaderboardUI();
         setTimeout(() => { statusDiv.innerText = ""; statusDiv.style.color = 'var(--text-main)'; }, 3000);

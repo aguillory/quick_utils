@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Clone Prod to Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px 0; cursor: pointer; width: 100%; }
+    .status { margin-top: 20px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; min-height: 100px; white-space: pre-wrap; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>Environment Cloner</h1>
+  <p>Clone data from <b>prod</b> to <b>test</b> instances in the quick-utils database.</p>
+  
+  <button id="clone-budget">Clone Budget Prod -> Test</button><br>
+  <button id="clone-farm">Clone Farm Manager Prod -> Test</button><br>
+  <button id="clone-nipto">Clone Nipto Prod -> Test</button><br>
+
+  <div class="status" id="status">Ready. Please ensure you have added the quick-utils Firebase config to this file.</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, getDocs, writeBatch, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // REPLACE THIS WITH YOUR QUICK-UTILS FIREBASE CONFIG
+const firebaseConfig = {
+
+  apiKey: "AIzaSyBZEMURsXfHMi9E-sOPv5MEBBuqsnPuwEA",
+
+  authDomain: "quick-utils.firebaseapp.com",
+
+  projectId: "quick-utils",
+
+  storageBucket: "quick-utils.firebasestorage.app",
+
+  messagingSenderId: "761342715921",
+
+  appId: "1:761342715921:web:3f05487a9a40beaccfe9b0",
+
+  measurementId: "G-HZ2F61EPCQ"
+
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const log = (msg) => {
+      console.log(msg);
+      document.getElementById('status').innerText += '\n' + msg;
+    };
+
+    async function cloneEnvironment(prefix, collections) {
+      log(`Starting clone for ${prefix}...`);
+      
+      try {
+        let totalCopied = 0;
+        
+        for (const colName of collections) {
+          log(`Reading ${prefix}/prod/${colName}...`);
+          const prodColRef = collection(db, `${prefix}/prod/${colName}`);
+          const prodDocs = await getDocs(prodColRef);
+          
+          if (prodDocs.empty) {
+            log(`  No documents found in ${colName}`);
+            continue;
+          }
+
+          let batch = writeBatch(db);
+          let count = 0;
+          
+          for (const docSnap of prodDocs.docs) {
+            const data = docSnap.data();
+            
+            // NOTE: In the Web SDK, DocumentReferences to the prod environment 
+            // should technically be rewritten to point to the test environment if desired.
+            // For a perfect deep clone, you would iterate over data properties and replace 
+            // `prefix/prod/` with `prefix/test/` in any DocumentReference paths.
+            
+            const testDocRef = doc(db, `${prefix}/test/${colName}/${docSnap.id}`);
+            batch.set(testDocRef, data);
+            count++;
+            
+            if (count === 490) { // Batch limit is 500
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+          
+          if (count > 0) {
+            await batch.commit();
+          }
+          
+          log(`  Copied ${prodDocs.size} documents for ${colName}.`);
+          totalCopied += prodDocs.size;
+        }
+        
+        log(`Successfully finished cloning ${prefix}! Total docs copied: ${totalCopied}`);
+      } catch (e) {
+        log(`Error cloning ${prefix}: ${e.message}`);
+      }
+    }
+
+    document.getElementById('clone-budget').addEventListener('click', () => {
+      document.getElementById('status').innerText = 'Initializing...';
+      const uid = 'He35YiePGFeHK298DTrtvvv2ujj1';
+      cloneEnvironment('budget', [
+        'friend_debt_tracker', 
+        'users/' + uid + '/accounts_data',
+        'users/' + uid + '/budget_data',
+        'users/' + uid + '/budget_items_data',
+        'users/' + uid + '/paycheck_data',
+        'users/' + uid + '/planner_data',
+        'users/' + uid + '/savings_goals_data'
+      ]);
+    });
+
+    document.getElementById('clone-farm').addEventListener('click', () => {
+      document.getElementById('status').innerText = 'Initializing...';
+      cloneEnvironment('farm_manager', ['animals', 'farms', 'healthRecords', 'healthTasks', 'species']);
+    });
+
+    document.getElementById('clone-nipto').addEventListener('click', () => {
+      document.getElementById('status').innerText = 'Initializing...';
+      cloneEnvironment('nipto', [
+        'activity_labels', 'chat_messages', 'chat_reads', 'custom_categories', 
+        'custom_tasks', 'nipto_tasks', 'routines', 'sync_signals', 'user_preferences'
+      ]);
+    });
+  </script>
+</body>
+</html>

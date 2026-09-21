@@ -168,7 +168,7 @@ async function startDashboardData() {
     renderSidebarRoutines();
     updateLeaderboardUI();
 
-    window.db.collection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+    window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
         state.todoTasksData = [];
         const now = Date.now();
         const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
@@ -190,7 +190,7 @@ async function startDashboardData() {
     
     let firstActivitySignal = true;
     let activitySignalTimer = null;
-    window.db.collection('sync_signals').doc('activity').onSnapshot(snap => {
+    window.getNiptoCollection('sync_signals').doc('activity').onSnapshot(snap => {
         if (firstActivitySignal) { firstActivitySignal = false; return; } 
         if (snap.metadata.hasPendingWrites) return; 
         if (window.__localActivityPingAt && (Date.now() - window.__localActivityPingAt < 5000)) return; 
