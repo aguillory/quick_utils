@@ -138,11 +138,13 @@ function renderChat() {
         const mine = me && m.senderUid === me.uid;
         // Only the sender can edit/delete — and not while Together mode is active
         const showActions = mine && !state.isTogetherMode;
+        const senderUser = ALL_USERS.find(u => u.uid === m.senderUid);
+        const color = senderUser ? senderUser.color : 'var(--text-muted)';
         const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         html += `
         <div class="chat-row ${mine ? 'sent' : 'received'}">
-            ${mine ? '' : `<div class="chat-sender chat-sender-${m.senderUid}">${escapeHtml(m.senderName || '?')}</div>`}
-            <div class="chat-bubble chat-bubble-${m.senderUid}">${escapeHtml(m.text)}</div>
+            ${mine ? '' : `<div class="chat-sender" style="color: ${color}">${escapeHtml(m.senderName || '?')}</div>`}
+            <div class="chat-bubble" ${mine ? '' : `style="border-left-color: ${color}"`}>${escapeHtml(m.text)}</div>
             <div class="chat-meta">
                 <span>${time}</span>
                 ${m.edited ? '<span class="chat-edited">(edited)</span>' : ''}

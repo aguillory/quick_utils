@@ -5,9 +5,9 @@ import { saveCloudPreference } from './preferences.js';
 
 const THEMES = {
     'boring': null,
-    'pixel': 'minecraft.css',
-    'tactical': 'blackops.css',
-    'homestead': 'homestead.css'
+    'pixel': 'css/minecraft.css',
+    'tactical': 'css/blackops.css',
+    'homestead': 'css/homestead.css'
 };
 
 let currentTheme = localStorage.getItem('nipto_theme') || 'boring';

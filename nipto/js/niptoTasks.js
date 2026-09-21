@@ -17,9 +17,8 @@ export async function logTask(buttonElement, taskUid, taskName) {
     }
 
     buttonElement.style.transition = 'border 0.1s, transform 0.1s';
-    buttonElement.style.border = '2px solid var(--success, #22c55e)';
     buttonElement.style.transform = 'scale(0.96)';
-    setTimeout(() => { buttonElement.style.border = ''; buttonElement.style.transform = 'scale(1)'; }, 250);
+    buttonElement.disabled = true; // Disable double clicks while logging
 
     const statusDiv = document.getElementById('status');
     let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
@@ -27,6 +26,8 @@ export async function logTask(buttonElement, taskUid, taskName) {
     if (state.currentMode !== 'live' && !document.getElementById('taskDate').value) {
         statusDiv.innerText = "Error: Please select a valid custom date/time.";
         statusDiv.style.color = 'var(--danger)';
+        buttonElement.style.transform = 'scale(1)';
+        buttonElement.disabled = false;
         return false;
     }
 
@@ -35,12 +36,14 @@ export async function logTask(buttonElement, taskUid, taskName) {
     const points = taskObj ? Math.ceil(taskObj.value / state.currentSplitDivisor) : 0;
 
     try {
-        const logPromise = api.logActivityToNipto(taskUid, targetDate.toISOString());
+        await api.logActivityToNipto(taskUid, targetDate.toISOString());
+        
+        // Success feedback!
+        buttonElement.style.border = '2px solid var(--success, #22c55e)';
+        setTimeout(() => { buttonElement.style.border = ''; buttonElement.style.transform = 'scale(1)'; }, 250);
         showToast(taskUid, taskName, points, namesString);
         statusDiv.innerText = "";
 
-        await logPromise;
-        
         if (state.routines) {
             const linkedRoutines = state.routines.filter(r => r.linkedNiptoTask === taskUid);
             let requiresRoutineRender = false;
@@ -74,10 +77,13 @@ export async function logTask(buttonElement, taskUid, taskName) {
         }
 
         updateLeaderboardUI();
+        buttonElement.disabled = false;
         return true;
     } catch (error) {
         statusDiv.innerText = `Error logging ${taskName}: ${error.message}`;
         statusDiv.style.color = 'var(--danger)';
+        buttonElement.style.transform = 'scale(1)';
+        buttonElement.disabled = false;
         return false;
     }
 }
@@ -95,19 +101,38 @@ export async function deleteTaskActivity(activityUid, btnElement) {
     try {
         await api.deleteActivityFromNipto(activityUid);
 
-        // 1. Reset any linked routine / custom chore
-        const linkedChore = state.customChores ? state.customChores.find(c => 
-            (c.completedActivityUids && c.completedActivityUids.includes(activityUid)) || 
-            c.completedActivityUid === activityUid
-        ) : null;
-        if (linkedChore) {
-            await api.updateFirestoreDocument('custom_chores', linkedChore.uid, {
-                completed: false,
-                completedActivityUid: null,
-                completedActivityUids: [],
-                completedInfo: window.firebase.firestore.FieldValue.delete()
+        // 1. Reset any linked routine / custom chore by querying Firestore directly
+        try {
+            // Check completedActivityUids array
+            const snapArray = await window.getNiptoCollection('custom_chores')
+                .where('completedActivityUids', 'array-contains', activityUid).get();
+            snapArray.forEach(async doc => {
+                await api.updateFirestoreDocument('custom_chores', doc.id, {
+                    completed: false,
+                    completedActivityUid: null,
+                    completedActivityUids: [],
+                    completedInfo: window.firebase.firestore.FieldValue.delete()
+                });
             });
-            await api.loadChoresFromFirestore();
+
+            // Check single completedActivityUid (legacy)
+            const snapSingle = await window.getNiptoCollection('custom_chores')
+                .where('completedActivityUid', '==', activityUid).get();
+            snapSingle.forEach(async doc => {
+                await api.updateFirestoreDocument('custom_chores', doc.id, {
+                    completed: false,
+                    completedActivityUid: null,
+                    completedActivityUids: [],
+                    completedInfo: window.firebase.firestore.FieldValue.delete()
+                });
+            });
+
+            // Reload chores if any were found
+            if (!snapArray.empty || !snapSingle.empty) {
+                await api.loadChoresFromFirestore();
+            }
+        } catch (e) {
+            console.warn("Firestore custom_chores cleanup query failed:", e);
         }
 
         // 2. Clean up from custom_tasks (Quick Add chores and General To-Dos)

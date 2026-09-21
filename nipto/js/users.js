@@ -10,6 +10,7 @@ import { renderRoutines, renderSidebarRoutines } from './routines.js';
 
 // Restores the last-used user/together state on startup.
 export async function initUsers() {
+    generateUserToggles();
     populateTogetherCheckboxes();
     const stored = localStorage.getItem("nipto_merged_users");
     if (stored) {
@@ -41,10 +42,9 @@ export async function setActiveUser(uid, skipSave = false) {
     document.getElementById('together-drawer').classList.remove('visible');
 
     ALL_USERS.forEach(user => {
-        const el = document.getElementById(`toggle-${user.uid}`) || document.querySelector(`.user-toggle[data-user="${user.name}"]`);
+        const el = document.getElementById(`toggle-${user.uid}`);
         if (el) {
-            const isUserActive = (user.uid === uid) || (user.name === 'Kenny' && (uid === user.uid || uid === 'TilLpLRDz4VWel79jVevmu3JsIH3' || uid === window.KENNY_UID));
-            if (isUserActive) { el.classList.add('active'); el.classList.remove('inactive'); }
+            if (user.uid === uid) { el.classList.add('active'); el.classList.remove('inactive'); }
             else { el.classList.add('inactive'); el.classList.remove('active'); }
         }
     });
@@ -102,7 +102,7 @@ export function toggleTogetherMode() {
     state.isTogetherMode = true;
 
     if (state.activeUsers.length <= 1) {
-        state.activeUsers = ["NMRQaRQbvCwBaJbiMFId", "RMNUTP8VOHD9PDzNjf0g"];
+        state.activeUsers = ALL_USERS.slice(0, 2).map(u => u.uid);
         updateTogetherCheckboxes();
     }
 
@@ -158,4 +158,32 @@ export function processTogetherSelection(skipSave = false) {
     updateFloatingIndicator();
     renderTasks();
     renderPinnedTasks();
+}
+
+export function generateUserToggles() {
+    const container = document.getElementById('user-toggles-container');
+    if (!container) return;
+    
+    let html = `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%;">`;
+    
+    ALL_USERS.forEach(u => {
+        html += `
+            <div class="user-toggle inactive" style="width: 100%; box-sizing: border-box; --user-theme-color: ${u.color};" id="toggle-${u.uid}" onclick="setActiveUser('${u.uid}')">
+                <div class="user-name">${u.name}</div>
+                <div class="user-points" id="points-${u.uid}">-- pts</div>
+            </div>
+        `;
+    });
+    
+    html += `
+        </div>
+        <div style="display: flex; justify-content: center; width: 100%; margin-top: 10px;">
+            <div class="user-toggle inactive" style="width: 100%; max-width: 400px; --user-theme-color: var(--text-muted);" id="toggle-together" onclick="toggleTogetherMode()">
+                <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
+                <div class="user-points" style="font-size: 11px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
 }

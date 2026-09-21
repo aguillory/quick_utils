@@ -177,19 +177,12 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 /* Active State */
 .user-toggle.active { transform: scale(1.02); }
 .user-toggle.active::before {
-    border-color: var(--primary);
-    border-left: 6px solid var(--primary);
+    border-color: var(--user-theme-color, var(--primary));
+    border-left: 6px solid var(--user-theme-color, var(--primary));
     background: linear-gradient(90deg, rgba(155,255,255, 0.5) 0%, rgba(0,0,0,0.8) 100%);
-    box-shadow: 0 0 15px rgba(255, 115, 0, 0.3), inset 0 0 10px rgba(255, 115, 0, 0.1);
+    box-shadow: 0 0 15px color-mix(in srgb, var(--user-theme-color, var(--primary)) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--user-theme-color, var(--primary)) 10%, transparent);
 }
-.user-toggle.active .user-points { color: var(--primary); }
-
-/* Specific User Overrides */
-.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active::before { border-color: #00F0FF; border-left-color: #00F0FF; box-shadow: 0 0 15px rgba(0, 240, 255, 0.4); } 
-.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active .user-points { color: #00F0FF; }
-
-.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active::before { border-color: var(--success); border-left-color: var(--success); box-shadow: 0 0 15px rgba(57, 255, 20, 0.4); } 
-.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active .user-points { color: var(--success); }
+.user-toggle.active .user-points { color: var(--user-theme-color, var(--primary)); }
 
 /* FIX: Inactive state legibility (Override shared CSS light gray) */
 .user-toggle.inactive { opacity: 0.6 !important; filter: none !important; }
@@ -422,15 +415,4 @@ input[list]:focus {
     border: 1px solid var(--success) !important; 
     border-radius: 0px !important; 
     font-family: 'Rajdhani', sans-serif;
-}
-/* Kenny Black Ops styling */
-.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active::before,
-.user-toggle[data-user="Kenny"].active::before {
-    border-color: #F59E0B;
-    border-left-color: #F59E0B;
-    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
-}
-.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active .user-points,
-.user-toggle[data-user="Kenny"].active .user-points {
-    color: #F59E0B;
 }

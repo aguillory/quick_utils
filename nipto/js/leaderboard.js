@@ -11,9 +11,9 @@ export async function updateLeaderboardUI() {
         const { points } = await api.getWeeklyPointsData();
 
         ALL_USERS.forEach(user => {
-            const el = document.getElementById(`points-${user.uid}`) || document.querySelector(`.user-toggle[data-user="${user.name}"] .user-points`);
+            const el = document.getElementById(`points-${user.uid}`);
             if (el) {
-                const userPts = points[user.uid] !== undefined ? points[user.uid] : (points[window.KENNY_UID] || 0);
+                const userPts = points[user.uid] || 0;
                 el.innerText = userPts + " pts";
             }
         });
@@ -28,7 +28,7 @@ export async function updateLeaderboardUI() {
         });
 
         if (topUser && maxPts > 0) {
-            const topUserElement = document.getElementById(`toggle-${topUser}`) || document.querySelector(`.user-toggle[data-user="${(ALL_USERS.find(u => u.uid === topUser) || {}).name}"]`);
+            const topUserElement = document.getElementById(`toggle-${topUser}`);
             if (topUserElement) topUserElement.innerHTML += '<div class="leader-crown">👑</div>';
         }
 
@@ -55,7 +55,7 @@ export function updateHistoryDisplay() {
     let filteredActivities = state.allWeekActivities;
     if (state.historyViewMode === 'boys') {
         filteredActivities = state.allWeekActivities.filter(act =>
-            act.user && (act.user.uid === "NMRQaRQbvCwBaJbiMFId" || act.user.uid === "RMNUTP8VOHD9PDzNjf0g")
+            act.user && (act.user.name === "Ayden" || act.user.name === "DJ")
         );
     }
     renderHistory(filteredActivities);

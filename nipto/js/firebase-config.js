@@ -15,13 +15,8 @@ const auth = firebase.auth();
 window.db = db;
 window.auth = auth;
 
-const CURRENT_ENV = localStorage.getItem('quick_utils_env') || 'prod';
+const CURRENT_ENV = window.location.pathname.includes('/test-env/') ? 'test' : 'prod';
 window.getEnv = () => CURRENT_ENV;
-window.toggleEnv = () => {
-    const newEnv = CURRENT_ENV === 'prod' ? 'test' : 'prod';
-    localStorage.setItem('quick_utils_env', newEnv);
-    location.reload();
-};
 window.getNiptoCollection = (colName) => {
     // If it's a dynamic path that already has prefix, be careful. 
     // All known usages are direct string literals like 'custom_tasks'.

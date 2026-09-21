@@ -56,9 +56,30 @@ export async function loadTasksFromFirestore() {
     }));
 }
 
-export async function loadChoresFromFirestore() {
-    const snapshot = await window.getNiptoCollection('custom_chores').get();
-    state.customChores = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+export async function loadUsersFromFirestore() {
+    const snapshot = await window.getNiptoCollection('users').orderBy('order', 'asc').get();
+    ALL_USERS.length = 0; // Clear it out
+    if (snapshot.empty) {
+        console.info("Migrating initial users to Firestore...");
+        const initialUsers = [
+            { uid: "NMRQaRQbvCwBaJbiMFId", name: "Ayden", color: "var(--user-ayden)", order: 1 },
+            { uid: "RMNUTP8VOHD9PDzNjf0g", name: "DJ", color: "var(--user-dj)", order: 2 },
+            { uid: "Llb9JjyTDvMnn8SJWfizXgthxl83", name: "Alyssa", color: "var(--user-alyssa)", order: 3 },
+            { uid: "cHnAKABalRf0gETPsDt9EiJLyZd2", name: "Devyn", color: "var(--user-devyn)", order: 4 },
+            { uid: "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2", name: "Carrina", color: "var(--user-carrina)", order: 5 },
+            { uid: "TilLpLRDz4VWel79jVevmu3JsIH3", name: "Kenny", color: "var(--user-kenny)", order: 6 }
+        ];
+        for (const u of initialUsers) {
+            await window.getNiptoCollection('users').doc(u.uid).set({
+                name: u.name, color: u.color, order: u.order
+            });
+            ALL_USERS.push(u);
+        }
+    } else {
+        snapshot.forEach(doc => {
+            ALL_USERS.push({ uid: doc.id, ...doc.data() });
+        });
+    }
 }
 
 // Data Fetchers
@@ -77,23 +98,30 @@ export async function getWeeklyPointsData() {
         let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
         if (activity.user && points[activity.user.uid] !== undefined) {
             points[activity.user.uid] += awardedPts;
-        } else if (activity.user) {
-            if (activity.user.name && activity.user.name.toLowerCase() === 'kenny') {
-                const kennyObj = ALL_USERS.find(u => u.name.toLowerCase() === 'kenny');
-                if (kennyObj && (kennyObj.uid === 'TilLpLRDz4VWel79jVevmu3JsIH3' || !kennyObj.uid || kennyObj.uid.startsWith('KENNY_UID'))) {
-                    kennyObj.uid = activity.user.uid;
-                    localStorage.setItem("nipto_kenny_uid", activity.user.uid);
-                    window.KENNY_UID = activity.user.uid;
-                    points[activity.user.uid] = awardedPts;
-                    console.info(`[Nipto User Discovery] Auto-resolved Kenny UID: ${activity.user.uid}`);
-                    const oldToggle = document.getElementById('toggle-TilLpLRDz4VWel79jVevmu3JsIH3');
-                    if (oldToggle) {
-                        oldToggle.id = `toggle-${activity.user.uid}`;
-                        oldToggle.setAttribute('onclick', `setActiveUser('${activity.user.uid}')`);
-                    }
-                    const oldPts = document.getElementById('points-TilLpLRDz4VWel79jVevmu3JsIH3');
-                    if (oldPts) oldPts.id = `points-${activity.user.uid}`;
+        } else if (activity.user && activity.user.name) {
+            const matchedUser = ALL_USERS.find(u => u.name.toLowerCase() === activity.user.name.toLowerCase());
+            if (matchedUser && matchedUser.uid !== activity.user.uid) {
+                console.info(`[Nipto User Discovery] Auto-resolved ${matchedUser.name} UID to: ${activity.user.uid}`);
+                points[activity.user.uid] = (points[matchedUser.uid] || 0) + awardedPts;
+                delete points[matchedUser.uid];
+                
+                const oldUid = matchedUser.uid;
+                matchedUser.uid = activity.user.uid;
+                
+                window.getNiptoCollection('users').doc(oldUid).delete();
+                window.getNiptoCollection('users').doc(activity.user.uid).set({
+                    name: matchedUser.name,
+                    color: matchedUser.color,
+                    order: matchedUser.order || 99
+                });
+                
+                const oldToggle = document.getElementById(`toggle-${oldUid}`);
+                if (oldToggle) {
+                    oldToggle.id = `toggle-${activity.user.uid}`;
+                    oldToggle.setAttribute('onclick', `setActiveUser('${activity.user.uid}')`);
                 }
+                const oldPts = document.getElementById(`points-${oldUid}`);
+                if (oldPts) oldPts.id = `points-${activity.user.uid}`;
             } else if (!ALL_USERS.some(u => u.uid === activity.user.uid)) {
                 console.info(`[Nipto User Discovery] Found unlisted user in activity: ${activity.user.name} (UID: ${activity.user.uid})`);
             }
@@ -146,15 +174,11 @@ export async function addFirestoreDocument(collection, data) {
 }
 
 export async function loadRoutinesFromFirestore() {
-    try {
-        const snapshot = await window.getNiptoCollection('routines').get();
-        state.routines = [];
-        snapshot.forEach(doc => {
-            state.routines.push({ uid: doc.id, ...doc.data() });
-        });
-    } catch (error) {
-        console.error("Error loading routines:", error);
-    }
+    const snapshot = await window.getNiptoCollection('routines').get();
+    state.routines = [];
+    snapshot.forEach(doc => {
+        state.routines.push({ uid: doc.id, ...doc.data() });
+    });
 }
 
 // Notifies all other open dashboards that Nipto activity data changed,
@@ -290,14 +314,9 @@ export async function syncNiptoTasks() {
 
 // Loads the activityUid → real-name map used to relabel generic "assigned task" history rows.
 export async function loadActivityLabelsFromFirestore() {
-    try {
-        const snapshot = await window.getNiptoCollection('activity_labels').get();
-        state.activityLabels = {};
-        snapshot.forEach(doc => { state.activityLabels[doc.id] = doc.data().name; });
-    } catch (e) {
-        console.error("Error loading activity labels:", e);
-        state.activityLabels = state.activityLabels || {};
-    }
+    const snapshot = await window.getNiptoCollection('activity_labels').get();
+    state.activityLabels = {};
+    snapshot.forEach(doc => { state.activityLabels[doc.id] = doc.data().name; });
 }
 
 // Stores the real (routine/to-do) name against each Nipto activity UID it created.

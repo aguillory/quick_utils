@@ -1,8 +1,7 @@
 // dashboard.js
 // App entry point: imports all modules, wires global window handlers for inline
 // HTML onclick attributes, defines moveCategory, and runs startup/auth/init.
-import { state, KENNY_UID } from './state.js';
-window.KENNY_UID = KENNY_UID;
+import { state } from './state.js';
 import * as api from './api.js';
 import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import { saveCloudPreference } from './preferences.js';
@@ -121,12 +120,15 @@ window.runSync = async () => {
 
 window.refreshDashboard = async () => {
     const btn = document.getElementById('refreshBtn');
+    const statusText = document.getElementById('status');
     if (btn) { btn.innerText = "⏳ Syncing..."; btn.disabled = true; }
 
     try {
-        await api.loadTasksFromFirestore();
-        await api.loadChoresFromFirestore();
-        await api.loadRoutinesFromFirestore();
+        await Promise.all([
+            api.loadTasksFromFirestore(),
+            api.loadRoutinesFromFirestore(),
+            api.loadUsersFromFirestore()
+        ]);
         await updateLeaderboardUI();
 
         renderTasks();
@@ -135,8 +137,15 @@ window.refreshDashboard = async () => {
         renderSidebarRoutines();
         renderTodoTasks();
         renderSidebarTodos();
+        if (statusText) statusText.innerText = "";
     } catch (e) {
         console.error("Refresh failed:", e);
+        if (statusText) {
+            statusText.innerText = `Dashboard refresh failed: ${e.message}`;
+            statusText.style.color = "var(--danger, #cf6679)";
+        } else {
+            alert(`Dashboard refresh failed: ${e.message}`);
+        }
     }
 
     if (btn) { btn.innerText = "🔄 Refresh"; btn.disabled = false; }
@@ -155,18 +164,30 @@ initCollapsibles([
 ]);
 // Extract all the data loading logic into one reusable function
 async function startDashboardData() {
-    await api.loadTasksFromFirestore();
-    await api.loadChoresFromFirestore();
-    await api.loadRoutinesFromFirestore();
-    await api.loadActivityLabelsFromFirestore();
-    
-    await initUsers();
-    
-    renderTasks();
-    renderPinnedTasks();
-    renderRoutines();
-    renderSidebarRoutines();
-    updateLeaderboardUI();
+    try {
+        await api.loadUsersFromFirestore();
+        await Promise.all([
+            api.loadTasksFromFirestore(),
+            api.loadRoutinesFromFirestore(),
+            api.loadActivityLabelsFromFirestore()
+        ]);
+        
+        await initUsers();
+        
+        renderTasks();
+        renderPinnedTasks();
+        renderRoutines();
+        renderSidebarRoutines();
+        updateLeaderboardUI();
+    } catch (e) {
+        console.error("Dashboard initialization failed:", e);
+        const statusText = document.getElementById('status');
+        if (statusText) {
+            statusText.innerText = `Dashboard initialization failed: ${e.message}`;
+            statusText.style.color = "var(--danger, #cf6679)";
+            statusText.style.display = "block";
+        }
+    }
 
     window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
         state.todoTasksData = [];

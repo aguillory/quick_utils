@@ -144,17 +144,13 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 .user-name { font-size: 28px; font-weight: normal; color: var(--text-main); margin-bottom: 5px; }
 .user-points { font-size: 22px; color: var(--text-muted); }
 
-/* Highlight Active Users with Diamond Border */
+/* Highlight Active Users with Color Border */
 .user-toggle.active {
-    border-color: var(--primary);
+    border-color: var(--user-theme-color, var(--primary));
     background-color: #FFFFFF;
-    box-shadow: 6px 6px 0px var(--primary-hover);
+    box-shadow: 6px 6px 0px color-mix(in srgb, var(--user-theme-color, var(--primary-hover)) 60%, black);
     transform: translateY(-4px);
 }
-
-/* Specific User Overrides (Optional blocky colors) */
-.user-toggle#toggle-NMRQaRQbvCwBaJbiMFId.active { border-color: #5555FF; box-shadow: 6px 6px 0px #0000AA; } /* Lapis Lazuli */
-.user-toggle#toggle-RMNUTP8VOHD9PDzNjf0g.active { border-color: #55FF55; box-shadow: 6px 6px 0px #00AA00; } /* Emerald */
 
 /* ==========================================
    INPUTS & SELECTS
@@ -277,10 +273,4 @@ input[list] {
     border-radius: 0px;
     box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.6);
     padding: 15px 20px;
-}
-/* Kenny Minecraft styling */
-.user-toggle#toggle-TilLpLRDz4VWel79jVevmu3JsIH3.active,
-.user-toggle[data-user="Kenny"].active {
-    border-color: #FFAA00;
-    box-shadow: 6px 6px 0px #AA5500; /* Gold */
 }
