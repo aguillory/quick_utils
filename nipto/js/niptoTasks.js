@@ -101,39 +101,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
     try {
         await api.deleteActivityFromNipto(activityUid);
 
-        // 1. Reset any linked routine / custom chore by querying Firestore directly
-        try {
-            // Check completedActivityUids array
-            const snapArray = await window.getNiptoCollection('custom_chores')
-                .where('completedActivityUids', 'array-contains', activityUid).get();
-            snapArray.forEach(async doc => {
-                await api.updateFirestoreDocument('custom_chores', doc.id, {
-                    completed: false,
-                    completedActivityUid: null,
-                    completedActivityUids: [],
-                    completedInfo: window.firebase.firestore.FieldValue.delete()
-                });
-            });
 
-            // Check single completedActivityUid (legacy)
-            const snapSingle = await window.getNiptoCollection('custom_chores')
-                .where('completedActivityUid', '==', activityUid).get();
-            snapSingle.forEach(async doc => {
-                await api.updateFirestoreDocument('custom_chores', doc.id, {
-                    completed: false,
-                    completedActivityUid: null,
-                    completedActivityUids: [],
-                    completedInfo: window.firebase.firestore.FieldValue.delete()
-                });
-            });
-
-            // Reload chores if any were found
-            if (!snapArray.empty || !snapSingle.empty) {
-                await api.loadChoresFromFirestore();
-            }
-        } catch (e) {
-            console.warn("Firestore custom_chores cleanup query failed:", e);
-        }
 
         // 2. Clean up from custom_tasks (Quick Add chores and General To-Dos)
         const linkedTodo = state.todoTasksData ? state.todoTasksData.find(t =>
