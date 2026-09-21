@@ -139,7 +139,7 @@
                     state.selectedPeriodId = newSchedule[0].id;
                 }
                 
-                await setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: newSchedule });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: newSchedule });
                 state.isEditorOpen = false;
                 render();
             },
@@ -177,7 +177,7 @@
                 const updatedSchedule = state.schedule.map(p => p.id === periodId ? { ...p, isSetup: true, bills: newBills } : p);
                 state.schedule = updatedSchedule; // Optimistic update
                 render();
-                await setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             updateBill: (periodId, billId, field, value) => {
                 // Handle type conversion
@@ -222,7 +222,7 @@
                                 }
                                 state.masterAccounts.history = updatedHistory;
 
-                                setDoc(getBudgetDoc('users', state.user.uid, 'accounts_data', 'current_config'), state.masterAccounts);
+                                setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), state.masterAccounts);
                             }
                         }
                     }
@@ -234,7 +234,7 @@
                 state.schedule = updatedSchedule;
                 render(); // Re-render immediately for responsiveness
                 // Debounce save in production, but for now direct save
-                setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             addCustomExpense: (periodId) => {
                 const updatedSchedule = state.schedule.map(p => {
@@ -244,7 +244,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             deleteBill: (periodId, billId) => {
                 const updatedSchedule = state.schedule.map(p => {
@@ -253,7 +253,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             },
             moveBill: (billId, targetPeriodId) => {
                 const currentPeriod = state.schedule.find(p => p.id === state.selectedPeriodId);
@@ -272,7 +272,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
             }
         };
 
@@ -625,23 +625,23 @@
             
             if (u) {
                 // Initialize Listeners
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'paycheck_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
                     state.masterPay = snap.data() || {};
                     render();
                 });
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'accounts_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
                     state.masterAccounts = snap.data() || { bills: [], debts: [] };
                     render();
                 });
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'budget_items_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.budgetItems = snap.data().items || [];
                     render();
                 });
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.savingsGoals = snap.data().goals || [];
                     render();
                 });
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
                         state.schedule = snap.data().periods;
                         // Auto select if first load

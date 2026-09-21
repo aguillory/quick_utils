@@ -23,6 +23,7 @@
         ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 4px; } 
         ::-webkit-scrollbar-thumb:hover { background: #10b981; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-slate-50 min-h-screen font-sans text-slate-900 pb-20">
 
@@ -31,7 +32,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, toggleEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -162,6 +163,37 @@
 
         // --- Actions ---
         const Actions = {
+            toggleIncludeLoans: (checked) => {
+                state.includeLoansInChart = checked;
+                render();
+            },
+
+            editHistory: () => {
+                state.isHistoryModalOpen = true;
+                render();
+            },
+            closeHistoryModal: () => {
+                state.isHistoryModalOpen = false;
+                render();
+            },
+            saveHistory: () => {
+                try {
+                    const val = document.getElementById('historyInput').value;
+                    const parsed = JSON.parse(val);
+                    if (!Array.isArray(parsed)) throw new Error("Must be an array");
+                    state.history = parsed;
+                    state.isHistoryModalOpen = false;
+                    setDoc(getBudgetDoc('users', state.user.uid, 'accounts_data', 'current_config'), {
+                        bills: state.bills,
+                        debts: state.debts,
+                        history: state.history,
+                        extraPayment: state.extraPayment
+                    });
+                } catch (e) {
+                    alert('Invalid JSON: ' + e.message);
+                }
+            },
+
             login: async (e) => {
                 e.preventDefault();
                 const pw = document.getElementById('login-password').value;
@@ -176,14 +208,19 @@
                 state.hasUnsavedChanges = true;
                 
                 // --- Burn Down History Snapshot Logic ---
-                const currentMonthStr = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
+                const currentDateStr = new Date().toISOString().slice(0, 10); // Format: YYYY-MM-DD
                 const currentTotalDebt = Logic.calculateTotals().totalDebt;
+                
+                const accountBalances = {};
+                state.debts.forEach(d => { accountBalances[d.id || d.name] = d.balance; });
+
                 let updatedHistory = [...(state.history || [])];
                 
-                if (updatedHistory.length > 0 && updatedHistory[updatedHistory.length - 1].month === currentMonthStr) {
-                    updatedHistory[updatedHistory.length - 1].balance = currentTotalDebt; // Update existing month
+                if (updatedHistory.length > 0 && updatedHistory[updatedHistory.length - 1].month === currentDateStr) {
+                    updatedHistory[updatedHistory.length - 1].balance = currentTotalDebt; // Update existing day
+                    updatedHistory[updatedHistory.length - 1].balances = accountBalances;
                 } else {
-                    updatedHistory.push({ month: currentMonthStr, balance: currentTotalDebt }); // New month
+                    updatedHistory.push({ month: currentDateStr, balance: currentTotalDebt, balances: accountBalances }); // New day
                 }
                 state.history = updatedHistory;
                 
@@ -204,7 +241,7 @@
                     };
 
                     try {
-                        await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), {
+                        await setDoc(getBudgetDoc( 'users', state.user.uid, 'accounts_data', 'current_config'), {
                             ...currentData,
                             updatedAt: new Date()
                         }, { merge: true });
@@ -309,118 +346,39 @@
             </div>
         `;
 
-        const renderStrategyPanel = () => {
-            const consumerDebts = state.debts.filter(d => d.type !== 'Mortgage' && d.balance > 0);
-            if (consumerDebts.length === 0) return '';
-
-            const snowball = Logic.simulatePayoff(state.debts, state.extraPayment, 'snowball');
-            const avalanche = Logic.simulatePayoff(state.debts, state.extraPayment, 'avalanche');
-
-            const getDateString = (monthsOut) => {
-                if(monthsOut >= 600) return "Never (Increase Payments)";
-                const d = new Date();
-                d.setMonth(d.getMonth() + monthsOut);
-                return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-            };
-
-            const interestDiff = snowball.totalInterestPaid - avalanche.totalInterestPaid;
-
-            return `
-            <div class="bg-indigo-900 rounded-xl p-6 shadow-lg mb-6 text-white relative overflow-hidden">
-                <div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-indigo-800/50 blur-3xl pointer-events-none"></div>
-                
-                <div class="relative z-10 flex flex-col lg:flex-row gap-8 items-center">
-                    <div class="w-full lg:w-1/3 space-y-4">
-                        <h2 class="text-xl font-bold flex items-center gap-2">
-                            ${Icons.TrendingDown}
-                            Payoff Strategizer
-                        </h2>
-                        <p class="text-sm text-indigo-200">How much extra cash can you throw at debt each month beyond the minimums?</p>
-                        
-                        <div class="relative">
-                            <span class="absolute left-4 top-2.5 text-indigo-300 font-bold">$</span>
-                            <input 
-                                id="extraPaymentInput"
-                                type="number" 
-                                value="${state.extraPayment}"
-                                onchange="Accounts.updateExtraPayment(this.value)"
-                                class="w-full pl-8 pr-4 py-2.5 bg-indigo-950/50 border border-indigo-700 rounded-lg text-white font-bold text-lg focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-indigo-950/40 border border-indigo-800/50 p-4 rounded-xl">
-                            <div class="flex justify-between items-start mb-2">
-                                <h3 class="font-bold text-indigo-100">Snowball Method</h3>
-                                <span class="text-[10px] uppercase font-bold bg-indigo-800 text-indigo-200 px-2 py-0.5 rounded">Smallest Bal First</span>
-                            </div>
-                            <div class="text-3xl font-black text-white mb-1">${getDateString(snowball.months)}</div>
-                            <div class="text-sm text-indigo-300">Total Interest Paid: ${formatCurrency(snowball.totalInterestPaid)}</div>
-                        </div>
-
-                        <div class="bg-indigo-950/40 border border-indigo-800/50 p-4 rounded-xl relative ${interestDiff > 0 ? 'ring-1 ring-emerald-500' : ''}">
-                            ${interestDiff > 0 ? `<div class="absolute -top-3 -right-2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md">Saves ${formatCurrency(interestDiff)}</div>` : ''}
-                            <div class="flex justify-between items-start mb-2">
-                                <h3 class="font-bold text-indigo-100">Avalanche Method</h3>
-                                <span class="text-[10px] uppercase font-bold bg-indigo-800 text-indigo-200 px-2 py-0.5 rounded">Highest APR First</span>
-                            </div>
-                            <div class="text-3xl font-black text-white mb-1">${getDateString(avalanche.months)}</div>
-                            <div class="text-sm text-indigo-300">Total Interest Paid: ${formatCurrency(avalanche.totalInterestPaid)}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        };
-
+        
         const renderBurnDownChart = () => {
             if (!state.history || state.history.length === 0) return '';
             
-            // To make the chart look visually meaningful, we base the height off the highest debt recorded
-            const maxBalance = Math.max(...state.history.map(h => h.balance), 1); 
-
             return `
             <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 overflow-hidden">
                 <div class="flex items-center justify-between mb-6">
                     <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        ${Icons.ChartLine}
+                        ${Icons.ChartLine || ''}
                         Debt Burn-Down History
                     </h2>
-                    <span class="text-xs font-bold uppercase text-slate-400">Total Consumer Debt</span>
+                    
                 </div>
                 
-                <div class="h-48 flex items-end gap-2 pb-6 border-b border-slate-100 relative mt-4">
-                    ${state.history.map(point => {
-                        const heightPercentage = (point.balance / maxBalance) * 100;
-                        
-                        // Parse 'YYYY-MM' safely
-                        const [year, month] = point.month.split('-');
-                        const date = new Date(year, month - 1); 
-                        const monthStr = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-                        
-                        return `
-                        <div class="flex-1 flex flex-col items-center group relative h-full justify-end min-w-[30px]">
-                            <div class="w-full max-w-[40px] bg-emerald-500 rounded-t-sm transition-all duration-500 group-hover:bg-emerald-400" style="height: ${heightPercentage}%; min-height: 4px;"></div>
-                            
-                            <div class="absolute -bottom-6 text-[10px] font-bold text-slate-400 whitespace-nowrap">${monthStr}</div>
-                            
-                            <div class="absolute -top-8 bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none shadow-lg">
-                                ${formatCurrency(point.balance)}
-                            </div>
-                        </div>`;
-                    }).join('')}
+                
+                <div class="flex items-center justify-end mb-2 gap-2 text-sm text-slate-600 font-medium">
+                    <input type="checkbox" id="includeLoansToggle" onchange="Accounts.toggleIncludeLoans(this.checked)" ${state.includeLoansInChart ? 'checked' : ''} class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer">
+                    <label for="includeLoansToggle" class="cursor-pointer">Include Loans in Total</label>
+                </div>
+
+                <div class="h-64 relative w-full">
+                    <canvas id="burnDownCanvas"></canvas>
                 </div>
                 
                 ${state.history.length === 1 ? `
                     <div class="mt-8 p-3 bg-slate-50 text-slate-500 text-xs text-center rounded-lg border border-slate-100">
-                        This chart has recorded your first baseline. It will automatically track your progress and build new trend bars as you update your balances month to month!
+                        This chart has recorded your first baseline. It will automatically track your progress and build new trend points as you update your balances month to month!
                     </div>
                 ` : ''}
             </div>
             `;
         };
-
-        const renderDebtRow = (item) => {
+const renderDebtRow = (item) => {
             const { isLoan, isMortgage, isConsumer, limitLabel, utilization, barColor, textColor, warningText, monthlyInterest } = Logic.getDebtStatus(item);
             
             return `
@@ -635,7 +593,7 @@
             <div class="max-w-5xl mx-auto px-4 -mt-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
                 <div class="lg:col-span-7 space-y-6">
-                    ${renderStrategyPanel()}
+                    
                     ${renderBurnDownChart()}
 
                     <div class="flex justify-between items-center">
@@ -680,6 +638,136 @@
             </div>`;
         };
 
+        
+        // --- Chart Instance ---
+        let burnDownChartInstance = null;
+
+        const drawChart = () => {
+            const ctx = document.getElementById('burnDownCanvas');
+            if (!ctx) return;
+            
+            if (burnDownChartInstance) {
+                burnDownChartInstance.destroy();
+            }
+
+            if (!state.history || state.history.length === 0) return;
+
+            const sortedHistory = [...state.history].sort((a, b) => a.month.localeCompare(b.month));
+            const labels = sortedHistory.map(h => {
+                const parts = h.month.split('-');
+                if (parts.length === 3) {
+                    // YYYY-MM-DD
+                    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                } else {
+                    const d = new Date(parts[0], parts[1] - 1);
+                    return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                }
+            });
+            
+            // Determine which account IDs to include in the total based on toggle
+            const includedAccountIds = new Set();
+            state.debts.forEach(d => {
+                if (d.type !== 'Mortgage') {
+                    if (state.includeLoansInChart || d.type !== 'Loan') {
+                        includedAccountIds.add(d.id || d.name);
+                    }
+                }
+            });
+
+            // Recalculate total data points
+            const totalData = sortedHistory.map(h => {
+                if (!h.balances) return h.balance || 0; // Fallback to raw balance if balances map missing
+                let sum = 0;
+                Object.keys(h.balances).forEach(id => {
+                    if (includedAccountIds.has(id)) sum += h.balances[id];
+                });
+                return sum;
+            });
+
+            const datasets = [{
+                label: state.includeLoansInChart ? 'Total Debt (Inc. Loans)' : 'Total Consumer Cards',
+                data: totalData,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                borderWidth: 4,
+                pointBackgroundColor: '#10b981',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: true,
+                tension: 0.3
+            }];
+
+            const accountNames = new Set();
+            sortedHistory.forEach(h => {
+                if(h.balances) Object.keys(h.balances).forEach(k => accountNames.add(k));
+            });
+
+            const colors = ['#f43f5e', '#3b82f6', '#eab308', '#a855f7', '#f97316', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6'];
+            let colorIdx = 0;
+
+            Array.from(accountNames).forEach(accName => {
+                const debtObj = state.debts.find(d => d.id === accName);
+                if (debtObj && debtObj.type === 'Mortgage') return; // Hide mortgages
+                
+                // Hide loans from individual tracks if toggle is off
+                if (!state.includeLoansInChart && debtObj && debtObj.type === 'Loan') return;
+
+                const c = colors[colorIdx % colors.length];
+                colorIdx++;
+                
+                const labelName = debtObj ? debtObj.name : accName;
+
+                datasets.push({
+                    label: labelName,
+                    data: sortedHistory.map(h => (h.balances && h.balances[accName]) || 0),
+                    borderColor: c,
+                    backgroundColor: c + '20',
+                    borderWidth: 2,
+                    pointBackgroundColor: c,
+                    pointRadius: 3,
+                    fill: false,
+                    tension: 0.3,
+                    hidden: true
+                });
+            });
+
+            burnDownChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: function(value) { return '$' + (value / 1000) + 'k'; } } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        };
+
+        const renderHistoryModal = () => { return ''; };
+
         const render = () => {
             const app = document.getElementById('app');
             
@@ -692,7 +780,8 @@
                 app.innerHTML = renderLogin();
                 return;
             }
-            app.innerHTML = renderApp();
+            app.innerHTML = renderApp() + renderHistoryModal();
+            setTimeout(drawChart, 0);
         };
 
         // --- Init ---
@@ -701,7 +790,7 @@
             state.isLoading = false;
             
             if (u) {
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'accounts_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
                         const isInitial = state.debts.length === 0 && state.bills.length === 0;
@@ -736,14 +825,7 @@
 
     </script>
 
-    <button id="env-toggle" style="position:fixed; bottom: 10px; right: 10px; z-index: 9999; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="import('./scripts/connection.js').then(m => m.toggleEnv())"></button>
-    <script type="module">
-        import { getEnv } from './scripts/connection.js';
-        const btn = document.getElementById('env-toggle');
-        const env = getEnv();
-        btn.innerText = "Env: " + env.toUpperCase();
-        btn.style.backgroundColor = env === 'prod' ? '#ef4444' : '#3b82f6';
-        btn.style.color = 'white';
-    </script>
+    
+    
 </body>
 </html>

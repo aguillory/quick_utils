@@ -138,7 +138,7 @@
                 state.isModalOpen = false;
                 render();
 
-                await setDoc(getBudgetDoc( 'users', state.user.uid, 'budget_items_data', 'current_config'), { items: newItems });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), { items: newItems });
             },
             deleteItem: async (id) => {
                 if(!confirm("Are you sure you want to delete this budget item?")) return;
@@ -146,7 +146,7 @@
                 const newItems = state.items.filter(i => i.id !== id);
                 state.items = newItems;
                 render();
-                await setDoc(getBudgetDoc( 'users', state.user.uid, 'budget_items_data', 'current_config'), { items: newItems });
+                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), { items: newItems });
             }
         };
 
@@ -395,7 +395,7 @@
             state.isLoading = false;
             if (u) {
                 // 1. Listen to manual budget items
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'budget_items_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         state.items = snap.data().items || [];
                     } else {
@@ -405,7 +405,7 @@
                 });
 
                 // 2. Listen to Accounts data to extract min payments and bills
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'accounts_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
                         state.linkedDebts = d.debts || [];
