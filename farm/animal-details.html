@@ -32,7 +32,7 @@
     <div id="global-nav"></div>
 
     <main class="container">
-        <a href="animals.html" class="btn-text" style="margin-bottom: 1rem; display: inline-block;">
+        <a href="animals.html" class="btn-text mb-1 d-inline-block">
             <i class="fas fa-arrow-left"></i> Back to Animals
         </a>
 
@@ -46,7 +46,7 @@
                     <div id="detailPhoto"></div>
                 </div>
                 <div class="details-info">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="flex-between">
                         <div>
                             <h1 id="detailName" style="margin:0; display: inline-block;">-</h1>
                             <span id="flockBadge" style="display:none; margin-left: 10px; font-size: 0.9rem; padding: 4px 8px; background: #e0f7fa; color: #00838f; border-radius: 12px;"></span>
@@ -86,8 +86,8 @@
             </div>
 
             <div id="flockMembersSection" class="card" style="display:none; margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-                    <h3 style="margin:0;"><i class="fas fa-users"></i> Flock Members</h3>
+                <div class="flex-between mb-1">
+                    <h3 class="m-0"><i class="fas fa-users"></i> Flock Members</h3>
                     <button class="btn-primary" id="btnAddFlockMember" style="padding: 5px 10px; font-size: 0.9rem;">
                         <i class="fas fa-plus"></i> Add Existing
                     </button>
@@ -97,9 +97,9 @@
                 </div>
             </div>
 
-            <div class="care-history" style="margin-top: 2rem;">
-                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 style="margin:0;"><i class="fas fa-clipboard-list"></i> Feed & Care Logs</h2>
+            <div class="care-history mt-2">
+                <div class="section-header flex-between">
+                    <h2 class="m-0"><i class="fas fa-clipboard-list"></i> Feed & Care Logs</h2>
                     <button class="btn-primary" id="btnLogCare" style="padding: 5px 10px; font-size: 0.9rem;">
                         <i class="fas fa-plus"></i> Log Activity
                     </button>
@@ -151,19 +151,19 @@
                     </form>
                 </div>
 
-                <div id="careRecordsList" class="records-list" style="margin-top: 1rem;"></div>
+                <div id="careRecordsList" class="records-list mt-1"></div>
             </div>
 
-            <div class="health-history" style="margin-top: 2rem;">
+            <div class="health-history mt-2">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Medical History</h2>
                 </div>
                 <div id="healthRecordsList" class="records-list"></div>
             </div>
 
-            <div class="reproduction-history" style="margin-top: 2rem;">
-                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 style="margin:0;"><i class="fas fa-venus-mars"></i> Reproduction & Breeding</h2>
+            <div class="reproduction-history mt-2">
+                <div class="section-header flex-between">
+                    <h2 class="m-0"><i class="fas fa-venus-mars"></i> Reproduction & Breeding</h2>
                     <div>
                         <button class="btn-primary" id="btnLogMating" style="padding: 5px 10px; font-size: 0.9rem;">
                             <i class="fas fa-heart"></i> Log Mating/Exposure
@@ -181,18 +181,18 @@
                     </div>
                 </div>
 
-                <div id="breedingRecordsList" class="records-list" style="margin-top: 1rem;"></div>
+                <div id="breedingRecordsList" class="records-list mt-1"></div>
             </div>
 
             <div id="dairyHistorySection" style="display:none; margin-top: 2rem;">
-                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 style="margin:0;"><i class="fas fa-jug-detergent"></i> Dairy & Milk Logs</h2>
+                <div class="section-header flex-between">
+                    <h2 class="m-0"><i class="fas fa-jug-detergent"></i> Dairy & Milk Logs</h2>
                     <a href="dairy.html" class="btn-secondary" style="padding: 5px 10px; font-size: 0.9rem; text-decoration:none;">
                         Open Dairy Dashboard
                     </a>
                 </div>
-                <div class="card" style="margin-top: 1rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div class="card mt-1">
+                    <div class="flex-between mb-1">
                         <strong>Current Status:</strong>
                         <select id="animalDairyStatusToggle" style="padding: 5px; font-weight:bold;">
                             <option value="true">In Milk</option>
@@ -221,8 +221,8 @@
                 <input type="hidden" id="animalPhotoData">
                 
                 <div class="form-row" style="margin-bottom: 15px;">
-                    <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="animalIsGroup" style="width: auto;">
+                    <div class="form-group flex-row gap-10">
+                        <input type="checkbox" id="animalIsGroup" class="w-auto">
                         <label for="animalIsGroup" style="margin: 0; cursor: pointer;">This is a Flock/Group</label>
                     </div>
                 </div>
