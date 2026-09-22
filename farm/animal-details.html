@@ -47,7 +47,10 @@
                 </div>
                 <div class="details-info">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h1 id="detailName" style="margin:0;">-</h1>
+                        <div>
+                            <h1 id="detailName" style="margin:0; display: inline-block;">-</h1>
+                            <span id="flockBadge" style="display:none; margin-left: 10px; font-size: 0.9rem; padding: 4px 8px; background: #e0f7fa; color: #00838f; border-radius: 12px;"></span>
+                        </div>
                         <span id="detailStatus" class="animal-status">-</span>
                     </div>
                     
@@ -82,11 +85,46 @@
                 <div class="info-grid" id="customFieldsGrid"></div>
             </div>
 
+            <div id="flockMembersSection" class="card" style="display:none; margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                    <h3 style="margin:0;"><i class="fas fa-users"></i> Flock Members</h3>
+                    <button class="btn-primary" id="btnAddFlockMember" style="padding: 5px 10px; font-size: 0.9rem;">
+                        <i class="fas fa-plus"></i> Add Existing
+                    </button>
+                </div>
+                <div id="flockMembersList" class="animals-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                    <!-- Members inserted here -->
+                </div>
+            </div>
+
             <div class="health-history">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Medical History</h2>
                 </div>
                 <div id="healthRecordsList" class="records-list"></div>
+            </div>
+
+            <div class="reproduction-history" style="margin-top: 2rem;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 style="margin:0;"><i class="fas fa-venus-mars"></i> Reproduction & Breeding</h2>
+                    <div>
+                        <button class="btn-primary" id="btnLogMating" style="padding: 5px 10px; font-size: 0.9rem;">
+                            <i class="fas fa-heart"></i> Log Mating/Exposure
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="reproductionActiveSection" class="card" style="display:none; margin-top: 1rem; background: #fff3e0; border: 1px solid #ffcc80;">
+                    <h4 style="margin-top:0; color: #e65100;"><i class="fas fa-baby"></i> Active Pregnancy / Exposure</h4>
+                    <div id="activePregnancyDetails" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;"></div>
+                    <div style="margin-top: 1rem; border-top: 1px solid #ffcc80; padding-top: 1rem; display:flex; gap: 10px;">
+                        <button class="btn-secondary" id="btnLogPregnancyCheck" style="background: white;">Log Pregnancy Check</button>
+                        <button class="btn-primary" id="btnLogBirth">Log Birth / Kidding</button>
+                        <button class="btn-danger" id="btnCancelPregnancy" style="margin-left:auto;">Cancel / Open</button>
+                    </div>
+                </div>
+
+                <div id="breedingRecordsList" class="records-list" style="margin-top: 1rem;"></div>
             </div>
         </div>
     </main>
@@ -101,9 +139,16 @@
                 <input type="hidden" id="animalId">
                 <input type="hidden" id="animalPhotoData">
                 
+                <div class="form-row" style="margin-bottom: 15px;">
+                    <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="animalIsGroup" style="width: auto;">
+                        <label for="animalIsGroup" style="margin: 0; cursor: pointer;">This is a Flock/Group</label>
+                    </div>
+                </div>
                 <div class="form-row">
                     <div class="form-group"><label>Species *</label><select id="animalSpecies" required disabled style="background:#f0f0f0;"><option>Loading...</option></select></div>
-                    <div class="form-group"><label>Name *</label><input type="text" id="animalName" required></div>
+                    <div class="form-group"><label id="animalNameLabel">Name *</label><input type="text" id="animalName" required></div>
+                    <div class="form-group" id="quantityGroup" style="display: none;"><label>Quantity *</label><input type="number" id="animalQuantity" min="1" value="1"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Gender</label><select id="animalGender"><option value="male">Male</option><option value="female">Female</option></select></div>
@@ -199,12 +244,24 @@
                     </div>
                     <div class="section-fields" id="followupFields">
                         <div class="form-group checkbox-group">
-                            <label><input type="checkbox" id="recordScheduleFollowup"> Schedule a follow-up task</label>
+                            <label><input type="checkbox" id="recordScheduleFollowup"> Schedule future task(s)</label>
                         </div>
                         <div id="followupDetails" class="hidden">
                             <div class="form-row">
-                                <div class="form-group"><label>Date</label><input type="date" id="followupDate"></div>
-                                <div class="form-group"><label>Notes</label><input type="text" id="followupNotes"></div>
+                                <div class="form-group">
+                                    <label>Start Date</label>
+                                    <input type="date" id="followupDate">
+                                </div>
+                                <div class="form-group">
+                                    <label>Duration (Days)</label>
+                                    <input type="number" id="followupDuration" value="1" min="1" max="30">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Notes</label>
+                                    <input type="text" id="followupNotes" placeholder="e.g. Administer LA-200">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -285,6 +342,113 @@
         </div>
     </div>
 
+    <div id="addMemberModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="addMemberModal">&times;</span>
+            <h2>Add Animal to Flock</h2>
+            <div class="form-group">
+                <label>Select Animal to Add</label>
+                <select id="addMemberSelect">
+                    <option value="">Loading animals...</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" data-modal="addMemberModal">Cancel</button>
+                <button type="button" class="btn-primary" id="btnSaveNewMember">Add to Flock</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="matingModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="matingModal">&times;</span>
+            <h2><i class="fas fa-heart"></i> Log Mating / Exposure</h2>
+            <form id="matingForm">
+                <div class="form-group">
+                    <label>Sire (Male)</label>
+                    <select id="matingSire" required>
+                        <option value="">Select Sire...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mating Type</label>
+                    <select id="matingType" required>
+                        <option value="Pasture Exposure">Pasture Exposure</option>
+                        <option value="Artificial Insemination (AI)">Artificial Insemination (AI)</option>
+                        <option value="Observed Mating">Observed Mating</option>
+                    </select>
+                </div>
+                
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" id="matingDateRangeToggle" checked> Use Date Range (Pasture Exposure)</label>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label id="matingDateLabel">Start Date</label>
+                        <input type="date" id="matingStartDate" required>
+                    </div>
+                    <div class="form-group" id="matingEndDateGroup">
+                        <label>End Date</label>
+                        <input type="date" id="matingEndDate" required>
+                    </div>
+                </div>
+
+                <!-- Dynamic breeding fields injected here -->
+                <div id="matingCustomFieldsContainer"></div>
+
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="matingNotes" rows="2"></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="matingModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Mating</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pregnancy Check Modal -->
+    <div id="pregnancyCheckModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="pregnancyCheckModal">&times;</span>
+            <h2><i class="fas fa-stethoscope"></i> Log Pregnancy Check</h2>
+            <form id="pregnancyCheckForm">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="pregCheckDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Result</label>
+                    <select id="pregCheckResult" required>
+                        <option value="Pregnant">Confirmed Pregnant</option>
+                        <option value="Open">Open (Not Pregnant)</option>
+                        <option value="Recheck">Needs Recheck</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Method</label>
+                    <select id="pregCheckMethod">
+                        <option value="Blood Test">Blood Test</option>
+                        <option value="Ultrasound">Ultrasound</option>
+                        <option value="Palpation">Palpation</option>
+                        <option value="Visual/Behavioral">Visual/Behavioral</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="pregCheckNotes" rows="2"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="pregnancyCheckModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Check</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -293,5 +457,6 @@
     <script src="js/shared.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/animal-details.js"></script>
+    <script src="js/animal-reproduction.js"></script>
 </body>
 </html>

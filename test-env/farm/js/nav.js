@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <a href="species.html" data-page="species.html"><i class="fas fa-paw"></i> Species</a>
                 <a href="animals.html" data-page="animals.html"><i class="fas fa-horse"></i> Animals</a>
                 <a href="health.html" data-page="health.html"><i class="fas fa-heartbeat"></i> Health</a>
+                <a href="breeding.html" data-page="breeding.html"><i class="fas fa-venus-mars"></i> Breeding</a>
                 <a href="calendar.html" data-page="calendar.html"><i class="fas fa-calendar-alt"></i> Calendar</a>
                 <button id="logoutBtn" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
             </div>

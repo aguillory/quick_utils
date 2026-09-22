@@ -50,15 +50,41 @@
                 <small style="color: #666;">Upload a small image (max 500KB). It will be resized to 50x50px.</small>
             </div>
 
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="gestationMin">Gestation Min (Days)</label>
+                    <input type="number" id="gestationMin" min="0" placeholder="e.g. 145">
+                </div>
+                <div class="form-group">
+                    <label for="gestationMax">Gestation Max (Days)</label>
+                    <input type="number" id="gestationMax" min="0" placeholder="e.g. 155">
+                </div>
+            </div>
             <div class="form-group">
-                <label>Custom Fields</label>
+                <label for="pregnancyCheckDays">Pregnancy/Fertility Check (Days after mating)</label>
+                <input type="number" id="pregnancyCheckDays" min="0" placeholder="e.g. 45">
+                <small style="color: #666;">Leave blank if you do not want to auto-schedule a check task.</small>
+            </div>
+
+            <div class="form-group" style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <label>Animal Custom Fields</label>
+                <small style="display:block; color:#666; margin-bottom: 0.5rem;">Fields shown on the Animal Profile (e.g. Registration #, Horn Status)</small>
                 <div id="customFieldsList"></div>
-                <button type="button" id="addFieldBtn" class="btn-secondary">
-                    <i class="fas fa-plus"></i> Add Field
+                <button type="button" id="addFieldBtn" class="btn-secondary" style="margin-top: 10px;">
+                    <i class="fas fa-plus"></i> Add Animal Field
                 </button>
             </div>
 
-            <div class="modal-footer">
+            <div class="form-group" style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <label>Breeding Custom Fields</label>
+                <small style="display:block; color:#666; margin-bottom: 0.5rem;">Fields shown when logging a Mating/Exposure (e.g. Technician Name, Straw ID)</small>
+                <div id="breedingFieldsList"></div>
+                <button type="button" id="addBreedingFieldBtn" class="btn-secondary" style="margin-top: 10px;">
+                    <i class="fas fa-plus"></i> Add Breeding Field
+                </button>
+            </div>
+
+            <div class="modal-footer" style="margin-top: 1.5rem;">
                 <button type="button" class="btn-cancel">Cancel</button>
                 <button type="submit" class="btn-primary">Save Species</button>
             </div>

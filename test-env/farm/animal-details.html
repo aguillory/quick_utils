@@ -103,6 +103,29 @@
                 </div>
                 <div id="healthRecordsList" class="records-list"></div>
             </div>
+
+            <div class="reproduction-history" style="margin-top: 2rem;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 style="margin:0;"><i class="fas fa-venus-mars"></i> Reproduction & Breeding</h2>
+                    <div>
+                        <button class="btn-primary" id="btnLogMating" style="padding: 5px 10px; font-size: 0.9rem;">
+                            <i class="fas fa-heart"></i> Log Mating/Exposure
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="reproductionActiveSection" class="card" style="display:none; margin-top: 1rem; background: #fff3e0; border: 1px solid #ffcc80;">
+                    <h4 style="margin-top:0; color: #e65100;"><i class="fas fa-baby"></i> Active Pregnancy / Exposure</h4>
+                    <div id="activePregnancyDetails" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;"></div>
+                    <div style="margin-top: 1rem; border-top: 1px solid #ffcc80; padding-top: 1rem; display:flex; gap: 10px;">
+                        <button class="btn-secondary" id="btnLogPregnancyCheck" style="background: white;">Log Pregnancy Check</button>
+                        <button class="btn-primary" id="btnLogBirth">Log Birth / Kidding</button>
+                        <button class="btn-danger" id="btnCancelPregnancy" style="margin-left:auto;">Cancel / Open</button>
+                    </div>
+                </div>
+
+                <div id="breedingRecordsList" class="records-list" style="margin-top: 1rem;"></div>
+            </div>
         </div>
     </main>
 
@@ -336,6 +359,96 @@
         </div>
     </div>
 
+    <div id="matingModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="matingModal">&times;</span>
+            <h2><i class="fas fa-heart"></i> Log Mating / Exposure</h2>
+            <form id="matingForm">
+                <div class="form-group">
+                    <label>Sire (Male)</label>
+                    <select id="matingSire" required>
+                        <option value="">Select Sire...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mating Type</label>
+                    <select id="matingType" required>
+                        <option value="Pasture Exposure">Pasture Exposure</option>
+                        <option value="Artificial Insemination (AI)">Artificial Insemination (AI)</option>
+                        <option value="Observed Mating">Observed Mating</option>
+                    </select>
+                </div>
+                
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" id="matingDateRangeToggle" checked> Use Date Range (Pasture Exposure)</label>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label id="matingDateLabel">Start Date</label>
+                        <input type="date" id="matingStartDate" required>
+                    </div>
+                    <div class="form-group" id="matingEndDateGroup">
+                        <label>End Date</label>
+                        <input type="date" id="matingEndDate" required>
+                    </div>
+                </div>
+
+                <!-- Dynamic breeding fields injected here -->
+                <div id="matingCustomFieldsContainer"></div>
+
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="matingNotes" rows="2"></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="matingModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Mating</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pregnancy Check Modal -->
+    <div id="pregnancyCheckModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="pregnancyCheckModal">&times;</span>
+            <h2><i class="fas fa-stethoscope"></i> Log Pregnancy Check</h2>
+            <form id="pregnancyCheckForm">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="pregCheckDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Result</label>
+                    <select id="pregCheckResult" required>
+                        <option value="Pregnant">Confirmed Pregnant</option>
+                        <option value="Open">Open (Not Pregnant)</option>
+                        <option value="Recheck">Needs Recheck</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Method</label>
+                    <select id="pregCheckMethod">
+                        <option value="Blood Test">Blood Test</option>
+                        <option value="Ultrasound">Ultrasound</option>
+                        <option value="Palpation">Palpation</option>
+                        <option value="Visual/Behavioral">Visual/Behavioral</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="pregCheckNotes" rows="2"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" data-modal="pregnancyCheckModal">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Check</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -344,5 +457,6 @@
     <script src="js/shared.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/animal-details.js"></script>
+    <script src="js/animal-reproduction.js"></script>
 </body>
 </html>

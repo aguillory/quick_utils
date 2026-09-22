@@ -54,7 +54,8 @@ async function loadAnimalDetails() {
         currentAnimalData = data;
         const species = allSpecies.find(s => s.id === data.species);
         
-        document.getElementById('detailName').textContent = data.name;
+        const displayName = data.isGroup ? `${data.name} (Flock of ${data.quantity || 1})` : data.name;
+        document.getElementById('detailName').textContent = displayName;
         document.getElementById('detailStatus').textContent = (data.status || 'Active').toUpperCase();
         document.getElementById('detailStatus').className = `animal-status status-${data.status || 'active'}`;
         document.getElementById('detailSpecies').textContent = species ? species.name : 'Unknown';
@@ -93,11 +94,91 @@ async function loadAnimalDetails() {
             customContainer.style.display = 'none';
         }
 
+        const flockBadge = document.getElementById('flockBadge');
+        if (data.flockId) {
+            const flockDoc = await window.getFarmCollection('animals').doc(data.flockId).get();
+            if (flockDoc.exists) {
+                flockBadge.style.display = 'inline-block';
+                flockBadge.innerHTML = `<a href="animal-details.html?id=${data.flockId}" style="color: inherit; text-decoration: none;">Member of ${flockDoc.data().name} <i class="fas fa-link"></i></a>`;
+            }
+        } else {
+            flockBadge.style.display = 'none';
+        }
+
+        const flockMembersSection = document.getElementById('flockMembersSection');
+        if (data.isGroup) {
+            flockMembersSection.style.display = 'block';
+            await loadFlockMembers(currentAnimalId);
+        } else {
+            flockMembersSection.style.display = 'none';
+        }
+
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('animalContent').classList.remove('hidden');
 
     } catch (error) {
         console.error("Error loading details:", error);
+    }
+}
+
+async function loadFlockMembers(flockId) {
+    try {
+        const snapshot = await window.getFarmCollection('animals').where('flockId', '==', flockId).get();
+        const listContainer = document.getElementById('flockMembersList');
+        listContainer.innerHTML = '';
+        
+        if (snapshot.empty) {
+            listContainer.innerHTML = '<div style="grid-column: 1 / -1; color: #666;">No members in this flock.</div>';
+            return;
+        }
+
+        snapshot.forEach(doc => {
+            const animal = { id: doc.id, ...doc.data() };
+            const card = document.createElement('div');
+            card.className = 'animal-card';
+            card.style.cursor = 'pointer';
+            card.style.position = 'relative';
+            
+            card.onclick = (e) => {
+                window.location.href = `animal-details.html?id=${animal.id}`;
+            };
+            
+            const photoHtml = animal.photo 
+                ? `<img src="${animal.photo}" style="width:100%; height:150px; object-fit:cover;">`
+                : `<div class="no-photo-placeholder" style="width:100%;height:150px;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f5f5f5;color:#ccc;"><i class="fas fa-paw"></i></div>`;
+
+            card.innerHTML = `
+                <div class="animal-photo-wrapper">
+                    ${photoHtml}
+                </div>
+                <div class="animal-info" style="padding: 10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <div class="animal-name" style="font-weight: 600;">${animal.name}</div>
+                        <button class="btn-icon" style="color: var(--danger-color); padding: 0; background:none; border:none; cursor:pointer;" 
+                                onclick="event.stopPropagation(); removeFlockMember('${animal.id}', '${animal.name}')" title="Remove from flock">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="animal-details" style="font-size: 0.9rem; color: #666;">Gender: ${animal.gender || 'Unknown'}</div>
+                </div>
+            `;
+            listContainer.appendChild(card);
+        });
+    } catch (err) {
+        console.error("Error loading flock members", err);
+    }
+}
+
+async function removeFlockMember(animalId, animalName) {
+    if (confirm(`Are you sure you want to remove ${animalName} from this flock?`)) {
+        try {
+            await window.getFarmCollection('animals').doc(animalId).update({
+                flockId: null
+            });
+            await loadFlockMembers(currentAnimalId); // reload
+        } catch(err) {
+            alert('Error removing member: ' + err.message);
+        }
     }
 }
 
@@ -163,13 +244,41 @@ function setupEventListeners() {
         document.getElementById('animalStatus').value = currentAnimalData.status;
         document.getElementById('animalBirthDate').value = currentAnimalData.birthDate || '';
         document.getElementById('animalColor').value = currentAnimalData.color || '';
+        
+        const isGroupEl = document.getElementById('animalIsGroup');
+        const quantityEl = document.getElementById('animalQuantity');
+        isGroupEl.checked = currentAnimalData.isGroup || false;
+        quantityEl.value = currentAnimalData.quantity || 1;
+        isGroupEl.disabled = true;
+        quantityEl.disabled = true;
+        isGroupEl.dispatchEvent(new Event('change'));
+        
         document.getElementById('animalModal').classList.add('active');
+    });
+
+    document.getElementById('animalIsGroup')?.addEventListener('change', (e) => {
+        const isGroup = e.target.checked;
+        const quantityGroup = document.getElementById('quantityGroup');
+        const nameLabel = document.getElementById('animalNameLabel');
+        const genderSelect = document.getElementById('animalGender');
+
+        if (isGroup) {
+            quantityGroup.style.display = 'block';
+            nameLabel.textContent = 'Flock/Group Name *';
+            genderSelect.value = 'unknown';
+        } else {
+            quantityGroup.style.display = 'none';
+            nameLabel.textContent = 'Name *';
+        }
     });
 
     document.getElementById('animalForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const isGroup = document.getElementById('animalIsGroup').checked;
         const updateData = {
             name: document.getElementById('animalName').value,
+            isGroup: isGroup,
+            quantity: isGroup ? parseInt(document.getElementById('animalQuantity').value) || 1 : 1,
             gender: document.getElementById('animalGender').value,
             status: document.getElementById('animalStatus').value,
             birthDate: document.getElementById('animalBirthDate').value,
@@ -188,6 +297,52 @@ function setupEventListeners() {
     });
 
     // --- HEALTH FEATURES ---
+
+    // Flock Management
+    const btnAddFlockMember = document.getElementById('btnAddFlockMember');
+    if (btnAddFlockMember) {
+        btnAddFlockMember.addEventListener('click', async () => {
+            const select = document.getElementById('addMemberSelect');
+            select.innerHTML = '<option value="">Loading...</option>';
+            document.getElementById('addMemberModal').classList.add('active');
+            
+            try {
+                const snapshot = await window.getFarmCollection('animals')
+                    .where('species', '==', currentAnimalData.species)
+                    .where('isGroup', '==', false)
+                    .get();
+                
+                select.innerHTML = '<option value="">-- Select an Animal --</option>';
+                snapshot.forEach(doc => {
+                    const a = doc.data();
+                    if (!a.flockId) {
+                        select.innerHTML += `<option value="${doc.id}">${a.name}</option>`;
+                    }
+                });
+            } catch (err) {
+                console.error(err);
+                select.innerHTML = '<option value="">Error loading animals</option>';
+            }
+        });
+    }
+
+    const btnSaveNewMember = document.getElementById('btnSaveNewMember');
+    if (btnSaveNewMember) {
+        btnSaveNewMember.addEventListener('click', async () => {
+            const selectedId = document.getElementById('addMemberSelect').value;
+            if (!selectedId) return;
+            
+            try {
+                await window.getFarmCollection('animals').doc(selectedId).update({
+                    flockId: currentAnimalId
+                });
+                document.getElementById('addMemberModal').classList.remove('active');
+                await loadFlockMembers(currentAnimalId);
+            } catch (err) {
+                alert('Error adding member: ' + err.message);
+            }
+        });
+    }
 
     // 1. Add Record Modal Open
     document.getElementById('btnAddHealthRecord').addEventListener('click', () => {
@@ -248,28 +403,40 @@ function setupEventListeners() {
             const docRef = await window.getFarmCollection('healthRecords').add(recordData);
             
             if(document.getElementById('recordScheduleFollowup').checked) {
-                const followDate = document.getElementById('followupDate').value;
-                if(followDate) {
-                    await window.getFarmCollection('healthTasks').add({
-                        animalId: currentAnimalId,
-                        animalName: currentAnimalData.name,
-                        farmId: currentFarmId,
-                        eventType: recordData.eventType,
-                        description: document.getElementById('followupNotes').value || `Follow-up: ${recordData.eventType}`,
-                        dueDate: firebase.firestore.Timestamp.fromDate(new Date(followDate)),
-                        status: 'pending',
-                        isFollowUp: true,
-                        linkedRecordId: docRef.id,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                const followDateStr = document.getElementById('followupDate').value;
+                const duration = parseInt(document.getElementById('followupDuration').value) || 1;
+                const baseNotes = document.getElementById('followupNotes').value || `Follow-up: ${recordData.eventType}`;
+
+                if(followDateStr) {
+                    const batch = firebase.firestore().batch();
+                    const startDate = new Date(followDateStr + 'T00:00:00'); // Ensure local timezone isn't shifted
+
+                    for (let i = 0; i < duration; i++) {
+                        const taskDate = new Date(startDate);
+                        taskDate.setDate(taskDate.getDate() + i);
+
+                        const taskRef = window.getFarmCollection('healthTasks').doc();
+                        batch.set(taskRef, {
+                            animalId: currentAnimalId,
+                            animalName: currentAnimalData.name,
+                            farmId: currentFarmId,
+                            eventType: recordData.eventType,
+                            description: duration > 1 ? `${baseNotes} (Day ${i+1} of ${duration})` : baseNotes,
+                            notes: duration > 1 ? `${baseNotes} (Day ${i+1} of ${duration})` : baseNotes,
+                            dueDate: firebase.firestore.Timestamp.fromDate(taskDate),
+                            status: 'pending',
+                            linkedRecordId: docRef.id,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                    await batch.commit();
                 }
             }
             
             document.getElementById('recordModal').classList.remove('active');
             loadHealthHistory();
-        } catch(err) {
-            console.error(err);
-            alert('Error saving record');
+        } catch (err) {
+            alert('Error saving record: ' + err.message);
         }
     });
 

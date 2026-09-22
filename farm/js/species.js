@@ -176,11 +176,12 @@ async function loadSpeciesForEdit(speciesId) {
         if (doc.exists) {
             const species = doc.data();
             document.getElementById('speciesName').value = species.name;
+            document.getElementById('gestationMin').value = species.gestationMin || '';
+            document.getElementById('gestationMax').value = species.gestationMax || '';
+            document.getElementById('pregnancyCheckDays').value = species.pregnancyCheckDays || '';
             
-            // Load icon
             if (species.icon) {
-                document.getElementById('speciesIconPreview').innerHTML = 
-                    `<img src="${species.icon}" alt="Icon preview" style="width: 50px; height: 50px; border-radius: 4px;">`;
+                document.getElementById('speciesIconPreview').innerHTML = `<img src="${species.icon}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">`;
                 document.getElementById('speciesIconData').value = species.icon;
             }
             
@@ -192,6 +193,17 @@ async function loadSpeciesForEdit(speciesId) {
                     addCustomFieldRow(field.name, field.type, field.options);
                 });
             }
+
+            // Load breeding fields
+            const breedingFieldsList = document.getElementById('breedingFieldsList');
+            if (breedingFieldsList) {
+                breedingFieldsList.innerHTML = '';
+                if (species.breedingFields) {
+                    species.breedingFields.forEach(field => {
+                        addCustomFieldRow('breedingFieldsList', field.name, field.type, field.options);
+                    });
+                }
+            }
         }
     } catch (error) {
         console.error('Error loading species:', error);
@@ -200,15 +212,20 @@ async function loadSpeciesForEdit(speciesId) {
 
 // Custom Fields Management
 document.getElementById('addFieldBtn').addEventListener('click', () => {
-    addCustomFieldRow();
+    addCustomFieldRow('customFieldsList');
 });
 
-function addCustomFieldRow(name = '', type = 'text', options = []) {
-    const fieldsList = document.getElementById('customFieldsList');
+document.getElementById('addBreedingFieldBtn').addEventListener('click', () => {
+    addCustomFieldRow('breedingFieldsList');
+});
+
+function addCustomFieldRow(containerId = 'customFieldsList', name = '', type = 'text', options = []) {
+    const fieldsList = document.getElementById(containerId);
     const fieldRow = document.createElement('div');
-    fieldRow.className = 'custom-field-row';
+    // add class to distinguish breeding vs normal
+    fieldRow.className = `custom-field-row ${containerId === 'breedingFieldsList' ? 'breeding-field' : 'normal-field'}`;
     
-    const fieldId = 'field_' + Date.now();
+    const fieldId = 'field_' + Math.random().toString(36).substr(2, 9);
     
     fieldRow.innerHTML = `
         <input type="text" placeholder="Field name" value="${name}" class="field-name">
@@ -239,6 +256,14 @@ function handleFieldTypeChange(selectElement, fieldId) {
     }
 }
 
+// Modal close handling
+document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+        modal.classList.remove('active');
+        editingSpeciesId = null;
+    });
+});
+
 // Save Species
 speciesForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -246,14 +271,18 @@ speciesForm.addEventListener('submit', async (e) => {
     const speciesData = {
         name: document.getElementById('speciesName').value,
         icon: document.getElementById('speciesIconData').value || null,
+        gestationMin: parseInt(document.getElementById('gestationMin').value) || null,
+        gestationMax: parseInt(document.getElementById('gestationMax').value) || null,
+        pregnancyCheckDays: parseInt(document.getElementById('pregnancyCheckDays').value) || null,
         customFields: [],
+        breedingFields: [],
         createdBy: currentUser.uid,
         createdAt: editingSpeciesId ? undefined : firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     // Collect custom fields
-    document.querySelectorAll('.custom-field-row').forEach(row => {
+    document.querySelectorAll('.normal-field').forEach(row => {
         const name = row.querySelector('.field-name').value;
         const type = row.querySelector('.field-type').value;
         const fieldData = { name, type };
@@ -267,6 +296,24 @@ speciesForm.addEventListener('submit', async (e) => {
         
         if (name) {
             speciesData.customFields.push(fieldData);
+        }
+    });
+
+    // Collect breeding fields
+    document.querySelectorAll('.breeding-field').forEach(row => {
+        const name = row.querySelector('.field-name').value;
+        const type = row.querySelector('.field-type').value;
+        const fieldData = { name, type };
+        
+        if (type === 'select') {
+            const optionsInput = row.querySelector('.field-options-input');
+            if (optionsInput) {
+                fieldData.options = optionsInput.value.split(',').map(opt => opt.trim()).filter(opt => opt);
+            }
+        }
+        
+        if (name) {
+            speciesData.breedingFields.push(fieldData);
         }
     });
     

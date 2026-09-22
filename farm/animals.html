@@ -69,6 +69,13 @@
             <input type="hidden" id="animalId">
             <input type="hidden" id="animalPhotoData">
             
+            <div class="form-row" style="margin-bottom: 15px;">
+                <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="animalIsGroup" style="width: auto;">
+                    <label for="animalIsGroup" style="margin: 0; cursor: pointer;">This is a Flock/Group (not an individual animal)</label>
+                </div>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="animalSpecies">Species *</label>
@@ -78,8 +85,13 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="animalName">Name *</label>
+                    <label for="animalName" id="animalNameLabel">Name *</label>
                     <input type="text" id="animalName" required>
+                </div>
+
+                <div class="form-group" id="quantityGroup" style="display: none;">
+                    <label for="animalQuantity">Quantity *</label>
+                    <input type="number" id="animalQuantity" min="1" value="1">
                 </div>
             </div>
 
