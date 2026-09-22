@@ -33,8 +33,8 @@ if (btnGoogleSignIn) {
             provider.addScope('https://www.googleapis.com/auth/calendar.events');
             
             const result = await firebase.auth().signInWithPopup(provider);
-            const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-            const token = credential.accessToken;
+            const credential = result.credential;
+            const token = credential ? credential.accessToken : null;
             
             // Save the Google Access Token for this session to use the Calendar API
             if (token) {
