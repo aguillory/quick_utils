@@ -138,13 +138,15 @@ function createAnimalCard(animal) {
         : `<div class="no-photo-placeholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f5f5f5;color:#ccc;"><i class="fas fa-paw"></i></div>`;
 
     // Uses calculateAge from shared.js
+    const displayName = animal.isGroup ? `${animal.name} (Flock of ${animal.quantity || 1})` : animal.name;
+
     card.innerHTML = `
         <div class="animal-photo-wrapper">
             ${photoHtml}
         </div>
         <div class="animal-info">
             <div style="display:flex; justify-content:space-between; align-items:start;">
-                <div class="animal-name">${animal.name}</div>
+                <div class="animal-name">${displayName}</div>
                 <button class="btn-icon" style="color: var(--primary-color); padding: 0; background:none; border:none; cursor:pointer;" 
                         onclick="event.stopPropagation(); viewAnimalDetails('${animal.id}')">
                     <i class="fas fa-pencil-alt"></i>
@@ -218,6 +220,9 @@ function openModal(animalId = null) {
         modalTitle.textContent = 'Add Animal';
         deleteBtn.style.display = 'none';
         animalForm.reset();
+        document.getElementById('animalIsGroup').disabled = false;
+        document.getElementById('animalQuantity').disabled = false;
+        document.getElementById('animalIsGroup').dispatchEvent(new Event('change'));
         document.getElementById('customFieldsContainer').innerHTML = '';
         document.getElementById('animalPhotoPreview').innerHTML = '';
         document.getElementById('animalPhotoData').value = '';
@@ -289,6 +294,27 @@ async function loadParentOptions(species) {
     }
 }
 
+document.getElementById('animalIsGroup').addEventListener('change', (e) => {
+    const isGroup = e.target.checked;
+    const quantityGroup = document.getElementById('quantityGroup');
+    const nameLabel = document.getElementById('animalNameLabel');
+    const genderSelect = document.getElementById('animalGender');
+    const sireDamSection = document.querySelector('.form-section:has(#animalSire)');
+
+    if (isGroup) {
+        quantityGroup.style.display = 'block';
+        nameLabel.textContent = 'Flock/Group Name *';
+        // Hide Sire/Dam section
+        if (sireDamSection) sireDamSection.style.display = 'none';
+        // Set gender to mixed/unknown by default
+        genderSelect.value = 'unknown';
+    } else {
+        quantityGroup.style.display = 'none';
+        nameLabel.textContent = 'Name *';
+        if (sireDamSection) sireDamSection.style.display = 'block';
+    }
+});
+
 document.getElementById('animalOwnerType').addEventListener('change', (e) => {
     const farmSelect = document.getElementById('animalOwnerFarm');
     const customInput = document.getElementById('animalOwnerCustom');
@@ -318,8 +344,12 @@ document.getElementById('animalStatus').addEventListener('change', (e) => {
 
 animalForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const isGroup = document.getElementById('animalIsGroup').checked;
+    
     const animalData = {
         name: document.getElementById('animalName').value,
+        isGroup: isGroup,
+        quantity: isGroup ? parseInt(document.getElementById('animalQuantity').value) || 1 : 1,
         species: document.getElementById('animalSpecies').value,
         gender: document.getElementById('animalGender').value,
         color: document.getElementById('animalColor').value,
@@ -361,7 +391,37 @@ animalForm.addEventListener('submit', async (e) => {
         if (editingAnimalId) {
             await window.getFarmCollection('animals').doc(editingAnimalId).update(animalData);
         } else {
-            await window.getFarmCollection('animals').add(animalData);
+            const docRef = await window.getFarmCollection('animals').add(animalData);
+            
+            // If it's a new flock, auto-generate the child animals
+            if (isGroup && animalData.quantity > 0) {
+                const db = window.getFarmCollection('animals').firestore;
+                let batch = db.batch();
+                let count = 0;
+                
+                for (let i = 1; i <= animalData.quantity; i++) {
+                    const childRef = window.getFarmCollection('animals').doc();
+                    const childData = {
+                        ...animalData, // Copy base data
+                        name: `${animalData.name} ${i}`,
+                        isGroup: false,
+                        quantity: 1,
+                        flockId: docRef.id, // Link to the flock container
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    batch.set(childRef, childData);
+                    count++;
+                    
+                    if (count === 490) {
+                        await batch.commit();
+                        batch = db.batch();
+                        count = 0;
+                    }
+                }
+                if (count > 0) {
+                    await batch.commit();
+                }
+            }
         }
         closeModal();
         loadAnimals().then(() => filterAnimals());
@@ -376,6 +436,13 @@ async function loadAnimalForEdit(animalId) {
         const doc = await window.getFarmCollection('animals').doc(animalId).get();
         if (doc.exists) {
             const animal = doc.data();
+            const isGroupEl = document.getElementById('animalIsGroup');
+            const quantityEl = document.getElementById('animalQuantity');
+            isGroupEl.checked = animal.isGroup || false;
+            quantityEl.value = animal.quantity || 1;
+            isGroupEl.disabled = true;
+            quantityEl.disabled = true;
+            
             document.getElementById('animalName').value = animal.name;
             document.getElementById('animalSpecies').value = animal.species;
             document.getElementById('animalGender').value = animal.gender || 'unknown';
@@ -383,6 +450,8 @@ async function loadAnimalForEdit(animalId) {
             document.getElementById('animalAcquisitionDate').value = animal.acquisitionDate || '';
             document.getElementById('animalStatus').value = animal.status || 'active';
             document.getElementById('animalBirthDate').value = animal.birthDate || '';
+            
+            isGroupEl.dispatchEvent(new Event('change'));
             
             if (animal.photo) {
                 document.getElementById('animalPhotoPreview').innerHTML = `<img src="${animal.photo}" alt="Photo preview" style="max-width: 200px; max-height: 200px; border-radius: 4px;">`;
@@ -452,6 +521,9 @@ function filterAnimals() {
     const filtered = allAnimals.filter(animal => {
         // Toggle Logic: If not showing all, only show animals owned by current user
         if (!showAllAnimals && animal.ownerId !== currentUser.uid) return false;
+        
+        // Hide individual flock members from the main overview
+        if (animal.flockId) return false;
 
         if (speciesFilter && animal.species !== speciesFilter) return false;
         if (statusFilter && animal.status !== statusFilter) return false;
