@@ -176,6 +176,7 @@ async function loadSpeciesForEdit(speciesId) {
         if (doc.exists) {
             const species = doc.data();
             document.getElementById('speciesName').value = species.name;
+            document.getElementById('isDairySpecies').checked = !!species.isDairy;
             document.getElementById('gestationMin').value = species.gestationMin || '';
             document.getElementById('gestationMax').value = species.gestationMax || '';
             document.getElementById('pregnancyCheckDays').value = species.pregnancyCheckDays || '';
@@ -204,6 +205,17 @@ async function loadSpeciesForEdit(speciesId) {
                     });
                 }
             }
+
+            // Load care activities
+            const careActivitiesList = document.getElementById('careActivitiesList');
+            if (careActivitiesList) {
+                careActivitiesList.innerHTML = '';
+                if (species.careActivities) {
+                    species.careActivities.forEach(act => {
+                        addCareActivityRow(act);
+                    });
+                }
+            }
         }
     } catch (error) {
         console.error('Error loading species:', error);
@@ -218,6 +230,27 @@ document.getElementById('addFieldBtn').addEventListener('click', () => {
 document.getElementById('addBreedingFieldBtn').addEventListener('click', () => {
     addCustomFieldRow('breedingFieldsList');
 });
+
+document.getElementById('addCareActivityBtn').addEventListener('click', () => {
+    addCareActivityRow();
+});
+
+function addCareActivityRow(activityName = '') {
+    const list = document.getElementById('careActivitiesList');
+    const row = document.createElement('div');
+    row.className = 'care-activity-row';
+    row.style.display = 'flex';
+    row.style.gap = '10px';
+    row.style.marginBottom = '5px';
+    
+    row.innerHTML = `
+        <input type="text" placeholder="Activity Name (e.g. Fed Grain)" value="${activityName}" class="activity-name" style="flex:1;">
+        <button type="button" class="btn-remove-field" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    list.appendChild(row);
+}
 
 function addCustomFieldRow(containerId = 'customFieldsList', name = '', type = 'text', options = []) {
     const fieldsList = document.getElementById(containerId);
@@ -267,19 +300,20 @@ document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
 // Save Species
 speciesForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    const speciesData = {
-        name: document.getElementById('speciesName').value,
-        icon: document.getElementById('speciesIconData').value || null,
-        gestationMin: parseInt(document.getElementById('gestationMin').value) || null,
-        gestationMax: parseInt(document.getElementById('gestationMax').value) || null,
-        pregnancyCheckDays: parseInt(document.getElementById('pregnancyCheckDays').value) || null,
-        customFields: [],
-        breedingFields: [],
-        createdBy: currentUser.uid,
-        createdAt: editingSpeciesId ? undefined : firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
+        const speciesData = {
+            name: document.getElementById('speciesName').value,
+            icon: document.getElementById('speciesIconData').value || null,
+            isDairy: document.getElementById('isDairySpecies').checked,
+            gestationMin: parseInt(document.getElementById('gestationMin').value) || null,
+            gestationMax: parseInt(document.getElementById('gestationMax').value) || null,
+            pregnancyCheckDays: parseInt(document.getElementById('pregnancyCheckDays').value) || null,
+            customFields: [],
+            breedingFields: [],
+            careActivities: [],
+            createdBy: currentUser.uid,
+            createdAt: editingSpeciesId ? undefined : firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
     
     // Collect custom fields
     document.querySelectorAll('.normal-field').forEach(row => {
@@ -314,6 +348,14 @@ speciesForm.addEventListener('submit', async (e) => {
         
         if (name) {
             speciesData.breedingFields.push(fieldData);
+        }
+    });
+
+    // Collect care activities
+    document.querySelectorAll('.care-activity-row').forEach(row => {
+        const name = row.querySelector('.activity-name').value.trim();
+        if (name) {
+            speciesData.careActivities.push(name);
         }
     });
     

@@ -50,6 +50,14 @@
                 <small style="color: #666;">Upload a small image (max 500KB). It will be resized to 50x50px.</small>
             </div>
 
+            <div class="form-group checkbox-group" style="margin-top: 1rem; margin-bottom: 1rem; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                <label style="display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" id="isDairySpecies" style="width: 20px; height: 20px;">
+                    This is a Dairy / Milking Species
+                </label>
+                <small style="color: #666; display: block; margin-left: 30px; margin-top: 5px;">Enables the Milk Production tracking features for females of this species.</small>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="gestationMin">Gestation Min (Days)</label>
@@ -81,6 +89,15 @@
                 <div id="breedingFieldsList"></div>
                 <button type="button" id="addBreedingFieldBtn" class="btn-secondary" style="margin-top: 10px;">
                     <i class="fas fa-plus"></i> Add Breeding Field
+                </button>
+            </div>
+
+            <div class="form-group" style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <label>Feed & Care Activities</label>
+                <small style="display:block; color:#666; margin-bottom: 0.5rem;">Activities you commonly do for this species (e.g., "Shed", "Cage Cleaned", "Weight Check", "Fed Meal").</small>
+                <div id="careActivitiesList"></div>
+                <button type="button" id="addCareActivityBtn" class="btn-secondary" style="margin-top: 10px;">
+                    <i class="fas fa-plus"></i> Add Activity
                 </button>
             </div>
 
