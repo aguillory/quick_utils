@@ -55,7 +55,7 @@ async function loadDairyAnimals() {
             return;
         }
         
-        const dairySpeciesNames = speciesSnap.docs.map(d => d.data().name);
+        const dairySpeciesNames = speciesSnap.docs.map(d => d.id);
         
         // 2. Get all females of those species
         const rawAnimalsSnap = await window.getFarmCollection('animals').where('farmId', '==', currentFarmId).get();
