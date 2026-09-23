@@ -78,7 +78,7 @@ async function initializeModule() {
 async function loadAnimals() {
     console.log("Loading animals...");
     const snapshot = await window.getFarmCollection('animals')
-        .where('ownerId', '==', currentUser.uid)
+        .where('farmId', '==', currentFarmId)
         .get();
     
     animalsCache = snapshot.docs.map(doc => ({
@@ -111,14 +111,10 @@ async function loadSpecies() {
 async function loadHealthRecords() {
     const snapshot = await window.getFarmCollection('healthRecords')
         .where('farmId', '==', currentFarmId)
-        .orderBy('eventDate', 'desc')
-        .limit(100)
         .get();
     
-    healthRecordsCache = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    }));
+    healthRecordsCache = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+    healthRecordsCache.sort((a,b) => (b.eventDate?.seconds || 0) - (a.eventDate?.seconds || 0));
 }
 
 async function loadHealthTasks() {
@@ -127,10 +123,8 @@ async function loadHealthTasks() {
         .where('status', '==', 'pending')
         .get();
     
-    healthTasksCache = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    }));
+    healthTasksCache = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+    healthTasksCache.sort((a,b) => (b.dueDate?.seconds || 0) - (a.dueDate?.seconds || 0));
 }
 
 // ============================================================
@@ -205,7 +199,7 @@ function populateAnimalDropdowns(speciesFilter = 'all') {
                 grouped[speciesName].sort((a, b) => a.name.localeCompare(b.name)).forEach(animal => {
                     const option = document.createElement('option');
                     option.value = animal.id;
-                    const farmIndicator = showAllFarmsAnimals && animal.ownerId !== currentUser.uid ? ' (Other Farm)' : '';
+                    const farmIndicator = showAllFarmsAnimals && animal.farmId !== currentFarmId ? ' (Other Farm)' : '';
                     option.textContent = animal.name + farmIndicator;
                     optgroup.appendChild(option);
                 });
@@ -284,7 +278,7 @@ function filterAnimalDropdown(selectId, searchTerm, speciesFilter, showAllFarms)
         grouped[speciesName].sort((a, b) => a.name.localeCompare(b.name)).forEach(animal => {
             const option = document.createElement('option');
             option.value = animal.id;
-            const farmIndicator = showAllFarms && animal.ownerId !== currentUser.uid ? ' (Other Farm)' : '';
+            const farmIndicator = showAllFarms && animal.farmId !== currentFarmId ? ' (Other Farm)' : '';
             option.textContent = animal.name + farmIndicator;
             optgroup.appendChild(option);
         });
@@ -554,7 +548,7 @@ function renderTasks(filter = 'all') {
                 ? '<span class="priority-badge low">Low</span>' 
                 : '';
         
-        const isOtherFarm = animal && animal.ownerId !== currentUser.uid;
+        const isOtherFarm = animal && animal.farmId !== currentFarmId;
         const farmBadge = isOtherFarm ? '<span class="farm-badge">Other Farm</span>' : '';
         
         return `
@@ -631,7 +625,7 @@ function renderRecords(speciesFilter = 'all', typeFilter = 'all') {
         const hasWithdrawal = record.withdrawal && 
             (record.withdrawal.meat?.days || record.withdrawal.dairy?.days || record.withdrawal.eggs?.days);
         
-        const isOtherFarm = animal && animal.ownerId !== currentUser.uid;
+        const isOtherFarm = animal && animal.farmId !== currentFarmId;
         const farmBadge = isOtherFarm ? '<span class="farm-badge">Other Farm</span>' : '';
         
         return `
@@ -681,7 +675,7 @@ function renderWithdrawals() {
                     withdrawals.push({
                         animalId: record.animalId,
                         animalName: animal.name,
-                        isOtherFarm: animal.ownerId !== currentUser.uid,
+                        isOtherFarm: animal.farmId !== currentFarmId,
                         type,
                         endDate,
                         daysLeft,

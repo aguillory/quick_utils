@@ -63,8 +63,6 @@ async function checkDairyWithdrawal() {
     try {
         const snap = await window.getFarmCollection('healthRecords')
             .where('animalId', '==', currentAnimalId)
-            .orderBy('eventDate', 'desc')
-            .limit(10)
             .get();
             
         const now = Date.now();
@@ -99,8 +97,6 @@ async function loadAnimalDairyLogs() {
     try {
         const snap = await window.getFarmCollection('milkLogs')
             .where('animalId', '==', currentAnimalId)
-            .orderBy('date', 'desc')
-            .limit(30)
             .get();
             
         list.innerHTML = '';
@@ -110,8 +106,10 @@ async function loadAnimalDairyLogs() {
             return;
         }
         
-        snap.forEach(doc => {
-            const data = doc.data();
+        const docs = [];
+        snap.forEach(doc => docs.push(doc.data()));
+        docs.sort((a,b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
+        docs.slice(0,30).forEach(data => {
             
             let amountStr = [];
             if (data.am !== null && data.am !== undefined) amountStr.push(`AM: ${data.am}`);

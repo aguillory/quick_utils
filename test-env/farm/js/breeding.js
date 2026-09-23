@@ -29,8 +29,7 @@ async function loadActiveBreeding() {
         // We fetch Mating records that are either Exposed or Pregnant
         const snapshot = await window.getFarmCollection('breedingRecords')
             .where('farmId', '==', currentFarmId)
-            .where('type', '==', 'Mating')
-            .where('status', 'in', ['Exposed', 'Pregnant'])
+            
             .get();
 
         container.innerHTML = '';
@@ -46,7 +45,9 @@ async function loadActiveBreeding() {
         }
 
         // We will fetch animal details for names and photos
-        const animalIds = [...new Set(snapshot.docs.map(d => d.data().animalId))];
+        let docsData = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+        docsData = docsData.filter(d => d.type === 'Mating' && ['Exposed', 'Pregnant'].includes(d.status));
+        const animalIds = [...new Set(docsData.map(d => d.animalId))];
         const animalsMap = {};
         
         // Fetch animals in chunks (max 10 for 'in' query)
@@ -57,7 +58,7 @@ async function loadActiveBreeding() {
         }
 
         // Sort by earliest due date
-        const records = snapshot.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => {
+        const records = docsData.sort((a, b) => {
             const aDue = a.dueMin ? a.dueMin.toDate().getTime() : Infinity;
             const bDue = b.dueMin ? b.dueMin.toDate().getTime() : Infinity;
             return aDue - bDue;

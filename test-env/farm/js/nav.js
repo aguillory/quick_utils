@@ -6,8 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const navHTML = `
     <nav class="navbar">
         <div class="nav-container">
-            <h1><i class="fas fa-seedling"></i> Farm Manager</h1>
-            <div class="nav-links">
+            <div class="nav-header">
+                <h1><i class="fas fa-seedling"></i> Farm Manager</h1>
+                <button id="mobileMenuBtn" class="hamburger" aria-label="Menu">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <div class="nav-links" id="navLinks">
                 <a href="dashboard.html" data-page="dashboard.html"><i class="fas fa-home"></i> Dashboard</a>
                 <a href="inventory.html" data-page="inventory.html"><i class="fas fa-boxes"></i> Inventory</a>
                 <a href="species.html" data-page="species.html"><i class="fas fa-paw"></i> Species</a>
@@ -34,6 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
             link.classList.add('active');
         }
     });
+
+    
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const navLinks = document.getElementById('navLinks');
+    if (mobileMenuBtn && navLinks) {
+        mobileMenuBtn.addEventListener('click', () => {
+            navLinks.classList.toggle('show');
+        });
+    }
 
     // Re-attach Logout Event Listener (since the button was just created dynamically)
     const logoutBtn = document.getElementById('logoutBtn');

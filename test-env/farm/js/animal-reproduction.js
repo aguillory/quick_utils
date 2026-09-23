@@ -79,7 +79,7 @@ function setupPregnancyCheckModal() {
 
 async function populateMatingSires() {
     const sireSelect = document.getElementById('matingSire');
-    sireSelect.innerHTML = '<option value="">Select Sire...</option>';
+    sireSelect.innerHTML = '<option value="">Unknown / None</option>';
     
     try {
         const snapshot = await window.getFarmCollection('animals')
@@ -225,7 +225,6 @@ async function loadBreedingHistory() {
     try {
         const snapshot = await window.getFarmCollection('breedingRecords')
             .where('animalId', '==', currentAnimalId)
-            .orderBy('createdAt', 'desc')
             .get();
             
         const recordsList = document.getElementById('breedingRecordsList');
@@ -280,8 +279,11 @@ async function loadBreedingHistory() {
             document.getElementById('btnLogMating').title = "";
         }
 
-        snapshot.forEach(doc => {
-            const data = doc.data();
+        const docs = [];
+        snapshot.forEach(doc => docs.push(doc.data()));
+        docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        docs.forEach(data => {
             
             const div = document.createElement('div');
             div.className = 'card record-card';

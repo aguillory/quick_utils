@@ -189,7 +189,6 @@ async function loadHealthHistory() {
     try {
         const snapshot = await window.getFarmCollection('healthRecords')
             .where('animalId', '==', currentAnimalId)
-            .orderBy('eventDate', 'desc')
             .get();
 
         list.innerHTML = '';
@@ -198,8 +197,11 @@ async function loadHealthHistory() {
             return;
         }
 
-        snapshot.forEach(doc => {
-            const r = doc.data();
+        const docs = [];
+        snapshot.forEach(doc => docs.push(doc.data()));
+        docs.sort((a, b) => (b.eventDate?.seconds || 0) - (a.eventDate?.seconds || 0));
+
+        docs.forEach(r => {
             const date = r.eventDate ? new Date(r.eventDate.toDate()).toLocaleDateString() : 'N/A';
             const iconConfig = getEventConfig(r.eventType); // Uses shared.js
             

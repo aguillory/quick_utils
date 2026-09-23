@@ -96,7 +96,6 @@ async function loadCareLogs() {
     try {
         const snap = await window.getFarmCollection('careLogs')
             .where('animalId', '==', currentAnimalId)
-            .orderBy('date', 'desc')
             .get();
             
         list.innerHTML = '';
@@ -106,8 +105,12 @@ async function loadCareLogs() {
             return;
         }
         
-        snap.forEach(doc => {
-            const data = doc.data();
+        const docs = [];
+        snap.forEach(doc => docs.push({id: doc.id, data: doc.data()}));
+        docs.sort((a,b) => (b.data.date?.seconds || 0) - (a.data.date?.seconds || 0));
+        docs.forEach(item => {
+            const doc = item;
+            const data = item.data;
             
             const div = document.createElement('div');
             div.className = 'card record-card';

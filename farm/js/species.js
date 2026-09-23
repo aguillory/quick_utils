@@ -73,7 +73,7 @@ function createSpeciesCard(species) {
                 <button class="btn-icon" onclick="editSpecies('${species.id}')">
                     <i class="fas fa-edit"></i>
                 </button>
-                ${species.createdBy === currentUser.uid ? 
+                ${species.farmId === currentFarmId ? 
                     `<button class="btn-icon" onclick="deleteSpecies('${species.id}')">
                         <i class="fas fa-trash"></i>
                     </button>` : ''
@@ -310,7 +310,7 @@ speciesForm.addEventListener('submit', async (e) => {
             customFields: [],
             breedingFields: [],
             careActivities: [],
-            createdBy: currentUser.uid,
+            farmId: currentFarmId,
             createdAt: editingSpeciesId ? undefined : firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
@@ -398,7 +398,36 @@ async function deleteSpecies(speciesId) {
     }
 }
 
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    firebase.auth().signOut();
+
+
+function displaySpecies() {
+    let filtered = [...allSpecies];
+    const searchTerm = document.getElementById('searchSpeciesInput') ? document.getElementById('searchSpeciesInput').value.toLowerCase() : '';
+    if (searchTerm) {
+        filtered = filtered.filter(s => s.name.toLowerCase().includes(searchTerm));
+    }
+    const sortMode = document.getElementById('sortSpeciesFilter') ? document.getElementById('sortSpeciesFilter').value : 'name';
+    filtered.sort((a, b) => {
+        if (sortMode === 'name') {
+            return (a.name || '').localeCompare(b.name || '');
+        } else if (sortMode === 'recent') {
+            const timeA = a.createdAt ? a.createdAt.seconds : 0;
+            const timeB = b.createdAt ? b.createdAt.seconds : 0;
+            return timeB - timeA;
+        }
+        return 0;
+    });
+
+    const speciesList = document.getElementById('speciesList');
+    speciesList.innerHTML = '';
+    filtered.forEach(species => {
+        speciesList.innerHTML += createSpeciesCard(species);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('searchSpeciesInput');
+    const sortFilter = document.getElementById('sortSpeciesFilter');
+    if (searchInput) searchInput.addEventListener('input', displaySpecies);
+    if (sortFilter) sortFilter.addEventListener('change', displaySpecies);
 });

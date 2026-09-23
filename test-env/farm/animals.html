@@ -6,8 +6,8 @@
     <title>Animals - Farm Manager</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/animals.css">
+    <link rel="stylesheet" href="css/main.css?v=1790175639099">
+    <link rel="stylesheet" href="css/animals.css?v=1790175639099">
     <style>
         /* Add toggle style from health.css if not globally available */
         .dashboard-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
@@ -51,6 +51,11 @@
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="unknown">Unknown</option>
+            </select>
+            <select id="sortFilter" class="filter-select">
+                <option value="name">Sort by Name</option>
+                <option value="age">Sort by Age (Young to Old)</option>
+                <option value="recent">Sort by Most Recent</option>
             </select>
             <input type="text" id="searchInput" placeholder="Search animals..." class="search-input">
         </div>
@@ -200,10 +205,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js"></script>
-    <script src="js/constants.js"></script>
-    <script src="js/shared.js"></script>
-    <script src="js/nav.js"></script>
-    <script src="js/animals.js"></script>
+    <script src="js/firebase-config.js?v=1790175639099"></script>
+    <script src="js/constants.js?v=1790175639099"></script>
+    <script src="js/shared.js?v=1790175639099"></script>
+    <script src="js/nav.js?v=1790175639099"></script>
+    <script src="js/animals.js?v=1790175639099"></script>
 </body>
 </html>

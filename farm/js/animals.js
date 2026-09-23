@@ -359,7 +359,7 @@ animalForm.addEventListener('submit', async (e) => {
         photo: document.getElementById('animalPhotoData').value || null,
         sire: document.getElementById('animalSire').value || null,
         dam: document.getElementById('animalDam').value || null,
-        ownerId: currentUser.uid,
+        farmId: currentFarmId,
         customFields: {},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -511,6 +511,7 @@ document.getElementById('speciesFilter').addEventListener('change', filterAnimal
 document.getElementById('statusFilter').addEventListener('change', filterAnimals);
 document.getElementById('genderFilter').addEventListener('change', filterAnimals);
 document.getElementById('searchInput').addEventListener('input', filterAnimals);
+document.getElementById('sortFilter').addEventListener('change', filterAnimals);
 
 function filterAnimals() {
     const speciesFilter = document.getElementById('speciesFilter').value;
@@ -520,7 +521,7 @@ function filterAnimals() {
     
     const filtered = allAnimals.filter(animal => {
         // Toggle Logic: If not showing all, only show animals owned by current user
-        if (!showAllAnimals && animal.ownerId !== currentUser.uid) return false;
+        if (!showAllAnimals && animal.farmId !== currentFarmId) return false;
         
         // Hide individual flock members from the main overview
         if (animal.flockId) return false;
@@ -532,10 +533,24 @@ function filterAnimals() {
         return true;
     });
     
+    const sortMode = document.getElementById('sortFilter').value || 'name';
+    filtered.sort((a, b) => {
+        if (sortMode === 'name') {
+            return (a.name || '').localeCompare(b.name || '');
+        } else if (sortMode === 'age') {
+            // Young to Old means higher birthDate (more recent) comes first
+            const dateA = a.birthDate || '1970-01-01';
+            const dateB = b.birthDate || '1970-01-01';
+            return dateB.localeCompare(dateA);
+        } else if (sortMode === 'recent') {
+            const timeA = a.createdAt ? a.createdAt.seconds : 0;
+            const timeB = b.createdAt ? b.createdAt.seconds : 0;
+            return timeB - timeA; // Descending
+        }
+        return 0;
+    });
+    
     displayAnimals(filtered);
 }
 
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    firebase.auth().signOut();
-});
+

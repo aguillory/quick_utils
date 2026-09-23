@@ -79,7 +79,6 @@ async function loadInventory() {
     try {
         const snap = await window.getFarmCollection('inventory')
             .where('farmId', '==', currentFarmId)
-            .orderBy('name')
             .get();
             
         container.innerHTML = '';
@@ -94,9 +93,12 @@ async function loadInventory() {
             return;
         }
         
-        snap.forEach(doc => {
-            const data = doc.data();
-            const id = doc.id;
+        const docs = [];
+        snap.forEach(doc => docs.push({id: doc.id, data: doc.data()}));
+        docs.sort((a,b) => (a.data.name || '').localeCompare(b.data.name || ''));
+        docs.forEach(item => {
+            const data = item.data;
+            const id = item.id;
             
             const isLow = data.alertEnabled && data.quantity <= data.alertThreshold;
             

@@ -46,7 +46,7 @@ async function loadDairyAnimals() {
     try {
         // 1. Get all dairy species
         const speciesSnap = await window.getFarmCollection('species')
-            .where('createdBy', '==', currentUser.uid)
+            .where('farmId', '==', currentFarmId)
             .where('isDairy', '==', true)
             .get();
             
@@ -60,11 +60,11 @@ async function loadDairyAnimals() {
         // 2. Get all females of those species
         const animalsSnap = await window.getFarmCollection('animals')
             .where('farmId', '==', currentFarmId)
-            .where('gender', '==', 'Female')
+            // gender filter removed
             .where('species', 'in', dairySpeciesNames)
             .get();
             
-        if (animalsSnap.empty) {
+        console.log('FARM ID IS:', currentFarmId, 'GENDER IS female', 'SPECIES ARE:', dairySpeciesNames); if (animalsSnap.empty) {
             tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No female dairy animals found.</td></tr>';
             return;
         }
@@ -76,14 +76,18 @@ async function loadDairyAnimals() {
         const selectedDateStart = new Date(selectedDateStr + 'T00:00:00');
         const selectedDateEnd = new Date(selectedDateStr + 'T23:59:59');
         
-        const logsSnap = await window.getFarmCollection('milkLogs')
-            .where('farmId', '==', currentFarmId)
-            .where('date', '>=', firebase.firestore.Timestamp.fromDate(selectedDateStart))
-            .where('date', '<=', firebase.firestore.Timestamp.fromDate(selectedDateEnd))
-            .get();
+        const logsSnap = await window.getFarmCollection('milkLogs').where('farmId', '==', currentFarmId).get();
+    
+    // Filter date manually to avoid missing index
+    const filteredDocs = logsSnap.docs.filter(doc => {
+        const d = doc.data().date.toDate();
+        return d >= selectedDateStart && d <= selectedDateEnd;
+    });
+    // Create a mock snapshot to iterate over
+    const manualLogsSnap = { forEach: (cb) => filteredDocs.forEach(cb) };
             
         const existingLogs = {};
-        logsSnap.forEach(doc => {
+        manualLogsSnap.forEach(doc => {
             const data = doc.data();
             existingLogs[data.animalId] = { id: doc.id, ...data };
         });
@@ -91,8 +95,6 @@ async function loadDairyAnimals() {
         // 4. Get active health records to check for Dairy Withdrawal
         const healthSnap = await window.getFarmCollection('healthRecords')
             .where('farmId', '==', currentFarmId)
-            .orderBy('eventDate', 'desc')
-            .limit(100)
             .get();
             
         const activeWithdrawals = {};

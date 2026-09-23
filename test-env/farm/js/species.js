@@ -397,3 +397,37 @@ async function deleteSpecies(speciesId) {
         }
     }
 }
+
+
+
+function displaySpecies() {
+    let filtered = [...allSpecies];
+    const searchTerm = document.getElementById('searchSpeciesInput') ? document.getElementById('searchSpeciesInput').value.toLowerCase() : '';
+    if (searchTerm) {
+        filtered = filtered.filter(s => s.name.toLowerCase().includes(searchTerm));
+    }
+    const sortMode = document.getElementById('sortSpeciesFilter') ? document.getElementById('sortSpeciesFilter').value : 'name';
+    filtered.sort((a, b) => {
+        if (sortMode === 'name') {
+            return (a.name || '').localeCompare(b.name || '');
+        } else if (sortMode === 'recent') {
+            const timeA = a.createdAt ? a.createdAt.seconds : 0;
+            const timeB = b.createdAt ? b.createdAt.seconds : 0;
+            return timeB - timeA;
+        }
+        return 0;
+    });
+
+    const speciesList = document.getElementById('speciesList');
+    speciesList.innerHTML = '';
+    filtered.forEach(species => {
+        speciesList.innerHTML += createSpeciesCard(species);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('searchSpeciesInput');
+    const sortFilter = document.getElementById('sortSpeciesFilter');
+    if (searchInput) searchInput.addEventListener('input', displaySpecies);
+    if (sortFilter) sortFilter.addEventListener('change', displaySpecies);
+});
