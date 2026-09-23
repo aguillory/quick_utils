@@ -73,7 +73,7 @@ function createSpeciesCard(species) {
                 <button class="btn-icon" onclick="editSpecies('${species.id}')">
                     <i class="fas fa-edit"></i>
                 </button>
-                ${species.createdBy === currentUser.uid ? 
+                ${species.farmId === currentFarmId ? 
                     `<button class="btn-icon" onclick="deleteSpecies('${species.id}')">
                         <i class="fas fa-trash"></i>
                     </button>` : ''
@@ -310,7 +310,7 @@ speciesForm.addEventListener('submit', async (e) => {
             customFields: [],
             breedingFields: [],
             careActivities: [],
-            createdBy: currentUser.uid,
+            farmId: currentFarmId,
             createdAt: editingSpeciesId ? undefined : firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
@@ -397,8 +397,3 @@ async function deleteSpecies(speciesId) {
         }
     }
 }
-
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    firebase.auth().signOut();
-});
