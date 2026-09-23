@@ -1,6 +1,13 @@
 // js/login.js
 const errorMsg = document.getElementById('errorMessage');
 
+// Automatically redirect if already logged in
+firebase.auth().onAuthStateChanged((user) => {
+    if (user) {
+        window.location.href = "dashboard.html";
+    }
+});
+
 const btnGoogleSignIn = document.getElementById('btnGoogleSignIn');
 if (btnGoogleSignIn) {
     btnGoogleSignIn.addEventListener('click', async () => {

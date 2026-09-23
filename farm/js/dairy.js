@@ -58,11 +58,20 @@ async function loadDairyAnimals() {
         const dairySpeciesNames = speciesSnap.docs.map(d => d.data().name);
         
         // 2. Get all females of those species
-        const animalsSnap = await window.getFarmCollection('animals')
-            .where('farmId', '==', currentFarmId)
-            // gender filter removed
-            .where('species', 'in', dairySpeciesNames)
-            .get();
+        const rawAnimalsSnap = await window.getFarmCollection('animals').where('farmId', '==', currentFarmId).get();
+        
+        // Client-side filtering for gender and species to bypass any index/case issues
+        const filteredAnimals = rawAnimalsSnap.docs.filter(doc => {
+            const data = doc.data();
+            const isFemale = data.gender === 'Female' || data.gender === 'female';
+            const isDairy = dairySpeciesNames.includes(data.species);
+            return isFemale && isDairy;
+        });
+        
+        const animalsSnap = {
+            empty: filteredAnimals.length === 0,
+            docs: filteredAnimals
+        };
             
         console.log('FARM ID IS:', currentFarmId, 'GENDER IS female', 'SPECIES ARE:', dairySpeciesNames); if (animalsSnap.empty) {
             tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No female dairy animals found.</td></tr>';
