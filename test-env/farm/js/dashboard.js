@@ -47,7 +47,7 @@ async function loadStats(userId) {
     try {
         // Example: Get count of animals
         const snapshot = await window.getFarmCollection("animals")
-            .where("ownerId", "==", userId)
+            .where('farmId', '==', userId)
             .get();
         document.getElementById('statTotalAnimals').textContent = snapshot.size;
     } catch (error) {
