@@ -59,3 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Auto-sync tasks if enabled
+firebase.auth().onAuthStateChanged((user) => {
+    if (user && window.triggerAutoSyncGoogleCalendar) {
+        window.triggerAutoSyncGoogleCalendar();
+    }
+});

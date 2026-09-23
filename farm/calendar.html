@@ -6,7 +6,7 @@
     <title>Calendar - Farm Manager</title>
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Poppins:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/main.css?v=1790196826561">
+    <link rel="stylesheet" href="css/main.css?v=1790198947651">
     <style>
         .calendar-header {
             display: flex;
@@ -103,9 +103,12 @@
                 <button id="btnToday">Today</button>
                 <button id="btnNextMonth"><i class="fas fa-chevron-right"></i></button>
                 
-                <button id="btnSyncGoogle" class="btn-secondary" style="margin-left: 1rem; background: white; color: #333; border: 1px solid #ccc;">
+                                <button id="btnSyncGoogle" class="btn-secondary" style="margin-left: 1rem; background: white; color: #333; border: 1px solid #ccc;">
                     <i class="fab fa-google" style="margin-right: 5px;"></i>
                     Sync to Google Calendar
+                </button>
+                <button id="btnCalendarSettings" class="btn-secondary" style="margin-left: 0.5rem; background: white; color: #333; border: 1px solid #ccc;" title="Calendar Sync Settings">
+                    <i class="fas fa-cog"></i>
                 </button>
             </div>
         </div>
@@ -126,6 +129,39 @@
             </div>
         </div>
     </main>
+
+        <!-- Calendar Settings Modal -->
+    <div id="calendarSettingsModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" data-modal="calendarSettingsModal">&times;</span>
+            <h2>Calendar Sync Settings</h2>
+            
+            <div class="form-group mt-1">
+                <label for="calendarSelect">Select Google Calendar to Sync To:</label>
+                <div style="display: flex; gap: 10px;">
+                    <select id="calendarSelect" style="flex: 1; padding: 0.5rem;">
+                        <option value="primary">Loading calendars...</option>
+                    </select>
+                    <button id="btnCreateFarmCalendar" type="button" class="btn-secondary" style="white-space: nowrap;">Create "Farm Manager"</button>
+                </div>
+            </div>
+
+            <div class="form-group mt-1">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="autoSyncCheckbox" style="width: auto; margin-right: 10px; padding: 0;">
+                    Enable Auto-Sync
+                </label>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    When enabled, any new tasks created (like pregnancy checks or health withdrawals) will automatically be pushed to the selected calendar in the background.
+                </small>
+            </div>
+
+            <div class="modal-footer" style="margin-top: 1.5rem;">
+                <button type="button" class="btn-cancel" data-modal="calendarSettingsModal">Cancel</button>
+                <button type="button" class="btn-primary" id="btnSaveCalendarSettings">Save Settings</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Task Details Modal -->
     <div id="taskModal" class="modal">
@@ -152,9 +188,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
     
     <!-- Config -->
-    <script src="js/firebase-config.js?v=1790196826561"></script>
-    <script src="js/nav.js?v=1790196826561"></script>
-    <script src="js/shared.js?v=1790196826561"></script>
-    <script src="js/calendar.js?v=1790196826561"></script>
+    <script src="js/firebase-config.js?v=1790198947651"></script>
+    <script src="js/nav.js?v=1790198947651"></script>
+    <script src="js/shared.js?v=1790198947651"></script>
+    <script src="js/calendar.js?v=1790198947651"></script>
 </body>
 </html>

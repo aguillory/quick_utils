@@ -200,3 +200,84 @@ function processImageUpload(file, maxSize = 800) {
         reader.readAsDataURL(file);
     });
 }
+
+// ============================================================
+// GOOGLE CALENDAR AUTO-SYNC
+// ============================================================
+window.triggerAutoSyncGoogleCalendar = async function() {
+    const token = sessionStorage.getItem('googleCalendarToken');
+    if (!token) return; // Not signed in with Google or no token
+
+    try {
+        const user = firebase.auth().currentUser;
+        if (!user) return;
+
+        const farmDoc = await window.getFarmCollection('farms').doc(user.uid).get();
+        if (!farmDoc.exists) return;
+
+        const settings = farmDoc.data().calendarSettings || {};
+        if (!settings.autoSyncTasks) return; // Auto-sync is disabled
+
+        const calendarId = settings.syncCalendarId || 'primary';
+
+        // Fetch all pending tasks
+        const snapshot = await window.getFarmCollection('healthTasks')
+            .where('farmId', '==', farmDoc.id)
+            .get();
+
+        const batch = firebase.firestore().batch();
+        let hasChanges = false;
+
+        const tasksToSync = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return data.status !== 'completed' && !data.googleEventId && data.dueDate;
+        });
+
+        for (const doc of tasksToSync) {
+            const task = doc.data();
+            
+            // Handle date parsing
+            let taskDate;
+            if (task.dueDate && task.dueDate.toDate) {
+                taskDate = task.dueDate.toDate();
+            } else if (task.dueDate) {
+                const parts = task.dueDate.split('-');
+                taskDate = new Date(parts[0], parts[1] - 1, parts[2]);
+            } else {
+                continue;
+            }
+
+            const event = {
+                summary: `Farm Task: ${task.animalName || 'Unknown'} - ${task.eventType || 'Task'}`,
+                description: task.notes || 'Generated from Farm Manager',
+                start: { date: taskDate.toISOString().split('T')[0] },
+                end: { date: taskDate.toISOString().split('T')[0] }
+            };
+
+            const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(event)
+            });
+
+            if (response.ok) {
+                const gEvent = await response.json();
+                batch.update(doc.ref, { googleEventId: gEvent.id });
+                hasChanges = true;
+            } else {
+                console.error("Auto-sync failed for a task:", response.statusText);
+            }
+        }
+
+        if (hasChanges) {
+            await batch.commit();
+            console.log("Auto-synced tasks to Google Calendar!");
+        }
+
+    } catch (err) {
+        console.error("Error in auto-sync:", err);
+    }
+};

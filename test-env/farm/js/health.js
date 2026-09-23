@@ -1292,6 +1292,7 @@ async function saveHealthTask(e) {
         } else {
             taskData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await window.getFarmCollection('healthTasks').add(taskData);
+        if (window.triggerAutoSyncGoogleCalendar) window.triggerAutoSyncGoogleCalendar();
             showNotification('Task scheduled successfully', 'success');
         }
         
@@ -1414,6 +1415,7 @@ async function createFollowupTask(data) {
     };
     
     await window.getFarmCollection('healthTasks').add(taskData);
+        if (window.triggerAutoSyncGoogleCalendar) window.triggerAutoSyncGoogleCalendar();
 }
 
 async function saveBulkRecords(e) {
@@ -1502,6 +1504,7 @@ async function saveBulkRecords(e) {
         }
         
         await batch.commit();
+        if (window.triggerAutoSyncGoogleCalendar) window.triggerAutoSyncGoogleCalendar();
         
         if (recordType === 'record' && scheduleFollowup && followupDateStr) {
             const followupDate = parseLocalDate(followupDateStr);

@@ -3,6 +3,7 @@ let tasks = [];
 let currentTaskContext = null;
 let currentFarmId = null;
 let currentUser = null;
+let farmSettings = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     firebase.auth().onAuthStateChanged(async (user) => {
@@ -12,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const farmDoc = await window.getFarmCollection('farms').doc(currentUser.uid).get();
                 if (farmDoc.exists) {
                     currentFarmId = farmDoc.id;
+                    farmSettings = farmDoc.data().calendarSettings || {};
                     await loadTasks();
                     renderCalendar();
                     setupEventListeners();
@@ -56,6 +58,14 @@ async function loadTasks() {
         });
     } catch (err) {
         console.error("Error loading tasks:", err);
+    }
+
+    // Trigger Auto-Sync if enabled
+    if (farmSettings.autoSyncTasks) {
+        const token = sessionStorage.getItem('googleCalendarToken');
+        if (token) {
+            syncTasksToGoogleCalendar(token).catch(e => console.error("Auto-sync failed:", e));
+        }
     }
 }
 
@@ -197,6 +207,93 @@ function setupEventListeners() {
         }
     });
 
+    
+    document.getElementById('btnCalendarSettings').addEventListener('click', async () => {
+        const token = sessionStorage.getItem('googleCalendarToken');
+        if (!token) {
+            alert("You need to sign in with Google to access calendar settings.");
+            return;
+        }
+        
+        document.getElementById('calendarSettingsModal').classList.add('active');
+        document.getElementById('autoSyncCheckbox').checked = !!farmSettings.autoSyncTasks;
+        
+        // Fetch calendars
+        try {
+            const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            const select = document.getElementById('calendarSelect');
+            select.innerHTML = '<option value="primary">Primary Calendar</option>';
+            if (data.items) {
+                data.items.forEach(cal => {
+                    if (cal.primary) return; // already added as 'primary'
+                    select.innerHTML += `<option value="${cal.id}">${cal.summary}</option>`;
+                });
+            }
+            if (farmSettings.syncCalendarId) {
+                select.value = farmSettings.syncCalendarId;
+            }
+        } catch (err) {
+            console.error("Error fetching calendars:", err);
+            document.getElementById('calendarSelect').innerHTML = '<option value="primary">Error loading calendars</option>';
+        }
+    });
+
+    document.getElementById('btnCreateFarmCalendar').addEventListener('click', async () => {
+        const token = sessionStorage.getItem('googleCalendarToken');
+        const btn = document.getElementById('btnCreateFarmCalendar');
+        btn.disabled = true;
+        btn.textContent = "Creating...";
+        
+        try {
+            const response = await fetch('https://www.googleapis.com/calendar/v3/calendars', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ summary: "Farm Manager" })
+            });
+            const newCal = await response.json();
+            
+            const select = document.getElementById('calendarSelect');
+            select.innerHTML += `<option value="${newCal.id}">${newCal.summary}</option>`;
+            select.value = newCal.id;
+            alert("Created Farm Manager calendar successfully!");
+        } catch (err) {
+            alert("Error creating calendar: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Create \"Farm Manager\"";
+        }
+    });
+
+    document.getElementById('btnSaveCalendarSettings').addEventListener('click', async () => {
+        const calId = document.getElementById('calendarSelect').value;
+        const autoSync = document.getElementById('autoSyncCheckbox').checked;
+        
+        try {
+            farmSettings.syncCalendarId = calId;
+            farmSettings.autoSyncTasks = autoSync;
+            
+            await window.getFarmCollection('farms').doc(currentFarmId).update({
+                calendarSettings: farmSettings
+            });
+            
+            document.getElementById('calendarSettingsModal').classList.remove('active');
+            
+            // If auto-sync was just turned on, run it now!
+            if (autoSync) {
+                const token = sessionStorage.getItem('googleCalendarToken');
+                if (token) syncTasksToGoogleCalendar(token);
+            }
+        } catch (err) {
+            alert("Error saving settings: " + err.message);
+        }
+    });
+
     // Modal Close
     document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -209,6 +306,7 @@ function setupEventListeners() {
 }
 
 async function syncTasksToGoogleCalendar(token) {
+    const calendarId = farmSettings.syncCalendarId || 'primary';
     // Only sync pending tasks that have a valid date
     const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.dateObj);
     
@@ -229,7 +327,7 @@ async function syncTasksToGoogleCalendar(token) {
             }
         };
 
-        const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,

@@ -214,6 +214,7 @@ async function saveMatingRecord() {
         }
         
         await batch.commit();
+        if (window.triggerAutoSyncGoogleCalendar) window.triggerAutoSyncGoogleCalendar();
         document.getElementById('matingModal').classList.remove('active');
         loadBreedingHistory();
     } catch (err) {
@@ -360,6 +361,7 @@ async function savePregnancyCheck() {
         // If Recheck, we leave status as Exposed or whatever it was
         
         await batch.commit();
+        if (window.triggerAutoSyncGoogleCalendar) window.triggerAutoSyncGoogleCalendar();
         document.getElementById('pregnancyCheckModal').classList.remove('active');
         loadBreedingHistory();
     } catch (err) {
