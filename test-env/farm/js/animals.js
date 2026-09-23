@@ -534,8 +534,3 @@ function filterAnimals() {
     
     displayAnimals(filtered);
 }
-
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    firebase.auth().signOut();
-});
