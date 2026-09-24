@@ -9,8 +9,8 @@
     --primary-hover: #D67A20; /* Darker Orange */
     --success: #4CAF50;       /* Senzu Bean Green */
     --danger: #E53935;        /* Red Ribbon Red */
-    --bg-color: #0d1b2a;      /* Deep Space Blue */
-    --card-bg: rgba(255, 255, 255, 0.9); /* Capsule Corp White (Slightly transparent) */
+    --bg-color: #f4f7f6;      /* Light Sky/Cloud Color */
+    --card-bg: rgba(255, 255, 255, 0.7); /* 30% Transparent White */
     --text-main: #1B263B;     /* Deep Blue Text */
     --text-muted: #415A77;    /* Faded Blue */
     --border-color: #F28C28;  /* Orange Border */
@@ -28,18 +28,18 @@ body {
     color: var(--text-main);
     
     /* Vegeta Background */
-    background-image: linear-gradient(rgba(13, 27, 42, 0.7), rgba(13, 27, 42, 0.7)), url('Super_vegeta.webp');
-    background-size: cover;
-    background-position: center;
+    background-image: url('Super_vegeta.webp');
+    background-size: clamp(300px, 40vw, 600px); /* Responsive sizing */
+    background-position: bottom right;
     background-attachment: fixed;
     background-repeat: no-repeat;
 }
 
 h1, h2, h3, h4 { 
     font-family: 'Bangers', cursive; /* Comic style font */
-    color: var(--ki-yellow); 
+    color: var(--text-main); 
     letter-spacing: 2px;
-    text-shadow: 2px 2px 0px #000, 0 0 10px var(--ki-yellow-glow);
+    text-shadow: 2px 2px 0px #fff, 0 0 5px rgba(242, 140, 40, 0.5); /* Readable solid text with white/orange glow */
 }
 
 /* ==========================================
@@ -49,9 +49,16 @@ h1, h2, h3, h4 {
     background: var(--card-bg);
     border: 3px solid var(--primary); 
     border-radius: 12px;
-    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.5); 
+    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.1); 
     position: relative;
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(8px);
+}
+
+#reminderBox {
+    background-color: var(--card-bg) !important;
+    border-left: 5px solid var(--aura-blue) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    backdrop-filter: blur(8px);
 }
 
 /* ==========================================
@@ -100,15 +107,13 @@ h1, h2, h3, h4 {
 .user-toggle {
     background: rgba(255, 255, 255, 0.8);
     border: 2px solid var(--border-color);
-    border-radius: 50%;
+    border-radius: 12px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    width: 60px;
-    height: 60px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 0;
+    padding: 8px 16px;
 }
 
 .user-name { 
@@ -135,11 +140,12 @@ h1, h2, h3, h4 {
    CHORE CARDS (DRAGON BALLS)
    ========================================== */
 .chore-card { 
-    background: #ffffff !important; 
+    background: var(--card-bg) !important; 
     border-left: 8px solid var(--primary) !important; 
     border-radius: 8px !important; 
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
     transition: transform 0.2s;
+    backdrop-filter: blur(8px);
 }
 
 .chore-card:hover {
