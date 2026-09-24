@@ -613,7 +613,11 @@ export function renderSidebarTodos() {
 
 export function addSubTaskField(name = '', linkedTask = '', id = '') {
     const container = document.getElementById('subTasksContainer');
-    if (container.innerHTML.includes('No sub-tasks added.')) {
+    const emptyMsg = container.querySelector('.empty-subtasks-msg');
+    if (emptyMsg) emptyMsg.remove();
+    
+    // Fallback if someone used the old text
+    if (container.children.length === 1 && (container.children[0].textContent || '').includes('No sub-tasks added.')) {
         container.innerHTML = '';
     }
     
@@ -623,7 +627,12 @@ export function addSubTaskField(name = '', linkedTask = '', id = '') {
     
     // Copy options from main taskPoints dropdown
     const pointOptions = document.getElementById('taskPoints').innerHTML;
-    const subtaskId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'sub_' + Math.random().toString(36).substring(2, 15));
+    let subtaskId;
+    try {
+        subtaskId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'sub_' + Math.random().toString(36).substring(2, 15));
+    } catch(e) {
+        subtaskId = id || 'sub_' + Math.random().toString(36).substring(2, 15);
+    }
     
     div.innerHTML = `
         <input type="hidden" class="subtask-id" value="${subtaskId}">
@@ -631,7 +640,7 @@ export function addSubTaskField(name = '', linkedTask = '', id = '') {
         <select class="subtask-points" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--primary); font-size: 13px;">
             ${pointOptions}
         </select>
-        <button type="button" class="action-btn" onclick="this.parentElement.remove(); if(document.getElementById('subTasksContainer').children.length === 0) document.getElementById('subTasksContainer').innerHTML = '<div style=\\'font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;\\'>No sub-tasks added.</div>';" style="padding: 4px 8px; font-size: 16px; color: var(--danger); border-color: transparent;">🗑️</button>
+        <button type="button" class="action-btn" onclick="this.parentElement.remove(); if(document.getElementById('subTasksContainer').children.length === 0) document.getElementById('subTasksContainer').innerHTML = '<div class=\\'empty-subtasks-msg\\' style=\\'font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;\\'>No sub-tasks added.</div>';" style="padding: 4px 8px; font-size: 16px; color: var(--danger); border-color: transparent;">🗑️</button>
     `;
     
     // Set selected points
@@ -646,7 +655,7 @@ export function populateSubTaskFields(subTasks = []) {
     const container = document.getElementById('subTasksContainer');
     container.innerHTML = '';
     if (!subTasks || subTasks.length === 0) {
-        container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
+        container.innerHTML = '<div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
         return;
     }
     subTasks.forEach(st => addSubTaskField(st.name, st.linkedNiptoTask, st.id));
