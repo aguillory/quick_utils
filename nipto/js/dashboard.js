@@ -97,7 +97,7 @@ Object.assign(window, {
     deleteTaskActivity, togglePinTask, logPinnedTask, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
-    renderTodoTasks, updateTaskDatalists, renderSidebarTodos, addSubTaskField, toggleSubTaskStatus,
+    renderTodoTasks, updateTaskDatalists, renderSidebarTodos, addSubTaskField, toggleSubTaskStatus, updateMainTaskPointsVisibility,
     savePin, switchTab: switchTabWithChat, setMode, setTimeOffset, setHistoryView,
     toggleSection, toggleThemeMenu, setTheme, toggleHeaderCollapse,
     openRoutineModal, closeRoutineModal, toggleRoutineFrequencyFields, saveRoutine,

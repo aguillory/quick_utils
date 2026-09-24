@@ -91,6 +91,7 @@
                         <button class="theme-option" id="theme-opt-pixel" onclick="setTheme('pixel')">⛏️ Pixel Mode</button>
                         <button class="theme-option" id="theme-opt-tactical" onclick="setTheme('tactical')">🎯 Tactical Mode</button>
                         <button class="theme-option" id="theme-opt-homestead" onclick="setTheme('homestead')">🏡 Homestead Mode</button>
+                        <button class="theme-option" id="theme-opt-dragonball" onclick="setTheme('dragonball')">🐉 Dragon Ball</button>
                     </div>
                 </div>
                 <button id="refreshBtn" class="action-btn" onclick="refreshDashboard()" style="background-color: var(--secondary, #03dac6); color: var(--bg-color, #121212);">🔄 Refresh</button>
@@ -287,11 +288,12 @@
         <div id="todoAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
         </div>
         
-        <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Optional Points (Awarded on completion)</label>
-<select id="taskPoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); background: rgba(37, 99, 235, 0.05); font-size: 14px;">
-    <!-- Populated dynamically by populateTaskPointsSelect() -->
-</select>
-        
+        <div id="mainTaskPointsContainer">
+            <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Optional Points (Awarded on completion)</label>
+            <select id="taskPoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); background: rgba(37, 99, 235, 0.05); font-size: 14px; width: 100%;">
+                <!-- Populated dynamically by populateTaskPointsSelect() -->
+            </select>
+        </div>
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Notes / Details</label>
         <textarea id="taskNotes" rows="3" placeholder="Additional details..." style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; font-family: inherit;"></textarea>
 

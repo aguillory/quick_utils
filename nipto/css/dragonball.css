@@ -1,0 +1,262 @@
+/* ==========================================
+   GLOBAL VARIABLES & DRAGON BALL OVERHAUL
+   ========================================== */
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Ubuntu:wght@400;700&display=swap');
+
+:root {
+    /* Dragon Ball Palette */
+    --primary: #F28C28;       /* Saiyan Armor Orange */
+    --primary-hover: #D67A20; /* Darker Orange */
+    --success: #4CAF50;       /* Senzu Bean Green */
+    --danger: #E53935;        /* Red Ribbon Red */
+    --bg-color: #0d1b2a;      /* Deep Space Blue */
+    --card-bg: rgba(255, 255, 255, 0.9); /* Capsule Corp White (Slightly transparent) */
+    --text-main: #1B263B;     /* Deep Blue Text */
+    --text-muted: #415A77;    /* Faded Blue */
+    --border-color: #F28C28;  /* Orange Border */
+    
+    /* Saiyan Energy Elements */
+    --ki-yellow: #FFD54F;
+    --ki-yellow-glow: #FBC02D;
+    --aura-blue: #29B6F6;
+}
+
+body { 
+    font-family: 'Ubuntu', sans-serif; 
+    margin: 0; 
+    background-color: var(--bg-color); 
+    color: var(--text-main);
+    
+    /* Vegeta Background */
+    background-image: linear-gradient(rgba(13, 27, 42, 0.7), rgba(13, 27, 42, 0.7)), url('Super_vegeta.webp');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+h1, h2, h3, h4 { 
+    font-family: 'Bangers', cursive; /* Comic style font */
+    color: var(--ki-yellow); 
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 0px #000, 0 0 10px var(--ki-yellow-glow);
+}
+
+/* ==========================================
+   CONTAINERS & LAYOUT (CAPSULE CORP STYLE)
+   ========================================== */
+.header, .sidebar, .widget-panel, .modal-content {
+    background: var(--card-bg);
+    border: 3px solid var(--primary); 
+    border-radius: 12px;
+    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.5); 
+    position: relative;
+    backdrop-filter: blur(5px);
+}
+
+/* ==========================================
+   BUTTONS (ENERGY BLASTS)
+   ========================================== */
+.task-btn, .action-btn, .qt-btn, .ht-btn, .mode-btn { 
+    font-family: 'Bangers', cursive;
+    font-weight: 400;
+    font-size: 18px;
+    border-radius: 20px; 
+    border: 2px solid #fff;
+    background-color: var(--primary); 
+    color: #fff;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    transition: all 0.2s ease-in-out;
+}
+
+.task-btn:hover:not(:disabled), .action-btn:hover { 
+    background-color: var(--ki-yellow);
+    color: #000;
+    border-color: #000;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px var(--ki-yellow-glow);
+}
+
+.task-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.task-btn.success, .action-btn.save-mode, #refreshBtn, #syncNiptoBtn { 
+    background-color: var(--aura-blue) !important; 
+    border-color: #0277BD !important;
+    color: #fff !important; 
+}
+
+.task-btn.success:hover, .action-btn.save-mode:hover, #refreshBtn:hover, #syncNiptoBtn:hover {
+    box-shadow: 0 0 15px var(--aura-blue);
+    background-color: #03A9F4 !important;
+}
+
+/* ==========================================
+   USER TOGGLES (DRAGON RADAR DOTS)
+   ========================================== */
+.user-toggle {
+    background: rgba(255, 255, 255, 0.8);
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    width: 60px;
+    height: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+}
+
+.user-name { 
+    font-family: 'Bangers', cursive; 
+    color: var(--text-main); 
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+.user-points {
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.user-toggle.active {
+    background-color: var(--ki-yellow);
+    border: 2px solid #000;
+    box-shadow: 0 0 15px var(--ki-yellow-glow);
+    transform: scale(1.1);
+}
+.user-toggle.active .user-name { color: #000; }
+.user-toggle.active .user-points { color: #000; }
+
+/* ==========================================
+   CHORE CARDS (DRAGON BALLS)
+   ========================================== */
+.chore-card { 
+    background: #ffffff !important; 
+    border-left: 8px solid var(--primary) !important; 
+    border-radius: 8px !important; 
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+    transition: transform 0.2s;
+}
+
+.chore-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(242, 140, 40, 0.3) !important; /* Orange glow */
+}
+
+.chore-title { 
+    font-family: 'Bangers', cursive;
+    font-size: 20px;
+    color: var(--text-main) !important; 
+    letter-spacing: 1px;
+}
+
+.chore-points { 
+    background: var(--aura-blue) !important; 
+    color: #fff !important; 
+    border: none !important;
+    border-radius: 20px !important;
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: bold;
+    padding: 4px 10px !important;
+}
+
+.chore-desc { 
+    background: rgba(0,0,0,0.02) !important; 
+    border-radius: 4px !important;
+    color: var(--text-main) !important; 
+    font-family: 'Ubuntu', sans-serif;
+}
+
+.chore-btn { color: var(--primary) !important; font-size: 18px !important; }
+.chore-btn:hover { background: rgba(242, 140, 40, 0.1) !important; transform: scale(1.1); }
+
+.chore-btn.complete-btn:hover { 
+    background: rgba(41, 182, 246, 0.2) !important; 
+    color: var(--aura-blue) !important; 
+}
+
+/* ==========================================
+   NEW UI ELEMENTS (DRAWER, TOASTS, ETC)
+   ========================================== */
+#floating-user-indicator {
+    background: var(--ki-yellow);
+    border: 2px solid #000;
+    border-radius: 20px;
+    box-shadow: 0 0 10px var(--ki-yellow-glow);
+    color: #000;
+    font-family: 'Bangers', cursive;
+    letter-spacing: 1px;
+}
+.floating-avatar {
+    background: var(--primary);
+    border: 2px solid #fff;
+    color: white;
+    font-family: 'Ubuntu', sans-serif;
+}
+
+#together-drawer {
+    background: var(--card-bg);
+    border: 2px solid var(--primary);
+    border-radius: 12px;
+}
+
+/* Toast Notifications (Scouter Alert) */
+.toast {
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid var(--success);
+    border-left: 8px solid var(--success);
+    color: #fff;
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: bold;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+    padding: 12px 20px;
+}
+
+/* ==========================================
+   THE CROWN REPLACEMENT (4-STAR DRAGON BALL)
+   ========================================== */
+.leader-crown {
+    font-size: 0 !important; /* Hides default emoji */
+    position: absolute;
+    top: -15px;
+    right: -15px;
+    pointer-events: none;
+    z-index: 10;
+    
+    /* Create the Dragon Ball */
+    width: 32px;
+    height: 32px;
+    background: radial-gradient(circle at 30% 30%, #FFB74D, #E65100);
+    border-radius: 50%;
+    box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 
+                inset 2px 2px 4px rgba(255,255,255,0.6),
+                0 4px 8px rgba(0,0,0,0.5);
+    
+    /* Animation for floating energy */
+    animation: saiyan-float 3s infinite ease-in-out;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* The Stars */
+.leader-crown::after {
+    content: "★★★★";
+    font-family: Arial, sans-serif; /* For clean stars */
+    font-size: 8px;
+    color: #D50000; /* Deep Red Stars */
+    text-shadow: 0px 0px 1px rgba(255,255,255,0.5);
+    text-align: center;
+    line-height: 0.9;
+    letter-spacing: -1px;
+}
+
+@keyframes saiyan-float {
+    0%, 100% { transform: translateY(0) scale(1); box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.5), 0 0 5px var(--ki-yellow); }
+    50% { transform: translateY(-3px) scale(1.05); box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 0 8px 12px rgba(0,0,0,0.4), 0 0 15px var(--ki-yellow-glow); }
+}

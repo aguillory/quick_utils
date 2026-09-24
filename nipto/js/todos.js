@@ -182,10 +182,10 @@ export function renderTodoTasks() {
                         `<span style="color: var(--success); font-size: 10px; margin-left: 5px;">(by ${st.completedBy.map(uid => (ALL_USERS.find(u => u.uid === uid) || {}).name).join(', ')})</span>` : '';
                     
                     subTasksList += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 2px 0; border-bottom: 1px dashed rgba(0,0,0,0.05);">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" ${isCompleted ? 'checked' : ''} onclick="toggleSubTaskStatus('${task.id}', '${st.id}', this.checked, '${st.linkedNiptoTask || ''}')" style="cursor: pointer; width: 16px; height: 16px;">
-                            <span style="font-size: 13px; ${isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : 'color: var(--text-main);'}">${escapeHtml(st.name)}</span>
+                            <button class="chore-btn complete-btn" onclick="toggleSubTaskStatus('${task.id}', '${st.id}', ${!isCompleted}, '${st.linkedNiptoTask || ''}')" style="padding: 2px 4px; font-size: 10px; cursor: pointer; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg);" title="Mark Complete/Incomplete">${isCompleted ? '&#9194;' : '&#9989;'}</button>
+                            <span style="font-size: 13px; ${isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : 'color: var(--text-main);'} margin-top: 2px;">${escapeHtml(st.name)}</span>
                             ${completedByStHtml}
                         </div>
                         ${stPtsDisplay}
@@ -611,6 +611,14 @@ export function renderSidebarTodos() {
     });
 }
 
+export function updateMainTaskPointsVisibility() {
+    const mainPts = document.getElementById('mainTaskPointsContainer');
+    if (!mainPts) return;
+    const subTasksContainer = document.getElementById('subTasksContainer');
+    const hasSubtasks = subTasksContainer && subTasksContainer.children.length > 0 && !subTasksContainer.querySelector('.empty-subtasks-msg');
+    mainPts.style.display = hasSubtasks ? 'none' : 'block';
+}
+
 export function addSubTaskField(name = '', linkedTask = '', id = '') {
     const container = document.getElementById('subTasksContainer');
     const emptyMsg = container.querySelector('.empty-subtasks-msg');
@@ -640,7 +648,7 @@ export function addSubTaskField(name = '', linkedTask = '', id = '') {
         <select class="subtask-points" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--primary); font-size: 13px;">
             ${pointOptions}
         </select>
-        <button type="button" class="action-btn" onclick="this.parentElement.remove(); if(document.getElementById('subTasksContainer').children.length === 0) document.getElementById('subTasksContainer').innerHTML = '<div class=\\'empty-subtasks-msg\\' style=\\'font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;\\'>No sub-tasks added.</div>';" style="padding: 4px 8px; font-size: 16px; color: var(--danger); border-color: transparent;">🗑️</button>
+        <button type="button" class="action-btn" onclick="this.parentElement.remove(); if(document.getElementById('subTasksContainer').children.length === 0) document.getElementById('subTasksContainer').innerHTML = '<div class=\\'empty-subtasks-msg\\' style=\\'font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;\\'>No sub-tasks added.</div>'; window.updateMainTaskPointsVisibility();" style="padding: 4px 8px; font-size: 16px; color: var(--danger); border-color: transparent;">🗑️</button>
     `;
     
     // Set selected points
@@ -649,6 +657,7 @@ export function addSubTaskField(name = '', linkedTask = '', id = '') {
     }
     
     container.appendChild(div);
+    updateMainTaskPointsVisibility();
 }
 
 export function populateSubTaskFields(subTasks = []) {
@@ -656,9 +665,11 @@ export function populateSubTaskFields(subTasks = []) {
     container.innerHTML = '';
     if (!subTasks || subTasks.length === 0) {
         container.innerHTML = '<div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
+        updateMainTaskPointsVisibility();
         return;
     }
     subTasks.forEach(st => addSubTaskField(st.name, st.linkedNiptoTask, st.id));
+    updateMainTaskPointsVisibility();
 }
 
 export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedNiptoTask) {
