@@ -15,8 +15,7 @@ const auth = firebase.auth();
 window.db = db;
 window.auth = auth;
 
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const CURRENT_ENV = (window.location.pathname.includes('/test-env/') || isLocalhost) ? 'test' : 'prod';
+const CURRENT_ENV = window.location.hostname.includes('aguillory.github.io') ? 'prod' : 'test';
 window.getEnv = () => CURRENT_ENV;
 window.getNiptoCollection = (colName) => {
     // If it's a dynamic path that already has prefix, be careful. 
