@@ -70,6 +70,16 @@ export function renderTodoTasks() {
     if (viewBy !== 'location' && locationFilter !== 'all') {
         sourceTasks = sourceTasks.filter(function (t) { return (t.location || 'N/A') === locationFilter; });
     }
+    // Preserve expanded subtasks
+    const expandedTasks = new Set();
+    container.querySelectorAll('.chore-card').forEach(card => {
+        const subTasksContainer = card.querySelector('.subtasks-container');
+        if (subTasksContainer && subTasksContainer.style.display !== 'none') {
+            const taskIdAttr = card.getAttribute('data-task-id');
+            if (taskIdAttr) expandedTasks.add(taskIdAttr);
+        }
+    });
+
     container.innerHTML = '';
     if (sourceTasks.length === 0) {
         container.innerHTML = '<div class="empty-dashboard-msg" style="padding: 20px; text-align: center; color: var(--text-muted);">No general tasks found. Click "Add Task" to get started.</div>';
@@ -150,12 +160,50 @@ export function renderTodoTasks() {
         grouped[key].forEach(function (task) {
             const card = document.createElement('div');
             card.className = 'chore-card ' + (task.completed ? 'completed' : '');
-            let pointsDisplay = '';
-            if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
-                const linkedTaskInfo = state.tasks.find(function (t) { return t.uid === task.linkedNiptoTask; });
-                const pts = linkedTaskInfo ? Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor) : '?';
-                pointsDisplay = '<span style="color: var(--primary); font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">&#11088; ' + pts + ' pts</span>';
+            card.setAttribute('data-task-id', task.id);
+            let totalPoints = 0;
+            let hasValidPoints = false;
+            let subTasksList = '';
+            
+            if (task.subTasks && task.subTasks.length > 0) {
+                task.subTasks.forEach(st => {
+                    const isCompleted = st.completed;
+                    let stPtsDisplay = '';
+                    if (st.linkedNiptoTask && st.linkedNiptoTask !== 'null') {
+                        const lti = state.tasks.find(t => t.uid === st.linkedNiptoTask);
+                        if (lti) {
+                            const stPts = Math.ceil(lti.value / state.currentSplitDivisor);
+                            totalPoints += stPts;
+                            hasValidPoints = true;
+                            stPtsDisplay = `<span style="color: var(--primary); font-size: 10px; font-weight: bold; margin-left: 5px;">⭐ ${stPts} pts</span>`;
+                        }
+                    }
+                    const completedByStHtml = (st.completed && st.completedBy && st.completedBy.length > 0) ?
+                        `<span style="color: var(--success); font-size: 10px; margin-left: 5px;">(by ${st.completedBy.map(uid => (ALL_USERS.find(u => u.uid === uid) || {}).name).join(', ')})</span>` : '';
+                    
+                    subTasksList += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed rgba(0,0,0,0.05);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" ${isCompleted ? 'checked' : ''} onclick="toggleSubTaskStatus('${task.id}', '${st.id}', this.checked, '${st.linkedNiptoTask || ''}')" style="cursor: pointer; width: 16px; height: 16px;">
+                            <span style="font-size: 13px; ${isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : 'color: var(--text-main);'}">${escapeHtml(st.name)}</span>
+                            ${completedByStHtml}
+                        </div>
+                        ${stPtsDisplay}
+                    </div>`;
+                });
+            } else if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
+                const linkedTaskInfo = state.tasks.find(t => t.uid === task.linkedNiptoTask);
+                if (linkedTaskInfo) {
+                    totalPoints = Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor);
+                    hasValidPoints = true;
+                }
             }
+            
+            let pointsDisplay = '';
+            if (hasValidPoints) {
+                pointsDisplay = '<span style="color: var(--primary); font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">&#11088; ' + totalPoints + ' pts</span>';
+            }
+
             let assigneesHtml = '';
             if (task.assignees && task.assignees.length > 0) {
                 assigneesHtml = task.assignees.map(function (uid) {
@@ -171,6 +219,17 @@ export function renderTodoTasks() {
                 }).join('');
             }
             const linkedTaskArg = task.linkedNiptoTask ? "'" + task.linkedNiptoTask + "'" : 'null';
+            
+            let subTasksHtml = '';
+            let expandBtn = '';
+            if (subTasksList) {
+                const completedCount = task.subTasks.filter(st => st.completed).length;
+                const totalCount = task.subTasks.length;
+                expandBtn = `<button class="chore-btn" onclick="this.closest('.chore-card').querySelector('.subtasks-container').style.display = this.closest('.chore-card').querySelector('.subtasks-container').style.display === 'none' ? 'block' : 'none';" style="font-size: 11px; font-weight: bold; padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color);">🔽 ${completedCount}/${totalCount} Sub-tasks</button>`;
+                const displayStyle = expandedTasks.has(task.id) ? 'block' : 'none';
+                subTasksHtml = `<div class="subtasks-container chore-desc" style="display: ${displayStyle}; margin-top: 8px;">${subTasksList}</div>`;
+            }
+
             card.innerHTML =
                 '<div class="chore-header">' +
                 '<div class="chore-title-area">' +
@@ -181,6 +240,7 @@ export function renderTodoTasks() {
                 assigneesHtml +
                 completedByHtml +
                 pointsDisplay +
+                expandBtn +
                 '</div>' +
                 '</div>' +
                 '<div class="chore-actions">' +
@@ -189,6 +249,7 @@ export function renderTodoTasks() {
                 '<button class="chore-btn delete-btn" onclick="deleteTask(\'' + task.id + '\')" title="Delete">&#128465;&#65039;</button>' +
                 '</div>' +
                 '</div>' +
+                subTasksHtml +
                 (task.notes ? '<div class="chore-desc" style="display: block; margin-top: 8px; white-space: pre-wrap; word-break: break-word;">' + escapeHtml(task.notes) + '</div>' : '');
             contentWrapper.appendChild(card);
         });
@@ -266,6 +327,7 @@ export function openTaskModal() {
     populateTodoAssignees([]);
     updateTaskDatalists();
     populateTaskPointsSelect('');
+    populateSubTaskFields([]);
     document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -283,6 +345,7 @@ export function editTask(id) {
     populateTodoAssignees(task.assignees || []);
     updateTaskDatalists();
     populateTaskPointsSelect(task.linkedNiptoTask || '');
+    populateSubTaskFields(task.subTasks || []);
     document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -291,13 +354,32 @@ export async function saveTask() {
     const id = document.getElementById('taskId').value;
     const assignees = Array.from(document.querySelectorAll('.todo-assignee-cb:checked')).map(cb => cb.value);
 
+    const existingTask = id && state.todoTasksData ? state.todoTasksData.find(t => t.id === id) : null;
+    const existingSubTasks = existingTask ? (existingTask.subTasks || []) : [];
+
+    const subTasks = [];
+    document.querySelectorAll('.subtask-field-row').forEach(row => {
+        const subId = row.querySelector('.subtask-id').value;
+        const name = row.querySelector('.subtask-name').value.trim();
+        const pts = row.querySelector('.subtask-points').value || null;
+        if (name) {
+            const existing = existingSubTasks.find(st => st.id === subId);
+            if (existing) {
+                subTasks.push({ ...existing, name: name, linkedNiptoTask: pts });
+            } else {
+                subTasks.push({ id: subId, name: name, linkedNiptoTask: pts, completed: false, completedBy: [], completedActivityUids: [] });
+            }
+        }
+    });
+
     const taskData = {
         name: document.getElementById('taskName').value.trim(),
         category: document.getElementById('taskCategory').value.trim(),
         location: document.getElementById('taskLocation').value.trim(),
         linkedNiptoTask: document.getElementById('taskPoints').value || null,
         notes: document.getElementById('taskNotes').value.trim(),
-        assignees: assignees
+        assignees: assignees,
+        subTasks: subTasks
     };
 
     if (!taskData.name) { alert("Task name is required!"); return; }
@@ -358,15 +440,41 @@ export async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
 
         if (niptoTaskId && niptoTaskId !== 'null') {
             try {
-                // 1. Award points in Nipto to the active user(s) who marked it off
-                const activityUids = await api.logActivityToNipto(niptoTaskId, targetDate.toISOString(), doerUids);
-
-                // 2. Save activity label so description appears in the left activity history
-                await api.saveActivityLabels(activityUids, taskName);
+                let activityUids = [];
+                let totalPointsAwarded = 0;
+                
+                // If it has sub-tasks, complete all incomplete subtasks instead of the main task points
+                let updatedSubTasks = todo.subTasks ? [...todo.subTasks] : null;
+                if (updatedSubTasks && updatedSubTasks.length > 0) {
+                    for (let i = 0; i < updatedSubTasks.length; i++) {
+                        let st = updatedSubTasks[i];
+                        if (!st.completed) {
+                            st.completed = true;
+                            st.completedBy = doerUids;
+                            st.completedAt = targetDate.toISOString();
+                            if (st.linkedNiptoTask && st.linkedNiptoTask !== 'null') {
+                                const subUids = await api.logActivityToNipto(st.linkedNiptoTask, st.completedAt, doerUids);
+                                st.completedActivityUids = subUids || [];
+                                await api.saveActivityLabels(subUids, `${taskName} - ${st.name}`);
+                                const stObj = state.tasks ? state.tasks.find(t => t.uid === st.linkedNiptoTask) : null;
+                                if (stObj) totalPointsAwarded += stObj.value;
+                            } else {
+                                st.completedActivityUids = [];
+                            }
+                        }
+                    }
+                } else if (niptoTaskId && niptoTaskId !== 'null') {
+                    // Normal main task point awarding
+                    activityUids = await api.logActivityToNipto(niptoTaskId, targetDate.toISOString(), doerUids);
+                    await api.saveActivityLabels(activityUids, taskName);
+                    const tObj = state.tasks ? state.tasks.find(t => t.uid === niptoTaskId) : null;
+                    if (tObj) totalPointsAwarded += tObj.value;
+                }
 
                 // 3. Mark complete in Firestore with the doer who completed it
                 await api.updateFirestoreDocument('custom_tasks', taskId, {
                     completed: true,
+                    subTasks: updatedSubTasks || [],
                     completedActivityUids: activityUids,
                     completedBy: doerUids,
                     completedAt: targetDate.toISOString()
@@ -374,22 +482,32 @@ export async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
 
                 // 4. Update leaderboard and show celebratory toast
                 await updateLeaderboardUI();
-                const tObj = state.tasks ? state.tasks.find(t => t.uid === niptoTaskId) : null;
-                const rawPts = tObj ? tObj.value : 0;
-                const ptsPerUser = Math.ceil(rawPts / Math.max(1, doerUids.length));
+                const ptsPerUser = Math.ceil(totalPointsAwarded / Math.max(1, doerUids.length));
                 const doerNames = doerUids.map(uid => {
                     const u = ALL_USERS.find(user => user.uid === uid);
                     return u ? u.name : 'Unknown';
                 }).join(', ');
-                showToast(niptoTaskId, taskName, ptsPerUser, doerNames);
+                showToast(niptoTaskId || ('todo_' + taskId), taskName, ptsPerUser, doerNames);
             } catch (error) {
                 console.error("Error awarding points:", error);
                 alert("Error awarding points: " + error.message);
             }
         } else {
-            // Completed without points linked
+            // Completed without points linked (or has subtasks but none linked to points)
+            let updatedSubTasks = todo.subTasks ? [...todo.subTasks] : null;
+            if (updatedSubTasks && updatedSubTasks.length > 0) {
+                updatedSubTasks.forEach(st => {
+                    if (!st.completed) {
+                        st.completed = true;
+                        st.completedBy = doerUids;
+                        st.completedAt = targetDate.toISOString();
+                        st.completedActivityUids = [];
+                    }
+                });
+            }
             await api.updateFirestoreDocument('custom_tasks', taskId, {
                 completed: true,
+                subTasks: updatedSubTasks || [],
                 completedActivityUids: [],
                 completedBy: doerUids,
                 completedAt: targetDate.toISOString()
@@ -406,10 +524,28 @@ export async function toggleTaskStatus(taskId, currentStatus, linkedNiptoTask) {
             for (const actUid of todo.completedActivityUids) {
                 try { await api.deleteActivityFromNipto(actUid); } catch(e) { console.warn("Delete activity on uncomplete error:", e); }
             }
-            await updateLeaderboardUI();
         }
+        let updatedSubTasks = todo ? (todo.subTasks ? [...todo.subTasks] : null) : null;
+        if (updatedSubTasks && updatedSubTasks.length > 0) {
+            for (let i = 0; i < updatedSubTasks.length; i++) {
+                let st = updatedSubTasks[i];
+                if (st.completed) {
+                    if (st.completedActivityUids && st.completedActivityUids.length > 0) {
+                        for (const actUid of st.completedActivityUids) {
+                            try { await api.deleteActivityFromNipto(actUid); } catch(e) {}
+                        }
+                    }
+                    st.completed = false;
+                    st.completedBy = [];
+                    st.completedAt = null;
+                    st.completedActivityUids = [];
+                }
+            }
+        }
+        await updateLeaderboardUI();
         await api.updateFirestoreDocument('custom_tasks', taskId, {
             completed: false,
+            subTasks: updatedSubTasks || [],
             completedActivityUids: [],
             completedActivityUid: null,
             completedBy: null,
@@ -472,5 +608,105 @@ export function renderSidebarTodos() {
         </div>
         `;
         container.appendChild(card);
+    });
+}
+
+export function addSubTaskField(name = '', linkedTask = '', id = '') {
+    const container = document.getElementById('subTasksContainer');
+    if (container.innerHTML.includes('No sub-tasks added.')) {
+        container.innerHTML = '';
+    }
+    
+    const div = document.createElement('div');
+    div.className = 'subtask-field-row';
+    div.style = 'display: flex; gap: 8px; align-items: center;';
+    
+    // Copy options from main taskPoints dropdown
+    const pointOptions = document.getElementById('taskPoints').innerHTML;
+    const subtaskId = id || crypto.randomUUID();
+    
+    div.innerHTML = `
+        <input type="hidden" class="subtask-id" value="${subtaskId}">
+        <input type="text" class="subtask-name" placeholder="Sub-task description" value="${escapeHtml(name)}" style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+        <select class="subtask-points" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--primary); font-size: 13px;">
+            ${pointOptions}
+        </select>
+        <button type="button" class="action-btn" onclick="this.parentElement.remove(); if(document.getElementById('subTasksContainer').children.length === 0) document.getElementById('subTasksContainer').innerHTML = '<div style=\\'font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;\\'>No sub-tasks added.</div>';" style="padding: 4px 8px; font-size: 16px; color: var(--danger); border-color: transparent;">🗑️</button>
+    `;
+    
+    // Set selected points
+    if (linkedTask) {
+        div.querySelector('.subtask-points').value = linkedTask;
+    }
+    
+    container.appendChild(div);
+}
+
+export function populateSubTaskFields(subTasks = []) {
+    const container = document.getElementById('subTasksContainer');
+    container.innerHTML = '';
+    if (!subTasks || subTasks.length === 0) {
+        container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
+        return;
+    }
+}
+
+export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedNiptoTask) {
+    const task = state.todoTasksData.find(t => t.id === taskId);
+    if (!task) return;
+    const subTaskIndex = task.subTasks.findIndex(st => st.id === subTaskId);
+    if (subTaskIndex === -1) return;
+    const st = task.subTasks[subTaskIndex];
+    
+    st.completed = isComplete;
+    if (isComplete) {
+        const doerUids = state.activeUsers && state.activeUsers.length > 0 ? state.activeUsers : [state.users[0]?.uid];
+        st.completedBy = doerUids;
+        st.completedAt = new Date().toISOString();
+        if (linkedNiptoTask && linkedNiptoTask !== 'null') {
+            const activityUids = await api.logActivityToNipto(linkedNiptoTask, st.completedAt, doerUids);
+            st.completedActivityUids = activityUids || [];
+        } else {
+            st.completedActivityUids = [];
+        }
+    } else {
+        st.completedBy = [];
+        st.completedAt = null;
+        if (st.completedActivityUids && st.completedActivityUids.length > 0) {
+            for (let actId of st.completedActivityUids) {
+                await api.deleteActivityFromNipto(actId);
+            }
+            st.completedActivityUids = [];
+        }
+    }
+    
+    // Check if all subtasks are complete
+    const allComplete = task.subTasks.every(s => s.completed);
+    if (allComplete && !task.completed) {
+        task.completed = true;
+        task.completedBy = state.activeUsers && state.activeUsers.length > 0 ? state.activeUsers : [state.users[0]?.uid];
+        task.completedAt = new Date().toISOString();
+        if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
+             const activityUids = await api.logActivityToNipto(task.linkedNiptoTask, task.completedAt, task.completedBy);
+             task.completedActivityUids = activityUids || [];
+        }
+    } else if (!allComplete && task.completed) {
+        task.completed = false;
+        task.completedBy = [];
+        task.completedAt = null;
+        if (task.completedActivityUids && task.completedActivityUids.length > 0) {
+             for (let actId of task.completedActivityUids) {
+                 await api.deleteActivityFromNipto(actId);
+             }
+             task.completedActivityUids = [];
+        }
+    }
+    
+    await api.updateFirestoreDocument('custom_tasks', taskId, {
+        subTasks: task.subTasks,
+        completed: task.completed,
+        completedBy: task.completedBy || [],
+        completedAt: task.completedAt || null,
+        completedActivityUids: task.completedActivityUids || []
     });
 }

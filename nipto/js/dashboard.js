@@ -15,7 +15,8 @@ import {
 } from './niptoTasks.js';
 import {
     renderTodoTasks, updateTaskDatalists, openTaskModal, editTask, saveTask,
-    closeTaskModal, deleteTask, toggleTaskStatus, renderSidebarTodos, populateTodoAssigneeFilter
+    closeTaskModal, deleteTask, toggleTaskStatus, renderSidebarTodos, populateTodoAssigneeFilter,
+    addSubTaskField, toggleSubTaskStatus
 } from './todos.js';
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
@@ -96,7 +97,7 @@ Object.assign(window, {
     deleteTaskActivity, togglePinTask, logPinnedTask, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
-    renderTodoTasks, updateTaskDatalists, renderSidebarTodos,
+    renderTodoTasks, updateTaskDatalists, renderSidebarTodos, addSubTaskField, toggleSubTaskStatus,
     savePin, switchTab: switchTabWithChat, setMode, setTimeOffset, setHistoryView,
     toggleSection, toggleThemeMenu, setTheme, toggleHeaderCollapse,
     openRoutineModal, closeRoutineModal, toggleRoutineFrequencyFields, saveRoutine,
