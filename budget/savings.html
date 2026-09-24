@@ -179,7 +179,7 @@
                     render();
 
                     try {
-                        await setDoc(getBudgetDoc( 'users', state.user.uid, 'savings_goals_data', 'current_config'), {
+                        await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), {
                             goals: state.goals,
                             updatedAt: new Date()
                         }, { merge: true });
@@ -561,7 +561,7 @@
             
             if (u) {
                 // Load Goals
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'savings_goals_data', 'current_config'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         if (!state.hasUnsavedChanges) {
                             state.goals = snap.data().goals || [];
@@ -573,7 +573,7 @@
                     }
                 });
                 // Load Schedule (Read-only for calculations)
-                onSnapshot(getBudgetDoc( 'users', state.user.uid, 'planner_data', 'schedule'), (snap) => {
+                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods) {
                         state.payPeriods = snap.data().periods;
                         render();
