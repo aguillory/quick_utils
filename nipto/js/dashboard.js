@@ -16,7 +16,7 @@ import {
 import {
     renderTodoTasks, updateTaskDatalists, openTaskModal, editTask, saveTask,
     closeTaskModal, deleteTask, toggleTaskStatus, renderSidebarTodos, populateTodoAssigneeFilter,
-    addSubTaskField, toggleSubTaskStatus
+    addSubTaskField, toggleSubTaskStatus, updateMainTaskPointsVisibility, populateSubTaskFields
 } from './todos.js';
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
