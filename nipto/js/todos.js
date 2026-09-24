@@ -20,8 +20,6 @@ import { populateTaskPointsSelect } from './niptoTasks.js';
 import { enableDragSort } from './dragSort.js';
 import { saveCloudPreference } from './preferences.js';
 
-// Priority ranking for sorting (high -> low)
-const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
 
 // Reads a filter <select> value safely.
 function getFilterValue(id) {
@@ -34,8 +32,7 @@ function updateTodoFilterVisibility(viewBy) {
     const map = {
         assigneeFilter: 'assignee',
         categoryFilter: 'category',
-        locationFilter: 'location',
-        priorityFilter: 'priority'
+        locationFilter: 'location'
     };
     Object.keys(map).forEach(function (id) {
         const el = document.getElementById(id);
@@ -59,7 +56,6 @@ export function renderTodoTasks() {
     const assigneeFilter = getFilterValue('assigneeFilter');
     const categoryFilter = getFilterValue('categoryFilter');
     const locationFilter = getFilterValue('locationFilter');
-    const priorityFilter = getFilterValue('priorityFilter');
     let sourceTasks = state.todoTasksData || [];
     if (viewBy !== 'assignee' && assigneeFilter !== 'all') {
         if (assigneeFilter === 'unassigned') {
@@ -73,9 +69,6 @@ export function renderTodoTasks() {
     }
     if (viewBy !== 'location' && locationFilter !== 'all') {
         sourceTasks = sourceTasks.filter(function (t) { return (t.location || 'N/A') === locationFilter; });
-    }
-    if (viewBy !== 'priority' && priorityFilter !== 'all') {
-        sourceTasks = sourceTasks.filter(function (t) { return (t.priority || 'Medium') === priorityFilter; });
     }
     container.innerHTML = '';
     if (sourceTasks.length === 0) {
@@ -98,26 +91,27 @@ export function renderTodoTasks() {
             let key;
             if (viewBy === 'category') key = task.category || 'Uncategorized';
             else if (viewBy === 'location') key = task.location || 'N/A';
-            else if (viewBy === 'priority') key = task.priority || 'Medium';
             else key = task[viewBy] || 'Uncategorized';
             (grouped[key] = grouped[key] || []).push(task);
         }
     });
     const activeUser = state.activeUsers[0] || 'default';
     let keys = Object.keys(grouped);
-    if (viewBy === 'priority') {
-        keys.sort(function (a, b) { return (PRIORITY_RANK[b] || 0) - (PRIORITY_RANK[a] || 0); });
-    } else {
-        const savedOrder = state.userPrefs.todoSortOrder || [];
-        keys.sort(function (a, b) {
+    
+    const savedOrder = state.userPrefs.todoSortOrder || [];
+    keys.sort(function (a, b) {
             const idxA = savedOrder.indexOf(a);
             const idxB = savedOrder.indexOf(b);
             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
             if (idxA !== -1) return -1;
             if (idxB !== -1) return 1;
+            
+            // Special rule: always push '⚡ Quick Add' to the bottom
+            if (a === '⚡ Quick Add' && b !== '⚡ Quick Add') return 1;
+            if (b === '⚡ Quick Add' && a !== '⚡ Quick Add') return -1;
+            
             return a.localeCompare(b);
         });
-    }
     keys.forEach(function (key) {
         const section = document.createElement('div');
         section.className = 'group-section category-section';
@@ -147,10 +141,6 @@ export function renderTodoTasks() {
         section.appendChild(header);
         grouped[key].sort(function (a, b) {
             if (a.completed !== b.completed) return a.completed ? 1 : -1;
-            if (viewBy !== 'priority') {
-                const pr = (PRIORITY_RANK[b.priority] || 2) - (PRIORITY_RANK[a.priority] || 2);
-                if (pr !== 0) return pr;
-            }
             const aIsIndividual = (a.assignees || []).length === 1;
             const bIsIndividual = (b.assignees || []).length === 1;
             if (aIsIndividual && !bIsIndividual) return -1;
@@ -188,7 +178,6 @@ export function renderTodoTasks() {
                 '<div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">' +
                 '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128193; ' + (task.category || 'None') + '</span>' +
                 '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#128205; ' + (task.location || 'N/A') + '</span>' +
-                '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">&#9889; ' + task.priority + '</span>' +
                 assigneesHtml +
                 completedByHtml +
                 pointsDisplay +
@@ -273,7 +262,6 @@ export function openTaskModal() {
     document.getElementById('taskName').value = '';
     document.getElementById('taskCategory').value = '';
     document.getElementById('taskLocation').value = '';
-    document.getElementById('taskPriority').value = 'Medium';
     document.getElementById('taskNotes').value = '';
     populateTodoAssignees([]);
     updateTaskDatalists();
@@ -291,7 +279,6 @@ export function editTask(id) {
     document.getElementById('taskName').value = task.name || '';
     document.getElementById('taskCategory').value = task.category || '';
     document.getElementById('taskLocation').value = task.location || '';
-    document.getElementById('taskPriority').value = task.priority || 'Medium';
     document.getElementById('taskNotes').value = task.notes || '';
     populateTodoAssignees(task.assignees || []);
     updateTaskDatalists();
@@ -308,7 +295,6 @@ export async function saveTask() {
         name: document.getElementById('taskName').value.trim(),
         category: document.getElementById('taskCategory').value.trim(),
         location: document.getElementById('taskLocation').value.trim(),
-        priority: document.getElementById('taskPriority').value,
         linkedNiptoTask: document.getElementById('taskPoints').value || null,
         notes: document.getElementById('taskNotes').value.trim(),
         assignees: assignees
@@ -481,7 +467,6 @@ export function renderSidebarTodos() {
         </div>
         <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
         <span>👥 ${assigneesHtml || 'Anyone'}</span>
-        <span style="color: ${task.priority === 'High' ? 'var(--danger)' : 'inherit'}">⚡ ${task.priority || 'Medium'}</span>
         ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
         </div>
         </div>

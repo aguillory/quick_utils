@@ -189,7 +189,6 @@
                 style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
                 <option value="category">Category</option>
                 <option value="location">Location</option>
-                <option value="priority">Priority</option>
                 <option value="assignee">Assignee</option>
             </select>
         </label>
@@ -212,16 +211,6 @@
                 <option value="all">All Locations</option>
             </select>
         </label>
-        <label class="todo-filter" style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
-            <select id="priorityFilter" onchange="renderTodoTasks()"
-                style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
-                <option value="all">All Priorities</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-            </select>
-        </label>
-        <button class="action-btn" onclick="openQuickAddModal()" style="background-color: var(--primary); color: white;" title="Quick Add Points">⚡ Quick Add</button>
         <button class="action-btn save-mode" onclick="openTaskModal()">➕ Add Task</button>
     </div>
     <div id="todoContainer"></div>
@@ -288,23 +277,16 @@
         <input type="text" id="taskName" placeholder="What needs to be done?" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
         
      <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Category</label>
-<input type="text" id="taskCategory" placeholder="e.g., Barn, House, Animals" list="categoryOptions" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
+<input type="text" id="taskCategory" placeholder="e.g., Barn, House, Animals" list="categoryOptions" onclick="try{this.showPicker();}catch(e){}" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
 <datalist id="categoryOptions"></datalist>
 
 <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Location</label>
-<input type="text" id="taskLocation" list="locationOptions" placeholder="e.g., Inside, Outside, Barn, Shop" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
+<input type="text" id="taskLocation" list="locationOptions" placeholder="e.g., Inside, Outside, Barn, Shop" onclick="try{this.showPicker();}catch(e){}" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
 <datalist id="locationOptions"></datalist>
         <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To</label>
         <div id="todoAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
         </div>
         
-        <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Priority</label>
-        <select id="taskPriority" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-            <option value="Low">Low</option>
-            <option value="Medium" selected>Medium</option>
-            <option value="High">High</option>
-        </select>
-
         <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Optional Points (Awarded on completion)</label>
 <select id="taskPoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); background: rgba(37, 99, 235, 0.05); font-size: 14px;">
     <!-- Populated dynamically by populateTaskPointsSelect() -->

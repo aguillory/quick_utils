@@ -95,10 +95,10 @@ h1, h2, h3, h4 {
     box-shadow: inset 2px 2px 8px rgba(0,0,0,0.8);
 }
 
-.task-btn.success, .action-btn.save-mode { 
-    background-color: var(--success); 
-    border-color: #2A3614;
-    color: #F8F5F0; 
+.task-btn.success, .action-btn.save-mode, #refreshBtn, #syncNiptoBtn { 
+    background-color: var(--success) !important; 
+    border-color: #2A3614 !important;
+    color: #F8F5F0 !important; 
 }
 
 /* ==========================================
