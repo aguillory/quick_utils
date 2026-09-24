@@ -623,7 +623,7 @@ export function addSubTaskField(name = '', linkedTask = '', id = '') {
     
     // Copy options from main taskPoints dropdown
     const pointOptions = document.getElementById('taskPoints').innerHTML;
-    const subtaskId = id || crypto.randomUUID();
+    const subtaskId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'sub_' + Math.random().toString(36).substring(2, 15));
     
     div.innerHTML = `
         <input type="hidden" class="subtask-id" value="${subtaskId}">
@@ -649,6 +649,7 @@ export function populateSubTaskFields(subTasks = []) {
         container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
         return;
     }
+    subTasks.forEach(st => addSubTaskField(st.name, st.linkedNiptoTask, st.id));
 }
 
 export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedNiptoTask) {
@@ -709,4 +710,18 @@ export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedN
         completedAt: task.completedAt || null,
         completedActivityUids: task.completedActivityUids || []
     });
+    
+    if (isComplete && linkedNiptoTask && linkedNiptoTask !== 'null') {
+        updateLeaderboardUI();
+        const stObj = state.tasks ? state.tasks.find(t => t.uid === linkedNiptoTask) : null;
+        if (stObj) {
+            const doerUids = state.activeUsers && state.activeUsers.length > 0 ? state.activeUsers : [state.users[0]?.uid];
+            const ptsPerUser = Math.ceil(stObj.value / Math.max(1, doerUids.length));
+            const doerNames = doerUids.map(uid => {
+                const u = ALL_USERS ? ALL_USERS.find(user => user.uid === uid) : {name: 'Unknown'};
+                return u ? u.name : 'Unknown';
+            }).join(', ');
+            showToast(linkedNiptoTask, st.name, ptsPerUser, doerNames);
+        }
+    }
 }
