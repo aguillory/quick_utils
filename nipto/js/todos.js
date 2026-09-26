@@ -687,6 +687,7 @@ export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedN
         if (linkedNiptoTask && linkedNiptoTask !== 'null') {
             const activityUids = await api.logActivityToNipto(linkedNiptoTask, st.completedAt, doerUids);
             st.completedActivityUids = activityUids || [];
+            await api.saveActivityLabels(activityUids, `${task.name} - ${st.name}`);
         } else {
             st.completedActivityUids = [];
         }
@@ -710,6 +711,7 @@ export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedN
         if (task.linkedNiptoTask && task.linkedNiptoTask !== 'null') {
              const activityUids = await api.logActivityToNipto(task.linkedNiptoTask, task.completedAt, task.completedBy);
              task.completedActivityUids = activityUids || [];
+             await api.saveActivityLabels(activityUids, task.name);
         }
     } else if (!allComplete && task.completed) {
         task.completed = false;
