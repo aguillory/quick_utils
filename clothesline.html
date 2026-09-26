@@ -308,8 +308,8 @@
                     <label>Primary Station:</label>
                     <div class="radio-group">
                         <label>
-                            <input type="radio" name="station-option" value="KFLGAINE177" checked>
-                            KFLGAINE177
+                            <input type="radio" name="station-option" value="KLAOAKRI12" checked>
+                            KLAOAKRI12
                         </label>
                         <label>
                             <input type="radio" name="station-option" value="other">
@@ -321,7 +321,7 @@
                 
                 <div class="form-group">
                     <label for="backupStation">Backup Station (for solar radiation):</label>
-                    <input type="text" id="backupStation" placeholder="Optional - used if primary lacks solar data">
+                    <input type="text" id="backupStation" placeholder="Optional - used if primary lacks solar data" value="KLAOAKRI9">
                     <div style="font-size: 11px; color: #6b7280; margin-top: 5px;">
                         Leave blank if not needed
                     </div>
@@ -353,6 +353,7 @@
             </div>
             
             <div id="solarNote" class="note hidden"></div>
+            <div id="forecastNote" class="note hidden" style="background: #e0f2fe; border-left-color: #0284c7;"></div>
             
             <div class="weather-grid">
                 <div class="weather-card">
@@ -414,6 +415,7 @@
             const configSection = document.getElementById('configSection');
             const configHeader = document.getElementById('configHeader');
             const solarNote = document.getElementById('solarNote');
+            const forecastNote = document.getElementById('forecastNote');
             
             let apiKey = null;
             let refreshIntervalId = null;
@@ -492,53 +494,71 @@
                 return data.observations[0];
             };
             
-            // Calculate drying conditions using simplified Penman-Monteith
-            // Now accepts elevationMeters as an argument
-            const calculateDryingConditions = (temp, humidity, windSpeed, solarRadiation, elevationMeters) => {
+            const getEvaporationRate = (temp, humidity, windSpeed, solarRadiation, elevationMeters) => {
                 const tempC = (temp - 32) * 5/9;
-                
-                // Use dynamic elevation for pressure calculation
                 const P = 101.3 * Math.pow((293 - 0.0065 * elevationMeters) / 293, 5.26);
-                
                 const gamma = (1.013e-3 * P) / (2.45 * 0.622);
                 const es = 0.6108 * Math.exp(17.27 * tempC / (tempC + 237.3));
                 const ea = es * (humidity / 100);
                 const vpd = es - ea;
                 const delta = 4098 * es / Math.pow(tempC + 237.3, 2);
-                const u2 = windSpeed * 0.44704; // mph to m/s
-                
+                const u2 = windSpeed * 0.44704;
                 const f_u = 2.6 * (1 + 0.54 * u2);
                 const E_aero = f_u * vpd;
-                
                 let Erate_mmday = E_aero;
-                
                 if (solarRadiation && solarRadiation > 0) {
                     const diffuseRadiation = solarRadiation * DIFFUSE_RADIATION_FRACTION;
                     const Rn_shade = diffuseRadiation * 0.0864;
                     const E_rad = (delta / (delta + gamma)) * Rn_shade / 2.45;
                     Erate_mmday += E_rad;
                 }
-                
                 Erate_mmday *= SHADE_FACTOR;
-                const Ecrp = Erate_mmday / 86400;
+                return Erate_mmday / 86400; // kg/m2/s
+            };
+
+            const calculateDryingConditions = (temp, humidity, windSpeed, solarRadiation, elevationMeters, forecastPeriods = null) => {
+                const Ecrp_initial = getEvaporationRate(temp, humidity, windSpeed, solarRadiation, elevationMeters);
+                const initialMmDay = Ecrp_initial * 86400;
                 
-                const waterCRP = TOWEL_DRY_MASS_KG * (INITIAL_MOISTURE_CONTENT - CRITICAL_MOISTURE_CONTENT);
-                const waterFRP = TOWEL_DRY_MASS_KG * (CRITICAL_MOISTURE_CONTENT - FINAL_MOISTURE_CONTENT);
+                let waterMass = TOWEL_DRY_MASS_KG * INITIAL_MOISTURE_CONTENT;
+                const targetWaterMass = TOWEL_DRY_MASS_KG * FINAL_MOISTURE_CONTENT;
+                const criticalWaterMass = TOWEL_DRY_MASS_KG * CRITICAL_MOISTURE_CONTENT;
                 
-                const timeCRP = waterCRP / (Ecrp * TOWEL_AREA_M2);
-                const avgEvapFRP = Ecrp * 0.565;
-                const timeFRP = waterFRP / (avgEvapFRP * TOWEL_AREA_M2);
-                
-                const totalTimeHours = (timeCRP + timeFRP) / 3600;
+                let totalSeconds = 0;
+                const stepSeconds = 600; // 10 minutes step
+                let maxHours = 48; 
+
+                while(waterMass > targetWaterMass && totalSeconds < maxHours * 3600) {
+                    let hourOffset = Math.floor(totalSeconds / 3600);
+                    let currentEcrp = Ecrp_initial;
+                    
+                    if (forecastPeriods && forecastPeriods.length > 0 && hourOffset > 0) {
+                        let pIdx = hourOffset - 1;
+                        if (pIdx < forecastPeriods.length) {
+                            let p = forecastPeriods[pIdx];
+                            let windMatch = p.windSpeed.match(/(\d+)/);
+                            let wind = windMatch ? parseInt(windMatch[1]) : windSpeed;
+                            let estSolar = p.isDaytime ? (p.shortForecast.toLowerCase().includes("cloud") ? 200 : 600) : 0;
+                            currentEcrp = getEvaporationRate(p.temperature, p.relativeHumidity.value, wind, estSolar, elevationMeters);
+                        }
+                    }
+                    
+                    let currentEvapRate = currentEcrp;
+                    if (waterMass < criticalWaterMass) {
+                        currentEvapRate = currentEcrp * 0.565; // average rate factor during falling rate period
+                    }
+                    
+                    if (currentEvapRate <= 0) currentEvapRate = 0.000001;
+                    
+                    waterMass -= currentEvapRate * TOWEL_AREA_M2 * stepSeconds;
+                    totalSeconds += stepSeconds;
+                }
                 
                 return {
-                    evaporationRate: Erate_mmday,
-                    dryingTime: totalTimeHours,
+                    evaporationRate: initialMmDay,
+                    dryingTime: totalSeconds / 3600,
                     details: {
-                        tempC, humidity, windSpeed: u2, vaporPressureDeficit: vpd,
-                        evaporationMmDay: Erate_mmday,
-                        constantRatePeriod: timeCRP / 3600,
-                        fallingRatePeriod: timeFRP / 3600,
+                        evaporationMmDay: initialMmDay,
                         elevationUsed: elevationMeters
                     }
                 };
@@ -567,7 +587,7 @@
                 return `${h}h ${m}m`;
             };
             
-            const updateDisplay = (observation, solarSource) => {
+            const updateDisplay = (observation, solarSource, forecastPeriods, forecastInsights) => {
                 const { imperial, humidity, solarRadiation, lat, lon } = observation;
                 const { temp, windSpeed, elev } = imperial;
                 
@@ -589,8 +609,15 @@
                     solarNote.classList.add('hidden');
                 }
                 
-                // Pass dynamic elevation to calculation
-                const conditions = calculateDryingConditions(temp, humidity, windSpeed, solarRadiation, elevationMeters);
+                if (forecastInsights && forecastInsights.length > 0) {
+                    forecastNote.innerHTML = '<strong>📅 Forecast Integration Active:</strong><br/>' + forecastInsights.join('<br/>');
+                    forecastNote.classList.remove('hidden');
+                } else {
+                    forecastNote.classList.add('hidden');
+                }
+
+                // Pass dynamic elevation and forecast to calculation
+                const conditions = calculateDryingConditions(temp, humidity, windSpeed, solarRadiation, elevationMeters, forecastPeriods);
                 const rating = getDryingRating(conditions.dryingTime);
                 
                 const ratingDisplay = document.getElementById('ratingDisplay');
@@ -625,6 +652,23 @@
                 localStorage.setItem('configCollapsed', 'true');
             };
             
+            const fetchForecastData = async (lat, lon) => {
+                try {
+                    const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
+                    if (!pointRes.ok) return null;
+                    const pointData = await pointRes.json();
+                    const hourlyUrl = pointData.properties.forecastHourly;
+                    
+                    const hourlyRes = await fetch(hourlyUrl);
+                    if (!hourlyRes.ok) return null;
+                    const hourlyData = await hourlyRes.json();
+                    
+                    return hourlyData.properties.periods;
+                } catch (e) {
+                    return null;
+                }
+            };
+
             const fetchData = async () => {
                 apiKey = getApiKey();
                 if (!apiKey) return;
@@ -639,7 +683,7 @@
                     return;
                 }
                 
-                statusDiv.textContent = `Fetching data...`;
+                statusDiv.textContent = `Fetching current conditions...`;
                 statusDiv.classList.remove('text-red-500', 'text-green-600', 'text-orange-500');
                 fetchButton.disabled = true;
 
@@ -664,8 +708,39 @@
                         }
                     }
                     
+                    let forecastPeriods = null;
+                    let forecastInsights = [];
+                    if (observation.lat && observation.lon) {
+                        try {
+                            statusDiv.textContent = `Fetching forecast...`;
+                            forecastPeriods = await fetchForecastData(observation.lat, observation.lon);
+                            if (forecastPeriods && forecastPeriods.length > 0) {
+                                let currentHum = observation.humidity;
+                                let currentTemp = observation.imperial.temp;
+                                for (let i = 0; i < Math.min(6, forecastPeriods.length); i++) {
+                                    let fp = forecastPeriods[i];
+                                    if (fp.relativeHumidity.value < currentHum - 15) {
+                                        const timeStr = new Date(fp.startTime).toLocaleTimeString([], {hour: 'numeric'});
+                                        forecastInsights.push(`Conditions will improve by ${timeStr}: Humidity dropping to ${fp.relativeHumidity.value}%.`);
+                                        break;
+                                    } else if (fp.temperature > currentTemp + 10) {
+                                        const timeStr = new Date(fp.startTime).toLocaleTimeString([], {hour: 'numeric'});
+                                        forecastInsights.push(`Warming up: Temperature will reach ${fp.temperature}°F by ${timeStr}.`);
+                                        break;
+                                    } else if (fp.relativeHumidity.value > currentHum + 20 && fp.relativeHumidity.value > 85) {
+                                        const timeStr = new Date(fp.startTime).toLocaleTimeString([], {hour: 'numeric'});
+                                        forecastInsights.push(`Warning: Humidity will increase to ${fp.relativeHumidity.value}% by ${timeStr}.`);
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Forecast fetch failed", e);
+                        }
+                    }
+                    
                     saveCredentials(apiCodeInput.value.trim(), document.querySelector('input[name="station-option"]:checked').value, stationId, backupStationId);
-                    updateDisplay(observation, solarSource);
+                    updateDisplay(observation, solarSource, forecastPeriods, forecastInsights);
                 } catch (error) {
                     statusDiv.textContent = `Error: ${error.message}`;
                     statusDiv.classList.add('text-red-500');
