@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Tracker</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .category-content { display: none; }
+        .category-content.expanded { display: block; }
+        .item-btn.selected { background-color: #4f46e5; color: white; border-color: #4f46e5; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans pb-20">
+
+    <nav class="bg-indigo-600 text-white shadow-md p-4 sticky top-0 z-10 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <a href="../index.html" class="text-indigo-200 hover:text-white"><i class="fas fa-arrow-left"></i></a>
+            <h1 class="text-xl font-bold">Tracker</h1>
+        </div>
+        <div class="flex gap-4">
+            <a href="history.html" class="text-indigo-100 hover:text-white"><i class="fas fa-history text-lg"></i></a>
+            <button onclick="document.getElementById('settings-modal').classList.remove('hidden')" class="text-indigo-100 hover:text-white"><i class="fas fa-cog text-lg"></i></button>
+        </div>
+    </nav>
+
+    <main class="max-w-2xl mx-auto p-4 space-y-4">
+        
+        <!-- Recent Log -->
+        <div id="recent-log-container" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 cursor-pointer hidden transition-all hover:bg-slate-50" onclick="toggleRecentLog()">
+            <div class="flex justify-between items-center text-sm text-slate-500">
+                <div class="font-bold text-indigo-600"><i class="fas fa-clock mr-1"></i> Last Logged</div>
+                <div id="recent-log-time">Loading...</div>
+            </div>
+            <div id="recent-log-summary" class="mt-2 text-sm text-slate-700 truncate">...</div>
+            <div id="recent-log-details" class="mt-3 text-sm text-slate-600 hidden border-t pt-3"></div>
+        </div>
+
+        <!-- Weather Status -->
+        <div id="weather-status" class="text-xs text-center text-slate-400">Weather API ready...</div>
+
+        <!-- Form Categories -->
+        <div id="categories-container" class="space-y-4">
+            <!-- Populated by JS -->
+        </div>
+
+        <div class="pt-6">
+            <button id="log-btn" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-md hover:bg-indigo-700 transition flex justify-center items-center gap-2">
+                <i class="fas fa-save"></i> Log Selected Items
+            </button>
+        </div>
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold">Settings</h2>
+                <button onclick="document.getElementById('settings-modal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-grow space-y-6">
+                
+                <div>
+                    <h3 class="font-bold text-slate-700 mb-2 border-b pb-1">Weather (Wunderground)</h3>
+                    <div class="space-y-3 mt-2 text-sm">
+                        <div>
+                            <label class="block text-slate-600 mb-1">API Code</label>
+                            <input type="text" id="setting-api-code" class="w-full border rounded-lg p-2 focus:ring focus:ring-indigo-200">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">Station ID</label>
+                            <input type="text" id="setting-station-id" placeholder="e.g. KLAOAKRI12" class="w-full border rounded-lg p-2 focus:ring focus:ring-indigo-200">
+                        </div>
+                        <p class="text-xs text-slate-400">Leave blank to try using Open-Meteo fallback for Start, LA.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="font-bold text-slate-700 mb-2 border-b pb-1">Trackable Items</h3>
+                    <p class="text-xs text-slate-500 mb-3">Comma separated lists. Changes save to the cloud.</p>
+                    
+                    <div id="settings-lists" class="space-y-4">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+            </div>
+            <div class="p-4 border-t bg-slate-50 rounded-b-2xl">
+                <button id="save-settings-btn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+        <i class="fas fa-check-circle text-green-400"></i> <span id="toast-msg">Saved!</span>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+    <script>
+        window.toggleRecentLog = function() {
+            const details = document.getElementById('recent-log-details');
+            if(details.classList.contains('hidden')) {
+                details.classList.remove('hidden');
+            } else {
+                details.classList.add('hidden');
+            }
+        };
+    </script>
+</body>
+</html>

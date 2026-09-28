@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Nipto, Budget, and Tracker don't use Firebase Auth. 
+    // They rely on PIN obfuscation for the API key.
+    match /nipto/{document=**} {
+      allow read, write: if true;
+    }
+    
+    match /budget/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /tracker/{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Farm Manager uses Firebase Auth.
+    match /farm_manager/{document=**} {
+      allow read, write: if request.auth != null; 
+    }
+    
+    // Default deny for anything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
