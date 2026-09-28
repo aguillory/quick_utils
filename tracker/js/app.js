@@ -17,10 +17,10 @@ const UI = {
     settingStationId: document.getElementById('setting-station-id'),
     saveSettingsBtn: document.getElementById('save-settings-btn'),
     logBtn: document.getElementById('log-btn'),
-    weatherStatus: document.getElementById('weather-status')
+    logTime: document.getElementById('log-time')
 };
 
-// Weather API logic
+// Weather API logic (silent fallback)
 const fetchWeather = async () => {
     const apiCode = localStorage.getItem('wuApiCode');
     const stationId = localStorage.getItem('wuStationId') || localStorage.getItem('wuStationIdCustom') || 'KLAOAKRI12';
@@ -44,7 +44,7 @@ const fetchWeather = async () => {
                 conditions: obs.winddir // WU doesn't give simple text conditions on PWS without forecast
             };
         } catch(e) {
-            console.error('WU Weather failed, trying Open-Meteo fallback', e);
+            console.warn('WU Weather failed, trying Open-Meteo fallback', e);
         }
     }
     
@@ -62,7 +62,7 @@ const fetchWeather = async () => {
             conditions: `Code ${data.current.weather_code}`
         };
     } catch(e) {
-        console.error('Weather fallback failed', e);
+        console.warn('Weather fallback failed', e);
         return null;
     }
 };
@@ -182,6 +182,20 @@ const loadRecent = async () => {
             
             // Details
             let detailsHtml = '';
+            
+            // Render vitals if they exist
+            if(data.vitals) {
+                let vitalList = [];
+                if(data.vitals.weight) vitalList.push(`Weight: ${data.vitals.weight}lbs`);
+                if(data.vitals.bp) vitalList.push(`BP: ${data.vitals.bp}`);
+                if(data.vitals.hr) vitalList.push(`HR: ${data.vitals.hr}bpm`);
+                if(data.vitals.o2) vitalList.push(`O2: ${data.vitals.o2}%`);
+                if(data.vitals.sleep) vitalList.push(`Sleep: ${data.vitals.sleep}hrs`);
+                if(vitalList.length > 0) {
+                    detailsHtml += `<div class="mb-2 pb-2 border-b"><strong class="capitalize">Vitals:</strong> ${vitalList.join(', ')}</div>`;
+                }
+            }
+
             Object.keys(data.items || {}).forEach(k => {
                 if(data.items[k].length > 0) {
                     detailsHtml += `<div class="mb-1"><strong class="capitalize">${k.replace('_',' ')}:</strong> ${data.items[k].join(', ')}</div>`;
@@ -208,7 +222,11 @@ const saveLog = async () => {
         UI.logBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         UI.logBtn.disabled = true;
 
-        const weather = await fetchWeather();
+        // Fetch weather in the background but don't strictly wait to block the UI forever if it's slow
+        let weather = null;
+        try {
+            weather = await Promise.race([fetchWeather(), new Promise(r => setTimeout(r, 4000))]);
+        } catch(e) { console.warn("Weather fetch failed"); }
         
         let extras = {};
         Object.keys(appConfig).forEach(k => {
@@ -223,11 +241,31 @@ const saveLog = async () => {
                 cleanSelections[k] = currentSelections[k];
             }
         });
+        
+        // Grab vitals
+        let vitals = {};
+        const vWeight = document.getElementById('vital-weight').value;
+        const vBp = document.getElementById('vital-bp').value.trim();
+        const vHr = document.getElementById('vital-hr').value;
+        const vO2 = document.getElementById('vital-o2').value;
+        const vSleep = document.getElementById('vital-sleep').value;
+        if(vWeight) vitals.weight = vWeight;
+        if(vBp) vitals.bp = vBp;
+        if(vHr) vitals.hr = vHr;
+        if(vO2) vitals.o2 = vO2;
+        if(vSleep) vitals.sleep = vSleep;
+
+        // Determine correct date based on override selector
+        let logDateISO = new Date().toISOString();
+        if(UI.logTime.value) {
+            logDateISO = new Date(UI.logTime.value).toISOString();
+        }
 
         const docData = {
-            date: new Date().toISOString(),
+            date: logDateISO,
             items: cleanSelections,
             extras: extras,
+            vitals: Object.keys(vitals).length > 0 ? vitals : null,
             weather: weather
         };
 
@@ -241,9 +279,10 @@ const saveLog = async () => {
             b.classList.remove('selected', 'bg-indigo-600', 'text-white', 'border-indigo-600');
             b.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
         });
-        document.querySelectorAll('input[type="text"]').forEach(i => {
-            if(i.id.startsWith('extra-')) i.value = '';
+        document.querySelectorAll('input[type="text"], input[type="number"], input[type="datetime-local"]').forEach(i => {
+            if(i.id.startsWith('extra-') || i.id.startsWith('vital-') || i.id === 'log-time') i.value = '';
         });
+        setCurrentTimeDefault();
         
         // Collapse all
         document.querySelectorAll('.category-content.expanded').forEach(c => c.classList.remove('expanded'));
@@ -263,10 +302,18 @@ const saveLog = async () => {
     }
 };
 
+const setCurrentTimeDefault = () => {
+    const now = new Date();
+    // Format required by datetime-local is YYYY-MM-DDThh:mm
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    UI.logTime.value = now.toISOString().slice(0, 16);
+};
+
 const init = async () => {
     // Check local storage for WU config
     UI.settingApiCode.value = localStorage.getItem('wuApiCode') || '';
     UI.settingStationId.value = localStorage.getItem('wuStationId') || localStorage.getItem('wuStationIdCustom') || '';
+    setCurrentTimeDefault();
 
     try {
         const docSnap = await getDoc(getTrackerDoc('settings', 'config'));

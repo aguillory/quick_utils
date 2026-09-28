@@ -20,6 +20,20 @@ const loadHistory = async () => {
             const d = new Date(data.date);
             
             let detailsHtml = '';
+            
+            // Render vitals if they exist
+            if(data.vitals) {
+                let vitalList = [];
+                if(data.vitals.weight) vitalList.push(`Weight: ${data.vitals.weight}lbs`);
+                if(data.vitals.bp) vitalList.push(`BP: ${data.vitals.bp}`);
+                if(data.vitals.hr) vitalList.push(`HR: ${data.vitals.hr}bpm`);
+                if(data.vitals.o2) vitalList.push(`O2: ${data.vitals.o2}%`);
+                if(data.vitals.sleep) vitalList.push(`Sleep: ${data.vitals.sleep}hrs`);
+                if(vitalList.length > 0) {
+                    detailsHtml += `<div class="mb-2 pb-2 border-b text-sm"><strong class="capitalize text-indigo-700">Vitals:</strong> ${vitalList.join(', ')}</div>`;
+                }
+            }
+
             Object.keys(data.items || {}).forEach(k => {
                 if(data.items[k].length > 0) {
                     detailsHtml += `<div class="mb-1 text-sm"><strong class="capitalize text-slate-700">${k.replace('_',' ')}:</strong> ${data.items[k].join(', ')}</div>`;
