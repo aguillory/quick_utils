@@ -1,10 +1,11 @@
 import { auth, getTrackerDoc, getTrackerCollection } from './connection.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getDoc, setDoc, addDoc, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getDoc, setDoc, doc, addDoc, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { DEFAULT_CONFIG } from './defaultConfig.js';
 
 let appConfig = null;
 let currentSelections = {};
+let editDocId = null;
 
 const UI = {
     categoriesContainer: document.getElementById('categories-container'),
@@ -133,7 +134,6 @@ const renderSettingsList = () => {
     addBtn.className = 'w-full py-2 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 font-semibold text-sm';
     addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Category';
     addBtn.onclick = () => {
-        // Sync before adding so we don't lose typed text
         syncSettingsDraft();
         settingsDraft.push({ id: 'cat_' + Date.now(), label: 'New Category', items: [] });
         renderSettingsList();
@@ -193,6 +193,11 @@ const renderUI = () => {
         cat.items.forEach(item => {
             const btn = document.createElement('button');
             btn.className = 'item-btn px-4 py-2 rounded-full border border-slate-300 bg-white text-slate-700 text-sm hover:border-indigo-400 transition-colors';
+            // Mark selected if loading an edit
+            if(currentSelections[cat.id] && currentSelections[cat.id].includes(item)) {
+                btn.classList.add('selected', 'bg-indigo-600', 'text-white', 'border-indigo-600');
+                btn.classList.remove('bg-white', 'text-slate-700', 'border-slate-300');
+            }
             btn.textContent = item;
             btn.onclick = () => toggleItem(cat.id, item, btn);
             grid.appendChild(btn);
@@ -209,7 +214,6 @@ const renderUI = () => {
         UI.categoriesContainer.appendChild(catDiv);
     });
 
-    // Reset settings draft to current config
     settingsDraft = JSON.parse(JSON.stringify(appConfig));
     renderSettingsList();
 };
@@ -263,7 +267,7 @@ const loadRecent = async () => {
             });
             
             if(data.weather) {
-                detailsHtml += `<div class="mt-2 text-xs text-slate-400"><i class="fas fa-cloud"></i> ${data.weather.temp}°F | ${data.weather.source}</div>`;
+                detailsHtml += `<div class="mt-2 text-xs text-slate-400"><i class="fas fa-cloud"></i> ${data.weather.temp} F | ${data.weather.source}</div>`;
             }
 
             UI.recentLogDetails.innerHTML = detailsHtml || 'No specific items logged.';
@@ -280,9 +284,11 @@ const saveLog = async () => {
         UI.logBtn.disabled = true;
 
         let weather = null;
-        try {
-            weather = await Promise.race([fetchWeather(), new Promise(r => setTimeout(r, 4000))]);
-        } catch(e) { console.warn("Weather fetch failed"); }
+        if (!editDocId) {
+            try {
+                weather = await Promise.race([fetchWeather(), new Promise(r => setTimeout(r, 4000))]);
+            } catch(e) { console.warn("Weather fetch failed"); }
+        }
         
         let extras = {};
         appConfig.forEach(cat => {
@@ -318,13 +324,23 @@ const saveLog = async () => {
             date: logDateISO,
             items: cleanSelections,
             extras: extras,
-            vitals: Object.keys(vitals).length > 0 ? vitals : null,
-            weather: weather
+            vitals: Object.keys(vitals).length > 0 ? vitals : null
         };
-
-        await addDoc(getTrackerCollection('logs'), docData);
         
-        showToast('Logged successfully!');
+        if(weather) {
+            docData.weather = weather;
+        }
+
+        if (editDocId) {
+            // Keep existing weather if editing
+            await setDoc(doc(getTrackerCollection('logs'), editDocId), docData, { merge: true });
+            showToast('Log Updated!');
+            setTimeout(() => { window.location.href = 'history.html'; }, 1000);
+            return;
+        } else {
+            await addDoc(getTrackerCollection('logs'), docData);
+            showToast('Logged successfully!');
+        }
         
         currentSelections = {};
         document.querySelectorAll('.item-btn.selected').forEach(b => {
@@ -348,7 +364,7 @@ const saveLog = async () => {
         console.error(e);
         alert('Failed to save log');
     } finally {
-        UI.logBtn.innerHTML = '<i class="fas fa-save"></i> Log Selected Items';
+        UI.logBtn.innerHTML = editDocId ? '<i class="fas fa-save"></i> Update Log' : '<i class="fas fa-save"></i> Log Selected Items';
         UI.logBtn.disabled = false;
     }
 };
@@ -362,29 +378,35 @@ const setCurrentTimeDefault = () => {
 const init = async () => {
     UI.settingApiCode.value = localStorage.getItem('wuApiCode') || '';
     UI.settingStationId.value = localStorage.getItem('wuStationId') || localStorage.getItem('wuStationIdCustom') || '';
-    setCurrentTimeDefault();
+    
+    // Check if we are editing an existing log
+    const urlParams = new URLSearchParams(window.location.search);
+    editDocId = urlParams.get('edit');
+
+    if (!editDocId) {
+        setCurrentTimeDefault();
+    } else {
+        UI.logBtn.innerHTML = '<i class="fas fa-save"></i> Update Log';
+    }
 
     try {
         const docSnap = await getDoc(getTrackerDoc('settings', 'config'));
         if (docSnap.exists()) {
             let data = docSnap.data();
             
-            // Check if legacy object format
-            if(data && !Array.isArray(data) && Object.keys(data).length > 0 && !data[0]) {
-                // Convert to array format
+            if (data && Array.isArray(data.arr)) {
+                appConfig = data.arr;
+            } else if(data && !Array.isArray(data) && Object.keys(data).length > 0) {
+                // If it's the old object format (keys are categories, values are arrays)
+                // Filter out the 'arr' key bug if it exists
                 const formatLabel = (k) => k.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                let migrated = Object.keys(data).map(k => ({
+                let migrated = Object.keys(data).filter(k => k !== 'arr' && k !== 'test').map(k => ({
                     id: k,
                     label: formatLabel(k),
                     items: Array.isArray(data[k]) ? data[k] : []
                 }));
-                // if 'test' property from testing exists, filter it
-                appConfig = migrated.filter(c => c.id !== 'test');
-                // Save migrated format back to DB
+                appConfig = migrated;
                 await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
-            } else if (data && Array.isArray(data.arr)) {
-                // We use an object with an `arr` property because top-level arrays are not supported well in setDoc natively without wrapping.
-                appConfig = data.arr;
             } else {
                 appConfig = DEFAULT_CONFIG;
                 await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
@@ -394,8 +416,49 @@ const init = async () => {
             await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
         }
         
-        renderUI();
-        loadRecent();
+        // If editing, load the log data and populate UI
+        if(editDocId) {
+            const logSnap = await getDoc(doc(getTrackerCollection('logs'), editDocId));
+            if(logSnap.exists()) {
+                const logData = logSnap.data();
+                const d = new Date(logData.date);
+                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                UI.logTime.value = d.toISOString().slice(0, 16);
+                
+                if(logData.items) currentSelections = logData.items;
+                
+                renderUI(); // Render after selections loaded so buttons are marked
+                
+                if(logData.extras) {
+                    Object.keys(logData.extras).forEach(k => {
+                        const el = document.getElementById(`extra-${k}`);
+                        if(el) el.value = logData.extras[k];
+                    });
+                }
+                
+                if(logData.vitals) {
+                    if(logData.vitals.weight) document.getElementById('vital-weight').value = logData.vitals.weight;
+                    if(logData.vitals.bp) document.getElementById('vital-bp').value = logData.vitals.bp;
+                    if(logData.vitals.hr) document.getElementById('vital-hr').value = logData.vitals.hr;
+                    if(logData.vitals.o2) document.getElementById('vital-o2').value = logData.vitals.o2;
+                    if(logData.vitals.sleep) document.getElementById('vital-sleep').value = logData.vitals.sleep;
+                    toggleCategory('vitals'); // Open vitals section
+                }
+
+                // Expand categories that have selections
+                Object.keys(currentSelections).forEach(k => {
+                    if(currentSelections[k].length > 0) toggleCategory(k);
+                });
+
+            } else {
+                alert("Log not found.");
+                window.location.href = 'index.html';
+            }
+        } else {
+            renderUI();
+        }
+
+        if(!editDocId) loadRecent();
 
     } catch(e) {
         console.error('Init Error', e);
@@ -414,7 +477,7 @@ UI.saveSettingsBtn.onclick = async () => {
     try {
         await setDoc(getTrackerDoc('settings', 'config'), { arr: settingsDraft });
         appConfig = settingsDraft;
-        renderUI();
+        renderUI(); // currentSelections might not match perfectly if items were removed, but safe enough
         document.getElementById('settings-modal').classList.add('hidden');
         showToast('Settings Saved');
     } catch(e) {
