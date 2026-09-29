@@ -8,7 +8,9 @@ const THEMES = {
     'pixel': 'css/minecraft.css',
     'tactical': 'css/blackops.css',
     'homestead': 'css/homestead.css',
-    'dragonball': 'css/dragonball.css'
+    'dragonball': 'css/dragonball.css',
+    'vegeta': 'css/vegeta.css',
+    'super-vegeta': 'css/super-vegeta.css'
 };
 
 let currentTheme = localStorage.getItem('nipto_theme') || 'boring';
