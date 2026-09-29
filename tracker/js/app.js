@@ -41,7 +41,7 @@ const fetchWeather = async () => {
                 humidity: obs.humidity,
                 pressure: obs.imperial.pressure,
                 wind: obs.imperial.windSpeed,
-                conditions: obs.winddir // WU doesn't give simple text conditions on PWS without forecast
+                conditions: obs.winddir 
             };
         } catch(e) {
             console.warn('WU Weather failed, trying Open-Meteo fallback', e);
@@ -57,7 +57,7 @@ const fetchWeather = async () => {
             source: 'Open-Meteo',
             temp: data.current.temperature_2m,
             humidity: data.current.relative_humidity_2m,
-            pressure: (data.current.surface_pressure * 0.02953).toFixed(2), // hPa to inHg
+            pressure: (data.current.surface_pressure * 0.02953).toFixed(2),
             wind: data.current.wind_speed_10m,
             conditions: `Code ${data.current.weather_code}`
         };
@@ -87,12 +87,10 @@ const toggleCategory = (id) => {
         icon.classList.add('fa-chevron-up');
     }
 };
-
 window.toggleCategory = toggleCategory;
 
 const toggleItem = (catKey, item, btnElement) => {
     if(!currentSelections[catKey]) currentSelections[catKey] = [];
-    
     const idx = currentSelections[catKey].indexOf(item);
     if(idx > -1) {
         currentSelections[catKey].splice(idx, 1);
@@ -104,62 +102,116 @@ const toggleItem = (catKey, item, btnElement) => {
         btnElement.classList.remove('bg-white', 'text-slate-700', 'border-slate-300');
     }
 };
-
 window.toggleItem = toggleItem;
+
+let settingsDraft = [];
+
+const renderSettingsList = () => {
+    UI.settingsLists.innerHTML = '';
+    settingsDraft.forEach((cat, index) => {
+        const setDiv = document.createElement('div');
+        setDiv.className = 'border p-3 rounded-lg bg-slate-50 relative';
+        
+        let upBtn = `<button onclick="window.moveSettingsCategory(${index}, -1)" class="text-slate-400 hover:text-indigo-600 px-2" ${index === 0 ? 'disabled style="opacity:0.3"' : ''}><i class="fas fa-arrow-up"></i></button>`;
+        let downBtn = `<button onclick="window.moveSettingsCategory(${index}, 1)" class="text-slate-400 hover:text-indigo-600 px-2" ${index === settingsDraft.length - 1 ? 'disabled style="opacity:0.3"' : ''}><i class="fas fa-arrow-down"></i></button>`;
+        
+        setDiv.innerHTML = `
+            <div class="flex justify-between items-center mb-2">
+                <div class="flex-grow flex gap-2 items-center">
+                    ${upBtn}${downBtn}
+                    <input type="text" id="set-label-${index}" value="${cat.label}" placeholder="Category Name" class="font-semibold text-sm border rounded p-1 flex-grow focus:ring focus:ring-indigo-200">
+                </div>
+                <button onclick="window.removeSettingsCategory(${index})" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+            </div>
+            <textarea id="set-val-${index}" rows="2" placeholder="Comma separated items..." class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200">${cat.items.join(', ')}</textarea>
+            <input type="hidden" id="set-id-${index}" value="${cat.id}">
+        `;
+        UI.settingsLists.appendChild(setDiv);
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'w-full py-2 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 font-semibold text-sm';
+    addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Category';
+    addBtn.onclick = () => {
+        // Sync before adding so we don't lose typed text
+        syncSettingsDraft();
+        settingsDraft.push({ id: 'cat_' + Date.now(), label: 'New Category', items: [] });
+        renderSettingsList();
+    };
+    UI.settingsLists.appendChild(addBtn);
+};
+
+const syncSettingsDraft = () => {
+    settingsDraft = settingsDraft.map((cat, index) => {
+        const labelEl = document.getElementById(`set-label-${index}`);
+        const valEl = document.getElementById(`set-val-${index}`);
+        return {
+            id: document.getElementById(`set-id-${index}`).value,
+            label: labelEl ? labelEl.value.trim() : cat.label,
+            items: valEl ? valEl.value.split(',').map(s => s.trim()).filter(s => s.length > 0) : cat.items
+        };
+    });
+};
+
+window.moveSettingsCategory = (index, dir) => {
+    syncSettingsDraft();
+    if(index + dir >= 0 && index + dir < settingsDraft.length) {
+        const temp = settingsDraft[index];
+        settingsDraft[index] = settingsDraft[index + dir];
+        settingsDraft[index + dir] = temp;
+        renderSettingsList();
+    }
+};
+
+window.removeSettingsCategory = (index) => {
+    if(confirm('Remove this category?')) {
+        syncSettingsDraft();
+        settingsDraft.splice(index, 1);
+        renderSettingsList();
+    }
+};
 
 const renderUI = () => {
     UI.categoriesContainer.innerHTML = '';
-    UI.settingsLists.innerHTML = '';
     
-    const formatLabel = (key) => key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-    Object.keys(appConfig).forEach(key => {
-        const items = appConfig[key];
-        const label = formatLabel(key);
-
-        // Category UI
+    appConfig.forEach(cat => {
         const catDiv = document.createElement('div');
         catDiv.className = 'bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden';
         
         const header = document.createElement('button');
         header.className = 'w-full px-4 py-4 flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition text-left';
-        header.onclick = () => toggleCategory(key);
-        header.innerHTML = `<span class="font-bold text-slate-800">${label}</span><i id="icon-${key}" class="fas fa-chevron-down text-slate-400"></i>`;
+        header.onclick = () => toggleCategory(cat.id);
+        header.innerHTML = `<span class="font-bold text-slate-800">${cat.label}</span><i id="icon-${cat.id}" class="fas fa-chevron-down text-slate-400"></i>`;
         
         const content = document.createElement('div');
-        content.id = `content-${key}`;
+        content.id = `content-${cat.id}`;
         content.className = 'category-content p-4 border-t border-slate-100';
         
         const grid = document.createElement('div');
         grid.className = 'flex flex-wrap gap-2';
         
-        items.forEach(item => {
+        cat.items.forEach(item => {
             const btn = document.createElement('button');
             btn.className = 'item-btn px-4 py-2 rounded-full border border-slate-300 bg-white text-slate-700 text-sm hover:border-indigo-400 transition-colors';
             btn.textContent = item;
-            btn.onclick = () => toggleItem(key, item, btn);
+            btn.onclick = () => toggleItem(cat.id, item, btn);
             grid.appendChild(btn);
         });
 
-        // Add custom text input for extra stuff
         const extraDiv = document.createElement('div');
         extraDiv.className = 'w-full mt-3';
-        extraDiv.innerHTML = `<input type="text" id="extra-${key}" placeholder="Add a custom note/value..." class="w-full text-sm border rounded-lg p-2 focus:ring focus:ring-indigo-200">`;
+        extraDiv.innerHTML = `<input type="text" id="extra-${cat.id}" placeholder="Add a custom note/value..." class="w-full text-sm border rounded-lg p-2 focus:ring focus:ring-indigo-200">`;
         
         content.appendChild(grid);
         content.appendChild(extraDiv);
         catDiv.appendChild(header);
         catDiv.appendChild(content);
         UI.categoriesContainer.appendChild(catDiv);
-
-        // Settings UI
-        const setDiv = document.createElement('div');
-        setDiv.innerHTML = `
-            <label class="block text-slate-600 mb-1 font-semibold text-sm">${label}</label>
-            <textarea id="set-val-${key}" rows="2" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200">${items.join(', ')}</textarea>
-        `;
-        UI.settingsLists.appendChild(setDiv);
     });
+
+    // Reset settings draft to current config
+    settingsDraft = JSON.parse(JSON.stringify(appConfig));
+    renderSettingsList();
 };
 
 const loadRecent = async () => {
@@ -173,17 +225,18 @@ const loadRecent = async () => {
             const d = new Date(data.date);
             UI.recentLogTime.textContent = d.toLocaleString([], {month:'short', day:'numeric', hour: '2-digit', minute:'2-digit'});
             
-            // Generate summary
             let summaryParts = [];
             Object.keys(data.items || {}).forEach(k => {
-                if(data.items[k].length > 0) summaryParts.push(data.items[k].length + ' ' + k.split('_')[0]);
+                if(data.items[k].length > 0) {
+                    const catObj = appConfig.find(c => c.id === k);
+                    const catLabel = catObj ? catObj.label : k;
+                    summaryParts.push(data.items[k].length + ' ' + catLabel);
+                }
             });
             UI.recentLogSummary.textContent = summaryParts.length > 0 ? summaryParts.join(', ') : 'Empty log';
             
-            // Details
             let detailsHtml = '';
             
-            // Render vitals if they exist
             if(data.vitals) {
                 let vitalList = [];
                 if(data.vitals.weight) vitalList.push(`Weight: ${data.vitals.weight}lbs`);
@@ -198,11 +251,15 @@ const loadRecent = async () => {
 
             Object.keys(data.items || {}).forEach(k => {
                 if(data.items[k].length > 0) {
-                    detailsHtml += `<div class="mb-1"><strong class="capitalize">${k.replace('_',' ')}:</strong> ${data.items[k].join(', ')}</div>`;
+                    const catObj = appConfig.find(c => c.id === k);
+                    const catLabel = catObj ? catObj.label : k;
+                    detailsHtml += `<div class="mb-1"><strong class="capitalize">${catLabel}:</strong> ${data.items[k].join(', ')}</div>`;
                 }
             });
             Object.keys(data.extras || {}).forEach(k => {
-                detailsHtml += `<div class="mb-1 text-slate-500"><em>${k.replace('_',' ')} Note: ${data.extras[k]}</em></div>`;
+                const catObj = appConfig.find(c => c.id === k);
+                const catLabel = catObj ? catObj.label : k;
+                detailsHtml += `<div class="mb-1 text-slate-500"><em>${catLabel} Note: ${data.extras[k]}</em></div>`;
             });
             
             if(data.weather) {
@@ -222,19 +279,17 @@ const saveLog = async () => {
         UI.logBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         UI.logBtn.disabled = true;
 
-        // Fetch weather in the background but don't strictly wait to block the UI forever if it's slow
         let weather = null;
         try {
             weather = await Promise.race([fetchWeather(), new Promise(r => setTimeout(r, 4000))]);
         } catch(e) { console.warn("Weather fetch failed"); }
         
         let extras = {};
-        Object.keys(appConfig).forEach(k => {
-            const val = document.getElementById(`extra-${k}`).value.trim();
-            if(val) extras[k] = val;
+        appConfig.forEach(cat => {
+            const val = document.getElementById(`extra-${cat.id}`).value.trim();
+            if(val) extras[cat.id] = val;
         });
 
-        // Cleanup empty selections
         let cleanSelections = {};
         Object.keys(currentSelections).forEach(k => {
             if(currentSelections[k] && currentSelections[k].length > 0) {
@@ -242,7 +297,6 @@ const saveLog = async () => {
             }
         });
         
-        // Grab vitals
         let vitals = {};
         const vWeight = document.getElementById('vital-weight').value;
         const vBp = document.getElementById('vital-bp').value.trim();
@@ -255,7 +309,6 @@ const saveLog = async () => {
         if(vO2) vitals.o2 = vO2;
         if(vSleep) vitals.sleep = vSleep;
 
-        // Determine correct date based on override selector
         let logDateISO = new Date().toISOString();
         if(UI.logTime.value) {
             logDateISO = new Date(UI.logTime.value).toISOString();
@@ -273,7 +326,6 @@ const saveLog = async () => {
         
         showToast('Logged successfully!');
         
-        // Reset selections
         currentSelections = {};
         document.querySelectorAll('.item-btn.selected').forEach(b => {
             b.classList.remove('selected', 'bg-indigo-600', 'text-white', 'border-indigo-600');
@@ -284,7 +336,6 @@ const saveLog = async () => {
         });
         setCurrentTimeDefault();
         
-        // Collapse all
         document.querySelectorAll('.category-content.expanded').forEach(c => c.classList.remove('expanded'));
         document.querySelectorAll('.fa-chevron-up').forEach(i => {
             i.classList.remove('fa-chevron-up');
@@ -304,13 +355,11 @@ const saveLog = async () => {
 
 const setCurrentTimeDefault = () => {
     const now = new Date();
-    // Format required by datetime-local is YYYY-MM-DDThh:mm
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     UI.logTime.value = now.toISOString().slice(0, 16);
 };
 
 const init = async () => {
-    // Check local storage for WU config
     UI.settingApiCode.value = localStorage.getItem('wuApiCode') || '';
     UI.settingStationId.value = localStorage.getItem('wuStationId') || localStorage.getItem('wuStationIdCustom') || '';
     setCurrentTimeDefault();
@@ -318,10 +367,31 @@ const init = async () => {
     try {
         const docSnap = await getDoc(getTrackerDoc('settings', 'config'));
         if (docSnap.exists()) {
-            appConfig = docSnap.data();
+            let data = docSnap.data();
+            
+            // Check if legacy object format
+            if(data && !Array.isArray(data) && Object.keys(data).length > 0 && !data[0]) {
+                // Convert to array format
+                const formatLabel = (k) => k.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                let migrated = Object.keys(data).map(k => ({
+                    id: k,
+                    label: formatLabel(k),
+                    items: Array.isArray(data[k]) ? data[k] : []
+                }));
+                // if 'test' property from testing exists, filter it
+                appConfig = migrated.filter(c => c.id !== 'test');
+                // Save migrated format back to DB
+                await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
+            } else if (data && Array.isArray(data.arr)) {
+                // We use an object with an `arr` property because top-level arrays are not supported well in setDoc natively without wrapping.
+                appConfig = data.arr;
+            } else {
+                appConfig = DEFAULT_CONFIG;
+                await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
+            }
         } else {
             appConfig = DEFAULT_CONFIG;
-            await setDoc(getTrackerDoc('settings', 'config'), appConfig);
+            await setDoc(getTrackerDoc('settings', 'config'), { arr: appConfig });
         }
         
         renderUI();
@@ -339,15 +409,11 @@ UI.saveSettingsBtn.onclick = async () => {
     if(apiCode) localStorage.setItem('wuApiCode', apiCode);
     if(stationId) localStorage.setItem('wuStationId', stationId);
 
-    let newConfig = {};
-    Object.keys(appConfig).forEach(k => {
-        const val = document.getElementById(`set-val-${k}`).value;
-        newConfig[k] = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
-    });
+    syncSettingsDraft();
 
     try {
-        await setDoc(getTrackerDoc('settings', 'config'), newConfig);
-        appConfig = newConfig;
+        await setDoc(getTrackerDoc('settings', 'config'), { arr: settingsDraft });
+        appConfig = settingsDraft;
         renderUI();
         document.getElementById('settings-modal').classList.add('hidden');
         showToast('Settings Saved');
