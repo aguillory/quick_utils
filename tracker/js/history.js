@@ -1,11 +1,27 @@
-import { auth, getTrackerCollection } from './connection.js';
+import { auth, getTrackerDoc, getTrackerCollection } from './connection.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { query, orderBy, limit, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const container = document.getElementById('history-container');
 
 const loadHistory = async () => {
     try {
+        let appConfig = [];
+        try {
+            const docSnap = await getDoc(getTrackerDoc('settings', 'config'));
+            if(docSnap.exists() && docSnap.data().arr) {
+                appConfig = docSnap.data().arr;
+            } else if(docSnap.exists() && !Array.isArray(docSnap.data())) {
+                const data = docSnap.data();
+                appConfig = Object.keys(data).map(k => ({id: k, label: k}));
+            }
+        } catch(e) {}
+
+        const getLabel = (id) => {
+            const cat = appConfig.find(c => c.id === id);
+            return cat ? cat.label : id.replace('_', ' ');
+        };
+
         const q = query(getTrackerCollection('logs'), orderBy('date', 'desc'), limit(50));
         const snap = await getDocs(q);
         
@@ -21,7 +37,6 @@ const loadHistory = async () => {
             
             let detailsHtml = '';
             
-            // Render vitals if they exist
             if(data.vitals) {
                 let vitalList = [];
                 if(data.vitals.weight) vitalList.push(`Weight: ${data.vitals.weight}lbs`);
@@ -36,11 +51,11 @@ const loadHistory = async () => {
 
             Object.keys(data.items || {}).forEach(k => {
                 if(data.items[k].length > 0) {
-                    detailsHtml += `<div class="mb-1 text-sm"><strong class="capitalize text-slate-700">${k.replace('_',' ')}:</strong> ${data.items[k].join(', ')}</div>`;
+                    detailsHtml += `<div class="mb-1 text-sm"><strong class="text-slate-700">${getLabel(k)}:</strong> ${data.items[k].join(', ')}</div>`;
                 }
             });
             Object.keys(data.extras || {}).forEach(k => {
-                detailsHtml += `<div class="mb-1 text-sm text-slate-500"><strong class="capitalize">${k.replace('_',' ')} Note:</strong> ${data.extras[k]}</div>`;
+                detailsHtml += `<div class="mb-1 text-sm text-slate-500"><strong class="">${getLabel(k)} Note:</strong> ${data.extras[k]}</div>`;
             });
 
             let weatherHtml = '';

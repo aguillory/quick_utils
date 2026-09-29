@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trend Spotter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans pb-20">
+
+    <nav class="bg-indigo-600 text-white shadow-md p-4 sticky top-0 z-10 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <a href="index.html" class="text-indigo-200 hover:text-white"><i class="fas fa-arrow-left"></i></a>
+            <h1 class="text-xl font-bold">Trend Spotter</h1>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto p-4 space-y-6">
+        
+        <div id="loading-overlay" class="text-center py-10 text-slate-500">
+            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+            <p>Analyzing database...</p>
+        </div>
+
+        <div id="dashboard" class="hidden space-y-6">
+            
+            <!-- Lagging Indicators (Next-Day) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-bold text-indigo-700 mb-2"><i class="fas fa-calendar-plus mr-2"></i>Lagging Indicators (Next-Day)</h2>
+                <p class="text-sm text-slate-500 mb-4">Automatically detecting strong correlations between triggers on Day 1 and symptoms on Day 2.</p>
+                <div id="lagging-results" class="space-y-2">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Time-Shifted Querying -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-bold text-indigo-700 mb-2"><i class="fas fa-stopwatch mr-2"></i>Time-Shifted Querying</h2>
+                <p class="text-sm text-slate-500 mb-4">Select a trigger and a target to see how often the target occurs within a specific time window after the trigger.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Trigger (e.g. Sugary Food)</label>
+                        <select id="ts-trigger" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Target (e.g. Nausea)</label>
+                        <select id="ts-target" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Window (Hours)</label>
+                        <select id="ts-window" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200">
+                            <option value="4">Within 4 Hours</option>
+                            <option value="12">Within 12 Hours</option>
+                            <option value="24" selected>Within 24 Hours</option>
+                            <option value="48">Within 48 Hours</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="ts-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition">Analyze Correlation</button>
+                
+                <div id="ts-result" class="mt-4 p-4 bg-indigo-50 rounded-lg text-indigo-900 hidden font-medium text-center"></div>
+            </div>
+
+            <!-- Weather Scatter Plot -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-bold text-indigo-700 mb-2"><i class="fas fa-cloud-sun-rain mr-2"></i>Weather-Symptom Plot</h2>
+                <p class="text-sm text-slate-500 mb-4">Visualize environmental factors against physical states over time.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Symptom to Track</label>
+                        <select id="wx-symptom" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Weather Metric</label>
+                        <select id="wx-metric" class="w-full border rounded-lg p-2 text-sm focus:ring focus:ring-indigo-200">
+                            <option value="pressure">Barometric Pressure (inHg)</option>
+                            <option value="temp">Temperature (°F)</option>
+                            <option value="humidity">Humidity (%)</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="wx-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition mb-4">Update Chart</button>
+                
+                <div class="w-full h-64 relative">
+                    <canvas id="wxChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script type="module" src="js/trends.js"></script>
+</body>
+</html>
