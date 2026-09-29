@@ -8,7 +8,7 @@ const THEMES = {
     'pixel': 'css/minecraft.css',
     'tactical': 'css/blackops.css',
     'homestead': 'css/homestead.css',
-    'dragonball': 'css/dragonball.css',
+
     'vegeta': 'css/vegeta.css',
     'super-vegeta': 'css/super-vegeta.css'
 };
@@ -63,3 +63,4 @@ document.addEventListener('click', function (event) {
         menu.style.display = 'none';
     }
 });
+

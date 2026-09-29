@@ -9,7 +9,7 @@
     --primary-hover: #9b740a; /* Darker Gold */
     --success: #4CAF50;       /* Senzu Bean Green */
     --danger: #E53935;        /* Red Ribbon Red */
-    --bg-color: #01003d;      /* Vegeta Dark Blue */
+    --bg-color: #1a237e;      /* Vegeta Dark Blue */
     --card-bg: rgba(255, 255, 255, 0.85); /* 30% Transparent White */
     --text-main: #000000;     /* Black Text */
     --text-muted: #333333;    /* Dark Gray Text */
@@ -35,12 +35,7 @@ background-image: url('vegeta.webp');
     background-repeat: no-repeat;
 }
 
-h1, h2, h3, h4 { 
-    font-family: 'Bangers', cursive; /* Comic style font */
-    color: var(--text-main); 
-    letter-spacing: 2px;
-    text-shadow: 2px 2px 0px #fff, 0 0 5px rgba(186, 140, 15, 0.5); /* Readable solid text with white/orange glow */
-}
+h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacing: 2px; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }`r`nh3, h4 { font-family: 'Ubuntu', sans-serif; color: var(--text-main); font-weight: bold; letter-spacing: 1px; text-shadow: none; }
 
 /* ==========================================
    CONTAINERS & LAYOUT (CAPSULE CORP STYLE)
@@ -71,8 +66,8 @@ h1, h2, h3, h4 {
     border-radius: 20px; 
     border: 2px solid #fff;
     background-color: var(--primary); 
-    color: #fff;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    color: #000;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1.5px;
     transition: all 0.2s ease-in-out;
@@ -93,7 +88,7 @@ h1, h2, h3, h4 {
 .task-btn.success, .action-btn.save-mode, #refreshBtn, #syncNiptoBtn { 
     background-color: var(--aura-blue) !important; 
     border-color: #0277BD !important;
-    color: #fff !important; 
+    color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); 
 }
 
 .task-btn.success:hover, .action-btn.save-mode:hover, #refreshBtn:hover, #syncNiptoBtn:hover {
@@ -160,15 +155,7 @@ h1, h2, h3, h4 {
     letter-spacing: 1px;
 }
 
-.chore-points { 
-    background: var(--aura-blue) !important; 
-    color: #fff !important; 
-    border: none !important;
-    border-radius: 20px !important;
-    font-family: 'Ubuntu', sans-serif;
-    font-weight: bold;
-    padding: 4px 10px !important;
-}
+.chore-points { background: var(--primary) !important; color: #000 !important; border: none !important; border-radius: 20px !important; font-family: 'Ubuntu', sans-serif; font-weight: bold; padding: 4px 10px !important; text-shadow: none !important; }
 
 .chore-desc { 
     background: rgba(0,0,0,0.02) !important; 
@@ -232,12 +219,12 @@ h1, h2, h3, h4 {
     top: -15px;
     right: -15px;
     pointer-events: none;
-    z-index: 10;
+    z-index: 100 !important;
     
     /* Create the Dragon Ball */
     width: 32px;
     height: 32px;
-    background: radial-gradient(circle at 30% 30%, #FFB74D, #E65100);
+    background: radial-gradient(circle at 30% 30%, #FFD54F, #ba8c0f);
     border-radius: 50%;
     box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 
                 inset 2px 2px 4px rgba(255,255,255,0.6),
@@ -268,3 +255,19 @@ h1, h2, h3, h4 {
 }
 
 
+
+
+/* ==========================================
+   INLINE STYLE OVERRIDES FOR LEGIBILITY
+   ========================================== */
+span[style*="var(--bg-color)"] {
+    background: rgba(255,255,255,0.9) !important;
+    color: #000 !important;
+}
+span[style*="#f3f4f6"] {
+    background: var(--primary) !important;
+    color: #000 !important;
+}
+.quick-add-user-label span {
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+}
