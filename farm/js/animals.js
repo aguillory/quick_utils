@@ -520,8 +520,9 @@ function filterAnimals() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     
     const filtered = allAnimals.filter(animal => {
-        // Toggle Logic: If not showing all, only show animals owned by current user
-        if (!showAllAnimals && animal.farmId !== currentFarmId) return false;
+        // Toggle Logic: If not showing all, only show animals owned by or residing at current user's farm
+        const isUserAnimal = animal.farmId === currentFarmId || animal.ownerFarmId === currentFarmId;
+        if (!showAllAnimals && !isUserAnimal) return false;
         
         // Hide individual flock members from the main overview
         if (animal.flockId) return false;
