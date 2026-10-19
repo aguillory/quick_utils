@@ -35,9 +35,20 @@
         
         <div class="sidebar left-sidebar">
             <h3 class="collapsible-header" onclick="toggleSection('activity-content', 'activity-icon', 'nipto_boys_act_collapsed')">
-                This Week's Activity <span class="toggle-icon" id="activity-icon">▼</span>
+                <span id="activityPanelTitle">This Week's Activity</span> <span class="toggle-icon" id="activity-icon">▼</span>
             </h3>
             <div id="activity-content" class="collapsible-content">
+                <div class="week-selector-container">
+                    <button type="button" class="week-nav-btn" id="btnPrevWeek" onclick="navigateWeek(-1)" title="Previous Week">◀</button>
+                    <select id="weekSelect" class="week-select" onchange="changeSelectedWeek(this.value)" title="Select week to view">
+                        <option value="current">This Week (Current)</option>
+                    </select>
+                    <button type="button" class="week-nav-btn" id="btnNextWeek" onclick="navigateWeek(1)" title="Next Week" disabled>▶</button>
+                </div>
+                <div id="weekArchiveBadge" class="week-archive-badge">
+                    <span id="weekArchiveText">📅 Viewing Archive</span>
+                    <button type="button" class="week-archive-reset-btn" onclick="resetToCurrentWeek()" title="Return to current week">Back to Current</button>
+                </div>
                 <div class="history-toggle">
                     <button class="ht-btn active" id="htBoys" onclick="setHistoryView('boys')">Just Boys</button>
                     <button class="ht-btn" id="htEveryone" onclick="setHistoryView('everyone')">Everyone</button>

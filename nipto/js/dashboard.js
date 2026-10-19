@@ -7,7 +7,7 @@ import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMe
 import { saveCloudPreference } from './preferences.js';
 import { savePin, switchTab, setMode, setTimeOffset, toggleSection, initCollapsibles, toggleHeaderCollapse, updateMiniUserDisplay, initHeaderCollapse } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
-import { updateLeaderboardUI, setHistoryView } from './leaderboard.js';
+import { updateLeaderboardUI, setHistoryView, changeSelectedWeek, navigateWeek, resetToCurrentWeek } from './leaderboard.js';
 import {
     logPinnedTask, deleteTaskActivity, togglePinTask, populateTaskPointsSelect,
     renderTasks, renderPinnedTasks,
@@ -99,6 +99,7 @@ Object.assign(window, {
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus,
     renderTodoTasks, updateTaskDatalists, renderSidebarTodos, addSubTaskField, toggleSubTaskStatus, updateMainTaskPointsVisibility,
     savePin, switchTab: switchTabWithChat, setMode, setTimeOffset, setHistoryView,
+    changeSelectedWeek, navigateWeek, resetToCurrentWeek,
     toggleSection, toggleThemeMenu, setTheme, toggleHeaderCollapse,
     openRoutineModal, closeRoutineModal, toggleRoutineFrequencyFields, saveRoutine,
     editRoutine, completeRoutine, deleteRoutine, skipRoutine, updateOverdueDefaults,
