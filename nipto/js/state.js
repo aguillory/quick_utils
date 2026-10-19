@@ -17,6 +17,12 @@ export const state = {
     todoTasksData: [], 
     routines: [],
     
+    // Week browsing & history
+    selectedWeekUid: 'current',
+    weeksList: [],
+    historicalActivitiesCache: {},
+    currentWeekScores: {},
+
     // Edit mode tracking
     isEditMode: false,
     isViewAllMode: false,

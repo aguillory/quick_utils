@@ -291,6 +291,89 @@ select:focus, input[type="datetime-local"]:focus { border-color: var(--primary);
 .chore-completion-info { font-size: 12px; color: #065F46; margin-top: 8px; background: #D1FAE5; padding: 8px; border-radius: 6px; border: 1px solid #A7F3D0; line-height: 1.4; }
 
 /* ==========================================
+   WEEK SELECTOR & PRIOR WEEKS
+   ========================================== */
+.week-selector-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.week-nav-btn {
+    padding: 7px 10px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.week-nav-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.week-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.week-select {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+    color: var(--text-main);
+    cursor: pointer;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    min-width: 0;
+}
+.week-select:focus {
+    border-color: var(--primary);
+}
+.week-archive-badge {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: color-mix(in srgb, var(--primary) 12%, var(--card-bg));
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-main);
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.week-archive-badge.visible {
+    display: flex;
+}
+.week-archive-reset-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+}
+.week-archive-reset-btn:hover {
+    opacity: 0.9;
+}
+
+/* ==========================================
    ACTIVITY HISTORY
    ========================================== */
 .history-toggle { display: flex; gap: 5px; background: #F3F4F6; padding: 4px; border-radius: 8px; margin-bottom: 15px; }

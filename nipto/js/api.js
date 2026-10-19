@@ -134,7 +134,139 @@ export async function getWeeklyPointsData() {
     });
 
     state.allWeekActivities = activities;
+    state.currentWeekScores = { ...points };
+    archiveActivitiesToFirestore(activities);
     return { points, activities };
+}
+
+// Fetches the list of past weeks from Nipto GraphQL API
+export async function getWeeksList() {
+    if (!state.apiToken) return [];
+    try {
+        const QUERY = `{ weeks(limit: 52, sort: DESC) { uid startDate endDate scores { user { uid name } score } } }`;
+        const data = await fetchNipto(QUERY);
+        state.weeksList = (data && data.weeks) ? data.weeks : [];
+        return state.weeksList;
+    } catch (e) {
+        console.warn("Could not fetch weeks list from Nipto:", e);
+        return state.weeksList || [];
+    }
+}
+
+// Determines the week UID for a given Date
+export function getWeekUidForDate(date) {
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) return null;
+    if (state.weeksList && state.weeksList.length > 0) {
+        const matched = state.weeksList.find(w => d >= new Date(w.startDate) && d <= new Date(w.endDate));
+        if (matched) return matched.uid;
+    }
+    const target = new Date(d.valueOf());
+    const dayNr = (d.getDay() + 6) % 7;
+    target.setDate(target.getDate() - dayNr + 3);
+    const firstThursday = target.valueOf();
+    target.setMonth(0, 1);
+    if (target.getDay() !== 4) {
+        target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+    }
+    const weekNr = 1 + Math.ceil((firstThursday - target) / 604800000);
+    const year = target.getFullYear();
+    return `${year}${String(weekNr).padStart(2, '0')}`;
+}
+
+// Archives live activities to Firestore activities_history for historical browsing
+export async function archiveActivitiesToFirestore(activities) {
+    if (!activities || !activities.length) return;
+    try {
+        const batch = window.db.batch();
+        const labels = state.activityLabels || {};
+        let count = 0;
+        activities.forEach(act => {
+            if (!act || !act.uid) return;
+            const docRef = window.getNiptoCollection('activities_history').doc(act.uid);
+            const label = labels[act.uid] || act.label || "";
+            const actDate = act.parsedDate || (act.date ? new Date(act.date) : new Date());
+            const weekUid = act.weekUid || getWeekUidForDate(actDate);
+            const dataToSave = {
+                uid: act.uid,
+                date: actDate.toISOString(),
+                userName: (act.user && act.user.name) ? act.user.name : "Unknown",
+                userUid: (act.user && act.user.uid) ? act.user.uid : "",
+                taskName: (act.task && act.task.name) ? act.task.name : "",
+                taskValue: (act.task && act.task.value) ? act.task.value : (act.awardedPts || 0),
+                awardedPts: (act.awardedPts !== undefined) ? act.awardedPts : ((act.task && act.task.value) ? act.task.value : 0),
+                label: label,
+                weekUid: weekUid || ""
+            };
+            batch.set(docRef, dataToSave, { merge: true });
+            count++;
+        });
+        if (count > 0) await batch.commit();
+    } catch (e) {
+        console.warn("Failed to archive activities to Firestore:", e);
+    }
+}
+
+// Loads historical activities for a prior week from Firestore activities_history
+export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDate) {
+    if (state.historicalActivitiesCache[weekUid]) {
+        return state.historicalActivitiesCache[weekUid];
+    }
+    try {
+        let snapshot;
+        if (weekUid && weekUid !== 'all') {
+            snapshot = await window.getNiptoCollection('activities_history')
+                .where('weekUid', '==', weekUid)
+                .get();
+        }
+        
+        let activities = [];
+        if (snapshot && !snapshot.empty) {
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                activities.push({
+                    uid: data.uid || doc.id,
+                    date: data.date,
+                    parsedDate: new Date(data.date),
+                    user: { uid: data.userUid, name: data.userName },
+                    task: { name: data.taskName, value: data.taskValue },
+                    awardedPts: data.awardedPts,
+                    label: data.label,
+                    weekUid: data.weekUid
+                });
+            });
+        }
+
+        // If no activities matched weekUid directly, try date range filter
+        if (activities.length === 0 && startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const allSnap = await window.getNiptoCollection('activities_history').get();
+            allSnap.forEach(doc => {
+                const data = doc.data();
+                const d = new Date(data.date);
+                if (d >= start && d <= end) {
+                    activities.push({
+                        uid: data.uid || doc.id,
+                        date: data.date,
+                        parsedDate: d,
+                        user: { uid: data.userUid, name: data.userName },
+                        task: { name: data.taskName, value: data.taskValue },
+                        awardedPts: data.awardedPts,
+                        label: data.label,
+                        weekUid: data.weekUid
+                    });
+                }
+            });
+        }
+
+        activities.sort((a, b) => b.parsedDate - a.parsedDate);
+        state.historicalActivitiesCache[weekUid] = activities;
+        return activities;
+    } catch (e) {
+        console.error(`Failed to load historical activities for week ${weekUid}:`, e);
+        return [];
+    }
 }
 
 export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
@@ -149,12 +281,42 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
         if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
         else if (data.createActivity.uid) activityUids = [data.createActivity.uid];
     }
+
+    if (activityUids.length > 0) {
+        try {
+            const tObj = state.tasks ? state.tasks.find(t => t.uid === taskUid) : null;
+            const taskVal = tObj ? tObj.value : 0;
+            const ptsPerUser = Math.ceil(taskVal / Math.max(1, activeDoers.length));
+            const targetDate = new Date(targetDateStr || Date.now());
+            const weekUid = getWeekUidForDate(targetDate);
+
+            const activitiesToArchive = activityUids.map((uid, index) => {
+                const doerUid = activeDoers[index] || activeDoers[0] || "";
+                const userObj = ALL_USERS.find(u => u.uid === doerUid);
+                return {
+                    uid: uid,
+                    date: targetDate.toISOString(),
+                    user: { uid: doerUid, name: userObj ? userObj.name : "Unknown" },
+                    task: { uid: taskUid, name: tObj ? tObj.name : "Task", value: ptsPerUser },
+                    awardedPts: ptsPerUser,
+                    weekUid: weekUid
+                };
+            });
+            archiveActivitiesToFirestore(activitiesToArchive);
+        } catch (e) {
+            console.warn("Could not immediately archive logged activity:", e);
+        }
+    }
+
     pingActivitySignal();
     return activityUids;
 }
 
 export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
+    try {
+        await window.getNiptoCollection('activities_history').doc(activityUid).delete();
+    } catch (e) { /* ignore */ }
     pingActivitySignal();
 }
 
@@ -326,6 +488,7 @@ export async function saveActivityLabels(activityUids, name) {
     const batch = window.db.batch();
     activityUids.forEach(uid => {
         batch.set(window.getNiptoCollection('activity_labels').doc(uid), { name });
+        batch.set(window.getNiptoCollection('activities_history').doc(uid), { label: name }, { merge: true });
         state.activityLabels[uid] = name;
     });
     try { await batch.commit(); } catch (e) { console.error("Error saving activity labels:", e); }
