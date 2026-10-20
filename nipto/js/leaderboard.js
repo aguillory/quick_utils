@@ -265,18 +265,15 @@ function renderHistory(activities, isPriorWeek = false) {
             knownUser = ALL_USERS.find(u => u.name.toLowerCase() === uName || uName.startsWith(u.name.toLowerCase()));
         }
 
-        let userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Family");
-        let color = knownUser ? knownUser.color : 'var(--text-muted)';
+        let userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Alyssa");
+        let color = knownUser ? knownUser.color : 'var(--user-alyssa)';
 
-        // Special friendly display for shared boy tasks or family tasks
+        // Special friendly display for shared boy tasks
         if (!knownUser && act.user && act.user.name) {
             const rawName = act.user.name;
             if (rawName.includes("Ayden") && rawName.includes("DJ")) {
                 userName = "Ayden & DJ";
                 color = "var(--user-ayden)";
-            } else if (rawName.toLowerCase() === "family") {
-                userName = "Family";
-                color = "var(--primary, #03dac6)";
             }
         }
 
