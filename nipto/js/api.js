@@ -286,16 +286,52 @@ export async function prefetchActivitiesHistory() {
     }
 }
 
-// Loads historical activities for a prior week from Firestore activities_history with MCP fallback
+// Loads historical activities for a prior week directly from official Nipto MCP (authoritative, reflects all deletions)
+// with fallback to Firestore activities_history if offline.
 export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDate) {
     if (state.historicalActivitiesCache[weekUid] && state.historicalActivitiesCache[weekUid].length > 0) {
         return state.historicalActivitiesCache[weekUid];
     }
-    try {
-        let activities = [];
+    
+    let activities = [];
 
-        // 1. Query Firestore activities_history for this specific week
-        if (weekUid && weekUid !== 'all') {
+    // 1. Primary authoritative source: Nipto MCP list_activities
+    // Nipto MCP is the direct upstream source of truth—if a task was completed and then deleted,
+    // it will NOT be returned by Nipto MCP, ensuring deleted tasks never linger with positive points.
+    if (weekUid && weekUid !== 'all') {
+        try {
+            const mcpData = await fetchNiptoMcp('list_activities', { week: weekUid });
+            if (mcpData && mcpData.activities) {
+                const labels = state.activityLabels || {};
+                mcpData.activities.forEach(act => {
+                    let uName = act.member?.name || "";
+                    if (uName === "Alyssa M") uName = "Alyssa";
+                    const uObj = ALL_USERS.find(u => u.uid === act.member?.uid || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+                    const finalName = (uObj ? uObj.name : uName) || "Unknown";
+                    const finalUid = act.member?.uid || (uObj ? uObj.uid : "");
+                    const customLabel = labels[act.uid] || "";
+                    const pts = (act.eggs !== undefined) ? act.eggs : (act.task?.value || 0);
+
+                    activities.push({
+                        uid: act.uid,
+                        date: act.date,
+                        parsedDate: new Date(act.date),
+                        user: { uid: finalUid, name: finalName },
+                        task: { uid: act.task?.uid, name: act.task?.name || "Activity", value: pts },
+                        awardedPts: pts,
+                        label: customLabel,
+                        weekUid: weekUid
+                    });
+                });
+            }
+        } catch (mcpErr) {
+            console.warn(`[Nipto MCP] Could not fetch activities for week ${weekUid}, falling back to Firestore:`, mcpErr);
+        }
+    }
+
+    // 2. Fallback: Query Firestore activities_history only if MCP failed or returned no activities
+    if (activities.length === 0 && weekUid && weekUid !== 'all') {
+        try {
             const snapshot = await window.getNiptoCollection('activities_history')
                 .where('weekUid', '==', weekUid)
                 .get();
@@ -323,44 +359,14 @@ export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDat
                     });
                 });
             }
+        } catch (fsErr) {
+            console.warn(`Firestore fallback error for week ${weekUid}:`, fsErr);
         }
+    }
 
-        // 2. If Firestore doesn't have this week, fetch authoritative activities from Nipto MCP
-        if (activities.length === 0 && weekUid && weekUid !== 'all') {
-            try {
-                const mcpData = await fetchNiptoMcp('list_activities', { week: weekUid });
-                if (mcpData && mcpData.activities && mcpData.activities.length > 0) {
-                    const labels = state.activityLabels || {};
-                    mcpData.activities.forEach(act => {
-                        let uName = act.member?.name || "";
-                        if (uName === "Alyssa M") uName = "Alyssa";
-                        const uObj = ALL_USERS.find(u => u.uid === act.member?.uid || (uName && u.name.toLowerCase() === uName.toLowerCase()));
-                        const finalName = (uObj ? uObj.name : uName) || "Unknown";
-                        const finalUid = act.member?.uid || (uObj ? uObj.uid : "");
-                        const customLabel = labels[act.uid] || "";
-                        const pts = (act.eggs !== undefined) ? act.eggs : (act.task?.value || 0);
-
-                        activities.push({
-                            uid: act.uid,
-                            date: act.date,
-                            parsedDate: new Date(act.date),
-                            user: { uid: finalUid, name: finalName },
-                            task: { uid: act.task?.uid, name: act.task?.name || "Activity", value: pts },
-                            awardedPts: pts,
-                            label: customLabel,
-                            weekUid: weekUid
-                        });
-                    });
-                    // Archive to Firestore in background so future lookups are cached
-                    archiveActivitiesToFirestore(activities);
-                }
-            } catch (mcpErr) {
-                console.warn(`MCP fallback for week ${weekUid} failed:`, mcpErr);
-            }
-        }
-
-        // 3. Fallback date range filter if weekUid wasn't specified but dates were
-        if (activities.length === 0 && startDate && endDate) {
+    // 3. Fallback date range filter if weekUid wasn't specified but dates were
+    if (activities.length === 0 && startDate && endDate) {
+        try {
             const start = new Date(startDate);
             const end = new Date(endDate);
             const snapshot = await window.getNiptoCollection('activities_history')
@@ -391,15 +397,12 @@ export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDat
                     });
                 });
             }
-        }
-
-        activities.sort((a, b) => b.parsedDate - a.parsedDate);
-        state.historicalActivitiesCache[weekUid] = activities;
-        return activities;
-    } catch (e) {
-        console.error(`Failed to load historical activities for week ${weekUid}:`, e);
-        return [];
+        } catch (e) { /* ignore */ }
     }
+
+    activities.sort((a, b) => b.parsedDate - a.parsedDate);
+    state.historicalActivitiesCache[weekUid] = activities;
+    return activities;
 }
 
 export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
@@ -447,12 +450,24 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
 
 export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
-    try {
-        await window.getNiptoCollection('activities_history').doc(activityUid).delete();
+    
+    // 1. Immediately remove from live memory cache for current week
+    if (state.allWeekActivities) {
+        state.allWeekActivities = state.allWeekActivities.filter(a => a.uid !== activityUid);
+    }
+
+    // 2. Remove from all historical in-memory caches
+    if (state.historicalActivitiesCache) {
         Object.keys(state.historicalActivitiesCache).forEach(wUid => {
             state.historicalActivitiesCache[wUid] = state.historicalActivitiesCache[wUid].filter(a => a.uid !== activityUid);
         });
+    }
+
+    // 3. Delete from Firestore activities_history
+    try {
+        await window.getNiptoCollection('activities_history').doc(activityUid).delete();
     } catch (e) { /* ignore */ }
+
     pingActivitySignal();
 }
 
