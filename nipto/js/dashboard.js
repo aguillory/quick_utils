@@ -171,8 +171,7 @@ async function startDashboardData() {
         await Promise.all([
             api.loadTasksFromFirestore(),
             api.loadRoutinesFromFirestore(),
-            api.loadActivityLabelsFromFirestore(),
-            api.prefetchActivitiesHistory()
+            api.loadActivityLabelsFromFirestore()
         ]);
         
         await initUsers();
@@ -181,7 +180,10 @@ async function startDashboardData() {
         renderPinnedTasks();
         renderRoutines();
         renderSidebarRoutines();
-        updateLeaderboardUI();
+        await updateLeaderboardUI();
+
+        // Warm recent week history in background without blocking initial rendering
+        api.prefetchActivitiesHistory();
     } catch (e) {
         console.error("Dashboard initialization failed:", e);
         const statusText = document.getElementById('status');

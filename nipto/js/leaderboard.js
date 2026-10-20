@@ -170,10 +170,16 @@ export async function changeSelectedWeek(weekUid) {
             const priorPoints = {};
             ALL_USERS.forEach(u => priorPoints[u.uid] = 0);
             weekObj.scores.forEach(s => {
-                if (s.user && s.user.uid) priorPoints[s.user.uid] = s.score;
-                else if (s.user && s.user.name) {
-                    const u = ALL_USERS.find(user => user.name.toLowerCase() === s.user.name.toLowerCase() || s.user.name.toLowerCase().startsWith(user.name.toLowerCase()));
-                    if (u) priorPoints[u.uid] = s.score;
+                let matchedUser = null;
+                if (s.user && s.user.uid) {
+                    matchedUser = ALL_USERS.find(u => u.uid === s.user.uid);
+                }
+                if (!matchedUser && s.user && s.user.name) {
+                    const sName = s.user.name.toLowerCase();
+                    matchedUser = ALL_USERS.find(u => u.name.toLowerCase() === sName || sName.startsWith(u.name.toLowerCase()));
+                }
+                if (matchedUser) {
+                    priorPoints[matchedUser.uid] = s.score;
                 }
             });
             drawLeaderboard(priorPoints, true, `Week ${weekNum}`);
@@ -253,7 +259,9 @@ function renderHistory(activities, isPriorWeek = false) {
     const labels = state.activityLabels || {};
 
     activities.sort((a, b) => b.parsedDate - a.parsedDate);
-    const timeOptions = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
+    const timeOptions = isPriorWeek
+        ? { month: 'short', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' }
+        : { weekday: 'short', hour: 'numeric', minute: '2-digit' };
 
     activities.forEach(act => {
         let knownUser = null;
@@ -265,16 +273,16 @@ function renderHistory(activities, isPriorWeek = false) {
             knownUser = ALL_USERS.find(u => u.name.toLowerCase() === uName || uName.startsWith(u.name.toLowerCase()));
         }
 
-        let userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Alyssa");
-        let color = knownUser ? knownUser.color : 'var(--user-alyssa)';
+        let rawName = act.user && act.user.name ? act.user.name : "";
+        if (rawName === "Alyssa M") rawName = "Alyssa";
+
+        let userName = knownUser ? knownUser.name : (rawName || "Unknown");
+        let color = knownUser ? knownUser.color : 'var(--text-muted)';
 
         // Special friendly display for shared boy tasks
-        if (!knownUser && act.user && act.user.name) {
-            const rawName = act.user.name;
-            if (rawName.includes("Ayden") && rawName.includes("DJ")) {
-                userName = "Ayden & DJ";
-                color = "var(--user-ayden)";
-            }
+        if (rawName.includes("Ayden") && rawName.includes("DJ")) {
+            userName = "Ayden & DJ";
+            color = "var(--user-ayden)";
         }
 
         const customLabel = (act.uid && labels[act.uid]) ? labels[act.uid] : (act.label || null);
@@ -299,7 +307,7 @@ function renderHistory(activities, isPriorWeek = false) {
             <div class="history-task-name">${taskName}</div>
             <div class="history-details">
                 <span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>
-                <span>${act.parsedDate.toLocaleDateString(undefined, timeOptions)}</span>
+                <span>${act.parsedDate.toLocaleString(undefined, timeOptions)}</span>
             </div>
         </div>
         ${deleteBtnHtml}

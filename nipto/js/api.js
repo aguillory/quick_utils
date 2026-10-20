@@ -25,6 +25,39 @@ export async function fetchNipto(query, variables = {}) {
     return data.data;
 }
 
+// Core Nipto MCP Fetch Wrapper (for historical activities and official tools)
+export async function fetchNiptoMcp(toolName, args = {}) {
+    if (!state.apiToken) throw new Error("Unauthorized: Missing Token");
+
+    const response = await fetch("https://nipto.app/mcp", {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream'
+        },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method: "tools/call",
+            params: {
+                name: toolName,
+                arguments: args
+            }
+        })
+    });
+
+    const data = await response.json();
+    if (data.error) {
+        throw new Error(data.error.message || "MCP Error");
+    }
+    const rawText = data.result?.content?.[0]?.text;
+    if (!rawText) return null;
+    const jsonStart = rawText.indexOf('{');
+    if (jsonStart === -1) return null;
+    return JSON.parse(rawText.slice(jsonStart));
+}
+
 // Check Authentication
 export function checkAuth(onSuccess, onRequirePin, onFail) {
     window.firebase.auth().onAuthStateChanged((user) => {
@@ -188,11 +221,18 @@ export async function archiveActivitiesToFirestore(activities) {
             const actDate = act.parsedDate || (act.date ? new Date(act.date) : new Date());
             const weekUid = act.weekUid || getWeekUidForDate(actDate);
             const pts = (act.awardedPts !== undefined) ? act.awardedPts : ((act.task && act.task.value) ? act.task.value : 0);
+            
+            let uName = (act.user && act.user.name) ? act.user.name : "Unknown";
+            if (uName === "Alyssa M") uName = "Alyssa";
+            const knownUser = ALL_USERS.find(u => (act.user && act.user.uid && u.uid === act.user.uid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+            const userUid = (act.user && act.user.uid) ? act.user.uid : (knownUser ? knownUser.uid : "");
+            const userName = (knownUser ? knownUser.name : uName) || "Unknown";
+
             const dataToSave = {
                 uid: act.uid,
                 date: actDate.toISOString(),
-                userName: (act.user && act.user.name) ? act.user.name : "Unknown",
-                userUid: (act.user && act.user.uid) ? act.user.uid : "",
+                userName: userName,
+                userUid: userUid,
                 taskName: (act.task && act.task.name) ? act.task.name : "",
                 taskValue: (act.task && act.task.value) ? act.task.value : pts,
                 awardedPts: pts,
@@ -229,97 +269,128 @@ export async function archiveActivitiesToFirestore(activities) {
     }
 }
 
-// Eagerly prefetches all activities_history from Firestore in one go,
-// caching them in memory by weekUid so week browsing is instantaneous.
+// Pre-warms recent activities history in memory in the background
 export async function prefetchActivitiesHistory() {
     try {
-        const snapshot = await window.getNiptoCollection('activities_history').get();
-        if (snapshot.empty) return;
-
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const actDate = new Date(data.date || doc.createTime);
-            const weekUid = data.weekUid || getWeekUidForDate(actDate);
-            if (!weekUid) return;
-
-            if (!state.historicalActivitiesCache[weekUid]) {
-                state.historicalActivitiesCache[weekUid] = [];
+        if (!state.weeksList || state.weeksList.length === 0) {
+            await getWeeksList();
+        }
+        const recentWeeks = (state.weeksList || []).slice(0, 2).map(w => w.uid);
+        for (const wUid of recentWeeks) {
+            if (!state.historicalActivitiesCache[wUid]) {
+                await loadHistoricalActivitiesForWeek(wUid);
             }
-
-            if (!state.historicalActivitiesCache[weekUid].some(a => a.uid === (data.uid || doc.id))) {
-                state.historicalActivitiesCache[weekUid].push({
-                    uid: data.uid || doc.id,
-                    date: data.date,
-                    parsedDate: actDate,
-                    user: { uid: data.userUid || "Llb9JjyTDvMnn8SJWfizXgthxl83", name: data.userName || "Alyssa" },
-                    task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
-                    awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
-                    label: data.label || "",
-                    weekUid: weekUid
-                });
-            }
-        });
-
-        // Sort activities in each week descending by date
-        Object.keys(state.historicalActivitiesCache).forEach(wUid => {
-            state.historicalActivitiesCache[wUid].sort((a, b) => b.parsedDate - a.parsedDate);
-        });
+        }
     } catch (e) {
         console.warn("Could not prefetch activities history:", e);
     }
 }
 
-// Loads historical activities for a prior week from Firestore activities_history
+// Loads historical activities for a prior week from Firestore activities_history with MCP fallback
 export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDate) {
     if (state.historicalActivitiesCache[weekUid] && state.historicalActivitiesCache[weekUid].length > 0) {
         return state.historicalActivitiesCache[weekUid];
     }
     try {
-        let snapshot;
+        let activities = [];
+
+        // 1. Query Firestore activities_history for this specific week
         if (weekUid && weekUid !== 'all') {
-            snapshot = await window.getNiptoCollection('activities_history')
+            const snapshot = await window.getNiptoCollection('activities_history')
                 .where('weekUid', '==', weekUid)
                 .get();
-        }
-        
-        let activities = [];
-        if (snapshot && !snapshot.empty) {
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                activities.push({
-                    uid: data.uid || doc.id,
-                    date: data.date,
-                    parsedDate: new Date(data.date),
-                    user: { uid: data.userUid || "Llb9JjyTDvMnn8SJWfizXgthxl83", name: data.userName || "Alyssa" },
-                    task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
-                    awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
-                    label: data.label || "",
-                    weekUid: data.weekUid || weekUid
-                });
-            });
-        }
 
-        // If no activities matched weekUid directly, try date range filter
-        if (activities.length === 0 && startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const allSnap = await window.getNiptoCollection('activities_history').get();
-            allSnap.forEach(doc => {
-                const data = doc.data();
-                const d = new Date(data.date);
-                if (d >= start && d <= end) {
+            if (snapshot && !snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let uName = data.userName || "";
+                    if (uName === "Alyssa M") uName = "Alyssa";
+                    const knownUser = ALL_USERS.find(u => (data.userUid && u.uid === data.userUid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+                    const userUid = data.userUid || (knownUser ? knownUser.uid : "");
+                    const userName = (knownUser ? knownUser.name : uName) || "Unknown";
+                    const label = (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || "";
+                    const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
+
                     activities.push({
                         uid: data.uid || doc.id,
                         date: data.date,
-                        parsedDate: d,
-                        user: { uid: data.userUid || "Llb9JjyTDvMnn8SJWfizXgthxl83", name: data.userName || "Alyssa" },
-                        task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
-                        awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
-                        label: data.label || "",
+                        parsedDate: new Date(data.date),
+                        user: { uid: userUid, name: userName },
+                        task: { name: data.taskName || "Activity", value: pts },
+                        awardedPts: pts,
+                        label: label,
                         weekUid: data.weekUid || weekUid
                     });
+                });
+            }
+        }
+
+        // 2. If Firestore doesn't have this week, fetch authoritative activities from Nipto MCP
+        if (activities.length === 0 && weekUid && weekUid !== 'all') {
+            try {
+                const mcpData = await fetchNiptoMcp('list_activities', { week: weekUid });
+                if (mcpData && mcpData.activities && mcpData.activities.length > 0) {
+                    const labels = state.activityLabels || {};
+                    mcpData.activities.forEach(act => {
+                        let uName = act.member?.name || "";
+                        if (uName === "Alyssa M") uName = "Alyssa";
+                        const uObj = ALL_USERS.find(u => u.uid === act.member?.uid || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+                        const finalName = (uObj ? uObj.name : uName) || "Unknown";
+                        const finalUid = act.member?.uid || (uObj ? uObj.uid : "");
+                        const customLabel = labels[act.uid] || "";
+                        const pts = (act.eggs !== undefined) ? act.eggs : (act.task?.value || 0);
+
+                        activities.push({
+                            uid: act.uid,
+                            date: act.date,
+                            parsedDate: new Date(act.date),
+                            user: { uid: finalUid, name: finalName },
+                            task: { uid: act.task?.uid, name: act.task?.name || "Activity", value: pts },
+                            awardedPts: pts,
+                            label: customLabel,
+                            weekUid: weekUid
+                        });
+                    });
+                    // Archive to Firestore in background so future lookups are cached
+                    archiveActivitiesToFirestore(activities);
                 }
-            });
+            } catch (mcpErr) {
+                console.warn(`MCP fallback for week ${weekUid} failed:`, mcpErr);
+            }
+        }
+
+        // 3. Fallback date range filter if weekUid wasn't specified but dates were
+        if (activities.length === 0 && startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const snapshot = await window.getNiptoCollection('activities_history')
+                .where('date', '>=', start.toISOString())
+                .where('date', '<=', end.toISOString())
+                .get();
+
+            if (snapshot && !snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let uName = data.userName || "";
+                    if (uName === "Alyssa M") uName = "Alyssa";
+                    const knownUser = ALL_USERS.find(u => (data.userUid && u.uid === data.userUid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+                    const userUid = data.userUid || (knownUser ? knownUser.uid : "");
+                    const userName = (knownUser ? knownUser.name : uName) || "Unknown";
+                    const label = (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || "";
+                    const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
+
+                    activities.push({
+                        uid: data.uid || doc.id,
+                        date: data.date,
+                        parsedDate: new Date(data.date),
+                        user: { uid: userUid, name: userName },
+                        task: { name: data.taskName || "Activity", value: pts },
+                        awardedPts: pts,
+                        label: label,
+                        weekUid: data.weekUid || weekUid
+                    });
+                });
+            }
         }
 
         activities.sort((a, b) => b.parsedDate - a.parsedDate);
