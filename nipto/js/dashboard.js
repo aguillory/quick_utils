@@ -171,7 +171,8 @@ async function startDashboardData() {
         await Promise.all([
             api.loadTasksFromFirestore(),
             api.loadRoutinesFromFirestore(),
-            api.loadActivityLabelsFromFirestore()
+            api.loadActivityLabelsFromFirestore(),
+            api.prefetchActivitiesHistory()
         ]);
         
         await initUsers();

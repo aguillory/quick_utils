@@ -172,7 +172,7 @@ export async function changeSelectedWeek(weekUid) {
             weekObj.scores.forEach(s => {
                 if (s.user && s.user.uid) priorPoints[s.user.uid] = s.score;
                 else if (s.user && s.user.name) {
-                    const u = ALL_USERS.find(user => user.name.toLowerCase() === s.user.name.toLowerCase());
+                    const u = ALL_USERS.find(user => user.name.toLowerCase() === s.user.name.toLowerCase() || s.user.name.toLowerCase().startsWith(user.name.toLowerCase()));
                     if (u) priorPoints[u.uid] = s.score;
                 }
             });
@@ -213,9 +213,10 @@ export async function updateHistoryDisplay() {
     if (!isPriorWeek) {
         let filteredActivities = state.allWeekActivities || [];
         if (state.historyViewMode === 'boys') {
-            filteredActivities = filteredActivities.filter(act =>
-                act.user && (act.user.name === "Ayden" || act.user.name === "DJ")
-            );
+            filteredActivities = filteredActivities.filter(act => {
+                const uName = (act.user && act.user.name) ? act.user.name.toLowerCase() : "";
+                return uName.includes("ayden") || uName.includes("dj");
+            });
         }
         renderHistory(filteredActivities, false);
     } else {
@@ -231,9 +232,10 @@ export async function updateHistoryDisplay() {
 
         let filtered = activities;
         if (state.historyViewMode === 'boys') {
-            filtered = activities.filter(act =>
-                act.user && (act.user.name === "Ayden" || act.user.name === "DJ")
-            );
+            filtered = activities.filter(act => {
+                const uName = (act.user && act.user.name) ? act.user.name.toLowerCase() : "";
+                return uName.includes("ayden") || uName.includes("dj");
+            });
         }
         renderHistory(filtered, true);
     }
@@ -259,11 +261,24 @@ function renderHistory(activities, isPriorWeek = false) {
             knownUser = ALL_USERS.find(u => u.uid === act.user.uid);
         }
         if (!knownUser && act.user && act.user.name) {
-            knownUser = ALL_USERS.find(u => u.name.toLowerCase() === act.user.name.toLowerCase());
+            const uName = act.user.name.toLowerCase();
+            knownUser = ALL_USERS.find(u => u.name.toLowerCase() === uName || uName.startsWith(u.name.toLowerCase()));
         }
 
-        const userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Family");
-        const color = knownUser ? knownUser.color : 'var(--text-muted)';
+        let userName = knownUser ? knownUser.name : (act.user && act.user.name ? act.user.name : "Family");
+        let color = knownUser ? knownUser.color : 'var(--text-muted)';
+
+        // Special friendly display for shared boy tasks or family tasks
+        if (!knownUser && act.user && act.user.name) {
+            const rawName = act.user.name;
+            if (rawName.includes("Ayden") && rawName.includes("DJ")) {
+                userName = "Ayden & DJ";
+                color = "var(--user-ayden)";
+            } else if (rawName.toLowerCase() === "family") {
+                userName = "Family";
+                color = "var(--primary, #03dac6)";
+            }
+        }
 
         const customLabel = (act.uid && labels[act.uid]) ? labels[act.uid] : (act.label || null);
         let taskName = act.task && act.task.name ? act.task.name : (act.taskName || "Activity");

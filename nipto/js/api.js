@@ -187,19 +187,41 @@ export async function archiveActivitiesToFirestore(activities) {
             const label = labels[act.uid] || act.label || "";
             const actDate = act.parsedDate || (act.date ? new Date(act.date) : new Date());
             const weekUid = act.weekUid || getWeekUidForDate(actDate);
+            const pts = (act.awardedPts !== undefined) ? act.awardedPts : ((act.task && act.task.value) ? act.task.value : 0);
             const dataToSave = {
                 uid: act.uid,
                 date: actDate.toISOString(),
                 userName: (act.user && act.user.name) ? act.user.name : "Unknown",
                 userUid: (act.user && act.user.uid) ? act.user.uid : "",
                 taskName: (act.task && act.task.name) ? act.task.name : "",
-                taskValue: (act.task && act.task.value) ? act.task.value : (act.awardedPts || 0),
-                awardedPts: (act.awardedPts !== undefined) ? act.awardedPts : ((act.task && act.task.value) ? act.task.value : 0),
+                taskValue: (act.task && act.task.value) ? act.task.value : pts,
+                awardedPts: pts,
                 label: label,
                 weekUid: weekUid || ""
             };
             batch.set(docRef, dataToSave, { merge: true });
             count++;
+
+            // Also keep in-memory cache synchronized immediately
+            if (weekUid) {
+                if (!state.historicalActivitiesCache[weekUid]) state.historicalActivitiesCache[weekUid] = [];
+                const existingIdx = state.historicalActivitiesCache[weekUid].findIndex(a => a.uid === act.uid);
+                const cacheItem = {
+                    uid: act.uid,
+                    date: dataToSave.date,
+                    parsedDate: actDate,
+                    user: { uid: dataToSave.userUid, name: dataToSave.userName },
+                    task: { name: dataToSave.taskName, value: dataToSave.taskValue },
+                    awardedPts: pts,
+                    label: label,
+                    weekUid: weekUid
+                };
+                if (existingIdx >= 0) {
+                    state.historicalActivitiesCache[weekUid][existingIdx] = cacheItem;
+                } else {
+                    state.historicalActivitiesCache[weekUid].unshift(cacheItem);
+                }
+            }
         });
         if (count > 0) await batch.commit();
     } catch (e) {
@@ -207,9 +229,49 @@ export async function archiveActivitiesToFirestore(activities) {
     }
 }
 
+// Eagerly prefetches all activities_history from Firestore in one go,
+// caching them in memory by weekUid so week browsing is instantaneous.
+export async function prefetchActivitiesHistory() {
+    try {
+        const snapshot = await window.getNiptoCollection('activities_history').get();
+        if (snapshot.empty) return;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const actDate = new Date(data.date || doc.createTime);
+            const weekUid = data.weekUid || getWeekUidForDate(actDate);
+            if (!weekUid) return;
+
+            if (!state.historicalActivitiesCache[weekUid]) {
+                state.historicalActivitiesCache[weekUid] = [];
+            }
+
+            if (!state.historicalActivitiesCache[weekUid].some(a => a.uid === (data.uid || doc.id))) {
+                state.historicalActivitiesCache[weekUid].push({
+                    uid: data.uid || doc.id,
+                    date: data.date,
+                    parsedDate: actDate,
+                    user: { uid: data.userUid || "", name: data.userName || "Family" },
+                    task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
+                    awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
+                    label: data.label || "",
+                    weekUid: weekUid
+                });
+            }
+        });
+
+        // Sort activities in each week descending by date
+        Object.keys(state.historicalActivitiesCache).forEach(wUid => {
+            state.historicalActivitiesCache[wUid].sort((a, b) => b.parsedDate - a.parsedDate);
+        });
+    } catch (e) {
+        console.warn("Could not prefetch activities history:", e);
+    }
+}
+
 // Loads historical activities for a prior week from Firestore activities_history
 export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDate) {
-    if (state.historicalActivitiesCache[weekUid]) {
+    if (state.historicalActivitiesCache[weekUid] && state.historicalActivitiesCache[weekUid].length > 0) {
         return state.historicalActivitiesCache[weekUid];
     }
     try {
@@ -228,11 +290,11 @@ export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDat
                     uid: data.uid || doc.id,
                     date: data.date,
                     parsedDate: new Date(data.date),
-                    user: { uid: data.userUid, name: data.userName },
-                    task: { name: data.taskName, value: data.taskValue },
-                    awardedPts: data.awardedPts,
-                    label: data.label,
-                    weekUid: data.weekUid
+                    user: { uid: data.userUid || "", name: data.userName || "Family" },
+                    task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
+                    awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
+                    label: data.label || "",
+                    weekUid: data.weekUid || weekUid
                 });
             });
         }
@@ -250,11 +312,11 @@ export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDat
                         uid: data.uid || doc.id,
                         date: data.date,
                         parsedDate: d,
-                        user: { uid: data.userUid, name: data.userName },
-                        task: { name: data.taskName, value: data.taskValue },
-                        awardedPts: data.awardedPts,
-                        label: data.label,
-                        weekUid: data.weekUid
+                        user: { uid: data.userUid || "", name: data.userName || "Family" },
+                        task: { name: data.taskName || "Activity", value: data.taskValue || data.awardedPts || 0 },
+                        awardedPts: data.awardedPts !== undefined ? data.awardedPts : (data.taskValue || 0),
+                        label: data.label || "",
+                        weekUid: data.weekUid || weekUid
                     });
                 }
             });
@@ -316,6 +378,9 @@ export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
     try {
         await window.getNiptoCollection('activities_history').doc(activityUid).delete();
+        Object.keys(state.historicalActivitiesCache).forEach(wUid => {
+            state.historicalActivitiesCache[wUid] = state.historicalActivitiesCache[wUid].filter(a => a.uid !== activityUid);
+        });
     } catch (e) { /* ignore */ }
     pingActivitySignal();
 }
@@ -490,6 +555,12 @@ export async function saveActivityLabels(activityUids, name) {
         batch.set(window.getNiptoCollection('activity_labels').doc(uid), { name });
         batch.set(window.getNiptoCollection('activities_history').doc(uid), { label: name }, { merge: true });
         state.activityLabels[uid] = name;
+
+        // Also keep in-memory historical activities cache in sync
+        Object.keys(state.historicalActivitiesCache).forEach(wUid => {
+            const cached = state.historicalActivitiesCache[wUid].find(a => a.uid === uid);
+            if (cached) cached.label = name;
+        });
     });
     try { await batch.commit(); } catch (e) { console.error("Error saving activity labels:", e); }
 }
