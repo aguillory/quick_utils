@@ -302,11 +302,16 @@ function renderHistory(activities, isPriorWeek = false) {
             ? '' 
             : `<button class="delete-activity-btn" onclick="deleteTaskActivity('${act.uid}', this)" title="Delete Activity">🗑️</button>`;
 
+        const isNegative = Number(taskValue) < 0;
+        const ptsDisplay = isNegative
+            ? `<span style="color: var(--danger, #ef4444); font-weight: bold;">${userName} (${taskValue})</span>`
+            : `<span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>`;
+
         itemDiv.innerHTML = `
         <div class="history-item-content">
             <div class="history-task-name">${taskName}</div>
             <div class="history-details">
-                <span style="color: ${color}; font-weight: bold;">${userName} (+${taskValue})</span>
+                ${ptsDisplay}
                 <span>${act.parsedDate.toLocaleString(undefined, timeOptions)}</span>
             </div>
         </div>

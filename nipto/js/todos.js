@@ -402,10 +402,22 @@ export function closeTaskModal() {
 export async function deleteTask(id) {
     if (confirm("Are you sure you want to delete this task?")) {
         const todo = state.todoTasksData ? state.todoTasksData.find(t => t.id === id) : null;
+        let deletedAny = false;
         if (todo && todo.completedActivityUids && todo.completedActivityUids.length > 0) {
             for (const actUid of todo.completedActivityUids) {
-                try { await api.deleteActivityFromNipto(actUid); } catch(e) { console.warn("Failed to delete activity on task delete:", e); }
+                try { await api.deleteActivityFromNipto(actUid); deletedAny = true; } catch(e) { console.warn("Failed to delete activity on task delete:", e); }
             }
+        }
+        if (todo && todo.subTasks && todo.subTasks.length > 0) {
+            for (const st of todo.subTasks) {
+                if (st.completedActivityUids && st.completedActivityUids.length > 0) {
+                    for (const actUid of st.completedActivityUids) {
+                        try { await api.deleteActivityFromNipto(actUid); deletedAny = true; } catch(e) {} 
+                    }
+                }
+            }
+        }
+        if (deletedAny) {
             await updateLeaderboardUI();
         }
         await api.deleteFirestoreDocument('custom_tasks', id);
@@ -733,8 +745,9 @@ export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedN
         completedActivityUids: task.completedActivityUids || []
     });
     
-    if (isComplete && linkedNiptoTask && linkedNiptoTask !== 'null') {
-        updateLeaderboardUI();
+    if (linkedNiptoTask && linkedNiptoTask !== 'null') {
+        await updateLeaderboardUI();
+        if (isComplete) {
         const stObj = state.tasks ? state.tasks.find(t => t.uid === linkedNiptoTask) : null;
         if (stObj) {
             const doerUids = state.activeUsers && state.activeUsers.length > 0 ? state.activeUsers : [state.users[0]?.uid];
@@ -744,6 +757,7 @@ export async function toggleSubTaskStatus(taskId, subTaskId, isComplete, linkedN
                 return u ? u.name : 'Unknown';
             }).join(', ');
             showToast(linkedNiptoTask, st.name, ptsPerUser, doerNames);
+        }
         }
     }
 }
