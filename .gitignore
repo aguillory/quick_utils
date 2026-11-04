@@ -1,1 +1,5 @@
 agentic_coding_resources/
+agentic_coding_resources/google_api_key.txt
+*.env
+.env*
+secrets.yaml
