@@ -10,11 +10,11 @@ export function toggleViewAll() {
     state.isViewAllMode = !state.isViewAllMode;
     const btn = document.getElementById('viewAllBtn');
     if (state.isViewAllMode) {
-        btn.innerText = "🏠 View My Dashboard";
+        btn.innerText = "[Home] View My Dashboard";
         btn.style.backgroundColor = "var(--text-muted)";
         btn.style.color = "white";
     } else {
-        btn.innerText = "🔍 View All Tasks";
+        btn.innerText = "[Search] View All Tasks";
         btn.style.backgroundColor = "";
         btn.style.color = "";
     }
@@ -50,19 +50,19 @@ export async function toggleEditMode() {
         
         // Update main edit button
         if (btn) {
-            btn.innerHTML = "💾 Save Dashboard";
+            btn.innerHTML = "[Save] Save Dashboard";
             btn.classList.add('save-mode');
         }
         
         // Update mini-bar edit button
         if (miniBtn) {
-            miniBtn.innerHTML = "💾 Save";
+            miniBtn.innerHTML = "[Save] Save";
             miniBtn.classList.add('save-mode');
         }
 
         if (floatingBtn) {
             floatingBtn.style.display = 'block';
-            floatingBtn.innerHTML = "💾 Save Dashboard";
+            floatingBtn.innerHTML = "[Save] Save Dashboard";
             floatingBtn.disabled = false;
         }
         
@@ -78,15 +78,15 @@ export async function toggleEditMode() {
     } else {
         // Saving state...
         if (btn) {
-            btn.innerHTML = "💾 Saving...";
+            btn.innerHTML = "[Save] Saving...";
             btn.disabled = true;
         }
         if (miniBtn) {
-            miniBtn.innerHTML = "💾 Saving...";
+            miniBtn.innerHTML = "[Save] Saving...";
             miniBtn.disabled = true;
         }
         if (floatingBtn) {
-            floatingBtn.innerHTML = "💾 Saving...";
+            floatingBtn.innerHTML = "[Save] Saving...";
             floatingBtn.disabled = true;
         }
         if (syncBtn) syncBtn.disabled = true;
@@ -98,13 +98,13 @@ export async function toggleEditMode() {
         state.hasEnteredTaskPin = false;
         
         if (btn) {
-            btn.innerHTML = "✏️ Edit Dashboard";
+            btn.innerHTML = "[Edit] Edit Dashboard";
             btn.classList.remove('save-mode');
             btn.disabled = false;
         }
         
         if (miniBtn) {
-            miniBtn.innerHTML = "✏️ Edit";
+            miniBtn.innerHTML = "[Edit] Edit";
             miniBtn.classList.remove('save-mode');
             miniBtn.disabled = false;
         }

@@ -1,7 +1,7 @@
 // state.js
+// Centralized reactive state for the Nipto web application.
 
 export const ALL_USERS = [];
-
 
 export const state = {
     activeUsers: [],
@@ -10,26 +10,86 @@ export const state = {
     historyViewMode: 'all',
     currentMode: 'live',
     
-    // Data arrays
-    tasks: [],
+    // Core data arrays
+    tasks: [],             // Nipto repeatable chores from Firestore
     customChores: [],
     allWeekActivities: [],
-    todoTasksData: [], 
-    routines: [],
+    todoTasksData: [],     // Active To-Dos from Firestore
+    routines: [],          // Routines from Firestore
     
     // Week browsing & history
     selectedWeekUid: 'current',
     weeksList: [],
     historicalActivitiesCache: {},
     currentWeekScores: {},
+    activityLabels: {},
 
-    // Edit mode tracking
+    // Edit & display mode tracking
     isEditMode: false,
     isViewAllMode: false,
     tempEditPrefs: new Set(),
     hasEnteredTaskPin: false,
-    apiToken: localStorage.getItem("nipto_api_token") || ""
+    apiToken: localStorage.getItem("nipto_api_token") || "",
 
+    // Phase 3 & 4 new state extensions
+    allowanceLedger: {
+        ayden: { unpaidPoints: 0, payoutHistory: [] },
+        dj: { unpaidPoints: 0, payoutHistory: [] }
+    },
+    integrationsConfig: {
+        geminiApiKey: "",
+        haWebhookUrl: "https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge"
+    },
+    notificationPreferences: {
+        adults: {
+            "Llb9JjyTDvMnn8SJWfizXgthxl83": {
+                name: "Alyssa",
+                haTarget: "notify.mobile_app_alyssa_phone",
+                chatMode: "all_messages",
+                directAssignmentAlerts: true,
+                morningDigest: true,
+                eveningDigest: true
+            },
+            "cHnAKABalRf0gETPsDt9EiJLyZd2": {
+                name: "Devyn",
+                haTarget: "notify.mobile_app_devyn_s_phone",
+                chatMode: "ping_only",
+                directAssignmentAlerts: true,
+                morningDigest: false,
+                eveningDigest: true
+            },
+            "2pxnC1oGlZbLQLmu9UJJVPYOEmZ2": {
+                name: "Carrina",
+                haTarget: "notify.mobile_app_carrina_phone",
+                chatMode: "all_messages",
+                directAssignmentAlerts: true,
+                morningDigest: true,
+                eveningDigest: true
+            },
+            "TilLpLRDz4VWel79jVevmu3JsIH3": {
+                name: "Kenny",
+                haTarget: "",
+                chatMode: "muted",
+                directAssignmentAlerts: false,
+                morningDigest: false,
+                eveningDigest: false
+            }
+        }
+    },
+    recentCompletions: [],
+    
+    // Filter state
+    scheduleFilter: 'all',          // 'all' | 'me' | uid
+    todoPersonFilter: 'all',        // 'all' | 'me' | 'unassigned' | uid
+    todoBucketFilter: 'all',        // 'all' | 'actionable' | 'project_idea'
+    todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'
+    
+    // Bulk triage selection
+    selectedTodoIds: new Set(),
+    selectedRoutineIds: new Set(),
+    
+    // Gemini Brain Dump staging
+    brainDumpStaging: []
 };
 
 export function saveUserState() {
@@ -38,4 +98,3 @@ export function saveUserState() {
         users: state.activeUsers
     }));
 }
-state.activityLabels = {};

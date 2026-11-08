@@ -113,12 +113,12 @@ export function toggleHeaderCollapse() {
     if (collapsing) {
         full.style.display = 'none';
         mini.style.display = 'flex'; // Changed to flex to respect our new single-line layout
-        btn.innerHTML = '🔽 Expand';
+        btn.innerHTML = '&#x25BC; Expand';
         updateMiniUserDisplay();
     } else {
         full.style.display = 'block';
         mini.style.display = 'none';
-        btn.innerHTML = '🔼 Collapse';
+        btn.innerHTML = '&#x25B2; Collapse';
     }
     localStorage.setItem('nipto_header_collapsed', collapsing);
 }
@@ -149,7 +149,7 @@ export function toggleMiniUserMenu(event) {
             let html = '';
             
             ALL_USERS.forEach(u => {
-                html += `<button type="button" class="theme-option" onclick="setActiveUser('${u.uid}')">👤 ${u.name}</button>`;
+                html += `<button type="button" class="theme-option" onclick="setActiveUser('${u.uid}')">&#x1F464; ${u.name}</button>`;
             });
             
             menu.innerHTML = html;
@@ -188,12 +188,12 @@ export function updateMiniUserDisplay() {
         const ALL_USERS = mod.ALL_USERS;
         
         if (!state.activeUsers || state.activeUsers.length === 0) {
-            btnText.innerText = '👤 Select User';
+            btnText.innerText = '&#x1F464; Select User';
             return;
         }
         
         if (state.isTogetherMode) {
-            btnText.innerText = '🤝 Together';
+            btnText.innerText = '&#x1F91D; Together';
             return;
         }
 
@@ -202,7 +202,7 @@ export function updateMiniUserDisplay() {
             return u ? u.name : null;
         }).filter(Boolean);
         
-        btnText.innerText = '👤 ' + (names.length ? names.join(', ') : 'Select User');
+        btnText.innerText = '&#x1F464; ' + (names.length ? names.join(', ') : 'Select User');
     });
 }
 // Restores the collapsed header state on load.

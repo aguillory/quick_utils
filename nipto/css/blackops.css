@@ -204,7 +204,7 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 }
 
 .leader-crown::after {
-    content: "✪ PRESTIGE";
+    content: "\272A PRESTIGE";
     font-size: 14px;
     color: #000;
     background: var(--primary);

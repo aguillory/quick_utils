@@ -51,15 +51,15 @@
 <body>
 <div class="admin-wrap">
     <div class="admin-card">
-        <h2 style="margin:0 0 6px 0;">🕵️ Chat Audit Log</h2>
+        <h2 style="margin:0 0 6px 0;">&#x1F575;️ Chat Audit Log</h2>
         <p class="stat" style="margin:0 0 14px 0;">
             Every deleted or edited message, with its full version history. Nothing is ever really deleted.
         </p>
         <div class="admin-bar">
-            <button class="pill active" id="f-flagged" onclick="setFilter('flagged')">🚩 Deleted or Edited</button>
-            <button class="pill" id="f-deleted" onclick="setFilter('deleted')">🗑️ Deleted only</button>
-            <button class="pill" id="f-edited" onclick="setFilter('edited')">✏️ Edited only</button>
-            <button class="pill" id="f-all" onclick="setFilter('all')">📜 All messages</button>
+            <button class="pill active" id="f-flagged" onclick="setFilter('flagged')">&#x1F6A9; Deleted or Edited</button>
+            <button class="pill" id="f-deleted" onclick="setFilter('deleted')">&#x1F5D1;️ Deleted only</button>
+            <button class="pill" id="f-edited" onclick="setFilter('edited')">[Edit] Edited only</button>
+            <button class="pill" id="f-all" onclick="setFilter('all')">&#x1F4DC; All messages</button>
             <input type="text" id="search" placeholder="Search text or sender…" oninput="render()">
             <button class="pill" onclick="exportJson()">⬇️ Export JSON</button>
         </div>
@@ -101,7 +101,7 @@ function render(){
         `${ALL.filter(m=>m.edited).length} edited • showing ${rows.length}`;
     const list = document.getElementById('list');
     if (!rows.length) {
-        list.innerHTML = '<div class="admin-card" style="text-align:center;color:var(--text-muted);font-style:italic;">Nothing to show. 🎉</div>';
+        list.innerHTML = '<div class="admin-card" style="text-align:center;color:var(--text-muted);font-style:italic;">Nothing to show. &#x1F389;</div>';
         return;
     }
     list.innerHTML = rows.map(m => {
@@ -117,7 +117,7 @@ function render(){
                 ${hist.map((h,i) => `
                     <div class="hist-row" style="border-left-color:${h.action==='deleted'?'var(--danger)':'var(--primary)'};">
                         <div class="hist-meta">
-                            ${h.action === 'deleted' ? '🗑️ DELETED' : '✏️ EDITED'}
+                            ${h.action === 'deleted' ? '&#x1F5D1;️ DELETED' : '[Edit] EDITED'}
                             by ${esc(h.byName || 'Unknown')} · ${esc(fmt(new Date(h.at).getTime()))}
                             — text at that moment was:
                         </div>
@@ -140,10 +140,10 @@ function render(){
             </div>
             <div class="msg-text ${m.deleted ? 'struck' : ''}">${esc(m.text)}</div>
             ${m.deleted ? `<div class="msg-when" style="margin-top:6px;">
-                🗑️ Removed by <strong>${esc(m.deletedByName || 'Unknown')}</strong> on ${esc(fmt(m.deletedTs))}
+                &#x1F5D1;️ Removed by <strong>${esc(m.deletedByName || 'Unknown')}</strong> on ${esc(fmt(m.deletedTs))}
             </div>` : ''}
             ${m.edited && !m.deleted ? `<div class="msg-when" style="margin-top:6px;">
-                ✏️ Last edited ${esc(fmt(m.editedTs))} · ${ (m.history||[]).filter(h=>h.action==='edited').length } edit(s)
+                [Edit] Last edited ${esc(fmt(m.editedTs))} · ${ (m.history||[]).filter(h=>h.action==='edited').length } edit(s)
             </div>` : ''}
             ${histHtml}
             ${m.deleted ? `<div class="row-actions">

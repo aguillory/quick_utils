@@ -1,19 +1,30 @@
 // routines.js
-// Routines: the add/edit modal, scheduling engine, main + sidebar rendering,
-// complete/skip/delete actions, and background sync with Nipto history.
+// 7-Day Rolling Schedule (-3 Days | TODAY | +3 Days), Time-of-Day Buckets,
+// Retroactive Check-Off with Backdated Points, and Admin Clear (No Points).
+
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
 
-// Builds a compact assignee label for a routine card.
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Compact assignee label for a routine card
 export function formatRoutineAssignees(routine, compact = false) {
     const assignees = routine.assignees || [];
     const fontSize = compact ? '10px' : '11px';
     const baseStyle = `font-size: ${fontSize}; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);`;
 
-    if (assignees.length >= ALL_USERS.length) {
-        return `<span style="color: var(--text-muted); ${baseStyle}">👥 Anyone</span>`;
+    if (!assignees.length || assignees.length >= ALL_USERS.length) {
+        return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F465; Anyone</span>`;
     }
 
     if (routine.completionType === 'individual') {
@@ -21,20 +32,292 @@ export function formatRoutineAssignees(routine, compact = false) {
         if (myUids.length > 0) {
             return myUids.map(uid => {
                 const u = ALL_USERS.find(user => user.uid === uid);
-                return u ? `<span style="color: ${u.color}; ${baseStyle}">👤 ${u.name}</span>` : '';
+                return u ? `<span style="color: ${u.color}; ${baseStyle}">&#x1F464; ${escapeHtml(u.name)}</span>` : '';
             }).join(' ');
         }
-        return `<span style="color: var(--text-muted); ${baseStyle}">👤 Individual</span>`;
+        return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F464; Individual</span>`;
     }
 
     const names = assignees.map(uid => {
         const u = ALL_USERS.find(user => user.uid === uid);
-        return u ? u.name : 'Unknown';
+        return u ? escapeHtml(u.name) : 'Unknown';
     });
-    return `<span style="color: var(--text-muted); ${baseStyle}">👥 ${names.join(' or ')}</span>`;
+    return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F465; ${names.join(' or ')}</span>`;
 }
 
-// Opens the modal for creating a new routine.
+// ==========================================
+// 7-DAY ROLLING SCHEDULE ENGINE
+// ==========================================
+export function setScheduleFilter(filterVal) {
+    state.scheduleFilter = filterVal;
+    renderRollingSchedule();
+}
+
+// Determines if routine applies to a given JS Date object
+function routineAppliesToDate(routine, targetDate) {
+    const sched = routine.schedule || { type: 'daily' };
+    const dayOfWeek = targetDate.getDay(); // 0 = Sun, 1 = Mon ...
+    
+    if (sched.type === 'daily') return true;
+    if (sched.type === 'weekly') {
+        const days = sched.daysOfWeek || [];
+        return days.includes(dayOfWeek);
+    }
+    if (sched.type === 'interval') {
+        return true;
+    }
+    return true;
+}
+
+// Infers time-of-day bucket ("Morning", "Afternoon", "Evening", "Anytime")
+function getRoutineTimeOfDay(routine) {
+    if (routine.timeOfDay) return routine.timeOfDay;
+    if (routine.schedule?.timeOfDay) return routine.schedule.timeOfDay;
+    if (routine.schedule?.specificTimes && routine.schedule.specificTimes.length > 0) {
+        const first = routine.schedule.specificTimes[0].trim();
+        const hour = parseInt(first.split(':')[0], 10);
+        if (!isNaN(hour)) {
+            if (hour < 12) return 'Morning';
+            if (hour < 17) return 'Afternoon';
+            return 'Evening';
+        }
+    }
+    return 'Anytime';
+}
+
+// Format local YYYY-MM-DD
+function toLocalDateKey(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+export function renderRollingSchedule() {
+    const container = document.getElementById('rollingScheduleContainer');
+    if (!container) return;
+
+    const routines = state.routines || [];
+    const activeUid = state.activeUsers[0] || '';
+    const filter = state.scheduleFilter || 'all';
+
+    // 1. Build Filter Pills HTML
+    let filterHtml = `
+    <div class="filter-pills-row" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center;">
+        <span style="font-size: 12px; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Filter Routines:</span>
+        <button class="filter-pill ${filter === 'all' ? 'active' : ''}" onclick="setScheduleFilter('all')">All</button>
+        <button class="filter-pill ${filter === 'me' ? 'active' : ''}" onclick="setScheduleFilter('me')">Me (${ALL_USERS.find(u => u.uid === activeUid)?.name || 'Active'})</button>
+    `;
+    ALL_USERS.forEach(u => {
+        filterHtml += `<button class="filter-pill ${filter === u.uid ? 'active' : ''}" onclick="setScheduleFilter('${u.uid}')">${escapeHtml(u.name)}</button>`;
+    });
+    filterHtml += `</div>`;
+
+    // 2. Compute 7 rolling days: -3, -2, -1, 0, 1, 2, 3
+    const daysData = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let offset = -3; offset <= 3; offset++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        const dateKey = toLocalDateKey(d);
+        
+        let label = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        let badge = '';
+        if (offset === 0) badge = 'TODAY';
+        else if (offset === -1) badge = 'Yesterday';
+        else if (offset === 1) badge = 'Tomorrow';
+        else if (offset < 0) badge = `${offset} Days`;
+        else badge = `+${offset} Days`;
+
+        daysData.push({
+            offset,
+            dateObj: d,
+            dateKey,
+            label,
+            badge,
+            isToday: offset === 0,
+            isPast: offset < 0,
+            isFuture: offset > 0
+        });
+    }
+
+    // 3. Render 7-column grid
+    let gridHtml = `<div class="rolling-schedule-grid">`;
+
+    daysData.forEach(day => {
+        const colClass = `schedule-day-col ${day.isToday ? 'is-today' : ''} ${day.isPast ? 'is-past' : ''} ${day.isFuture ? 'is-future' : ''}`;
+        
+        gridHtml += `
+        <div class="${colClass}">
+            <div class="schedule-day-header">
+                <span class="schedule-day-badge">${day.badge}</span>
+                <span class="schedule-day-title">${day.label}</span>
+            </div>
+            <div class="schedule-day-body">
+        `;
+
+        // Filter routines for this day and user filter
+        const dayRoutines = routines.filter(r => {
+            if (!routineAppliesToDate(r, day.dateObj)) return false;
+            if (filter === 'me') {
+                return !r.assignees || !r.assignees.length || r.assignees.includes(activeUid);
+            } else if (filter !== 'all') {
+                return !r.assignees || !r.assignees.length || r.assignees.includes(filter);
+            }
+            return true;
+        });
+
+        if (dayRoutines.length === 0) {
+            gridHtml += `<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 12px 0;">No routines</div>`;
+        } else {
+            // Group by buckets: Morning, Afternoon, Evening, Anytime
+            const buckets = ['Morning', 'Afternoon', 'Evening', 'Anytime'];
+            buckets.forEach(bucket => {
+                const bucketRoutines = dayRoutines.filter(r => getRoutineTimeOfDay(r) === bucket);
+                if (bucketRoutines.length > 0) {
+                    gridHtml += `<div class="bucket-header">${bucket}</div>`;
+                    bucketRoutines.forEach(r => {
+                        const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
+                        const isDone = !!comp;
+                        const withoutPts = isDone && comp.withoutPoints;
+                        const doneByName = isDone ? (comp.completedByName || 'Someone') : '';
+                        
+                        const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+                        const pts = linkedTask ? linkedTask.value : 0;
+                        const assigneesLabel = formatRoutineAssignees(r, true);
+
+                        gridHtml += `
+                        <div class="routine-slot ${isDone ? 'is-completed' : ''}">
+                            <div class="routine-slot-info">
+                                <div class="routine-slot-title" style="${isDone ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                    ${escapeHtml(r.name)}
+                                </div>
+                                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 3px;">
+                                    ${assigneesLabel}
+                                    ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                                </div>
+                                ${isDone ? `
+                                    <div style="font-size: 10px; color: var(--success); font-weight: 700; margin-top: 2px;">
+                                        &#x2714; Done by ${escapeHtml(doneByName)}${withoutPts ? ' (No pts)' : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="routine-slot-actions">
+                        `;
+
+                        if (day.isFuture) {
+                            // Read-only future preview
+                            gridHtml += `<span style="font-size: 10px; color: var(--text-muted);">Upcoming</span>`;
+                        } else if (isDone) {
+                            // Undo button for this specific day
+                            gridHtml += `
+                                <button type="button" class="btn-undo-routine" onclick="undoRoutineForDate('${r.uid}', '${day.dateKey}')" title="Undo this day's completion">&#x21A9;</button>
+                            `;
+                        } else {
+                            // Check-off button + Admin Clear (No Pts) button
+                            gridHtml += `
+                                <button type="button" class="btn-check-routine" onclick="completeRoutineForDate('${r.uid}', '${day.dateKey}', true)" title="Mark Done (awards points)">
+                                    &#x2714;
+                                </button>
+                                <button type="button" class="btn-clear-routine" onclick="completeRoutineForDate('${r.uid}', '${day.dateKey}', false)" title="Admin: Clear Without Points">
+                                    &#x2716; No Pts
+                                </button>
+                            `;
+                        }
+
+                        gridHtml += `
+                            </div>
+                        </div>
+                        `;
+                    });
+                }
+            });
+        }
+
+        gridHtml += `
+            </div>
+        </div>
+        `;
+    });
+
+    gridHtml += `</div>`;
+
+    container.innerHTML = filterHtml + gridHtml;
+}
+
+// Retroactive Check-off & Backdated Point Attribution
+export async function completeRoutineForDate(routineId, dateKey, awardPoints = true) {
+    const routine = state.routines.find(r => r.uid === routineId);
+    if (!routine) return;
+
+    // Determine assignee to credit
+    let creditedUid = '';
+    let creditedName = 'User';
+    if (routine.assignees && routine.assignees.length === 1) {
+        creditedUid = routine.assignees[0];
+    } else {
+        creditedUid = state.activeUsers[0] || ALL_USERS[0].uid;
+    }
+    const userObj = ALL_USERS.find(u => u.uid === creditedUid);
+    if (userObj) creditedName = userObj.name;
+
+    const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
+    completions[dateKey] = {
+        completedAt: new Date().toISOString(),
+        completedByUid: creditedUid,
+        completedByName: creditedName,
+        withoutPoints: !awardPoints
+    };
+
+    try {
+        await api.updateFirestoreDocument('routines', routineId, {
+            completionsByDate: completions
+        });
+        routine.completionsByDate = completions;
+
+        // If awarding points and linked Nipto task exists, backdate points to that date noon!
+        if (awardPoints && routine.linkedNiptoTask && state.apiToken) {
+            const backdatedDateIso = new Date(`${dateKey}T12:00:00`).toISOString();
+            await api.logActivityToNipto(routine.linkedNiptoTask, backdatedDateIso, [creditedUid]);
+            const taskObj = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
+            const pts = taskObj ? taskObj.value : 0;
+            showToast(routine.linkedNiptoTask, routine.name, pts, creditedName);
+        } else if (!awardPoints) {
+            showToast("admin_clear", `Cleared "${routine.name}" on ${dateKey} (No points)`, 0, creditedName);
+        }
+
+        renderRollingSchedule();
+        updateLeaderboardUI();
+    } catch (err) {
+        console.error("Error completing routine for date:", err);
+        alert("Failed to complete routine: " + err.message);
+    }
+}
+
+// Reverts a specific date's completion
+export async function undoRoutineForDate(routineId, dateKey) {
+    const routine = state.routines.find(r => r.uid === routineId);
+    if (!routine || !routine.completionsByDate) return;
+
+    const completions = { ...routine.completionsByDate };
+    delete completions[dateKey];
+
+    try {
+        await api.updateFirestoreDocument('routines', routineId, {
+            completionsByDate: completions
+        });
+        routine.completionsByDate = completions;
+        renderRollingSchedule();
+        updateLeaderboardUI();
+    } catch (err) {
+        console.error("Error undoing routine:", err);
+        alert("Failed to undo routine: " + err.message);
+    }
+}
+
+// Opens the modal for creating a new routine
 export function openRoutineModal() {
     document.getElementById('routineModalTitle').innerText = "Add Routine";
     document.getElementById('routineId').value = '';
@@ -54,12 +337,10 @@ export function openRoutineModal() {
     document.getElementById('routineModal').style.display = 'flex';
 }
 
-// Closes the routine modal.
 export function closeRoutineModal() {
     document.getElementById('routineModal').style.display = 'none';
 }
 
-// Opens the modal pre-filled to edit an existing routine.
 export function editRoutine(routineId) {
     const routine = state.routines.find(r => r.uid === routineId);
     if (!routine) return;
@@ -88,25 +369,10 @@ export function editRoutine(routineId) {
     populateRoutineAssignees(routine.assignees || []);
     populateRoutinePointsSelect();
     document.getElementById('routinePoints').value = routine.linkedNiptoTask || '';
-
     toggleRoutineFrequencyFields();
-
-    if (routine.overdueAfterHours != null) {
-        const hours = routine.overdueAfterHours;
-        if (hours >= 24 && hours % 24 === 0) {
-            document.getElementById('routineOverdueValue').value = hours / 24;
-            document.getElementById('routineOverdueUnit').value = 'days';
-        } else {
-            document.getElementById('routineOverdueValue').value = hours;
-            document.getElementById('routineOverdueUnit').value = 'hours';
-        }
-        document.getElementById('overdueHint').textContent = 'Using your custom setting';
-    }
-
     document.getElementById('routineModal').style.display = 'flex';
 }
 
-// Shows/hides frequency-specific fields and refreshes overdue defaults.
 export function toggleRoutineFrequencyFields() {
     const freq = document.getElementById('routineFrequency').value;
     const dailyReset = document.getElementById('routineDailyReset').value;
@@ -115,32 +381,30 @@ export function toggleRoutineFrequencyFields() {
     document.getElementById('freqWeeklyFields').style.display = freq === 'weekly' ? 'block' : 'none';
     document.getElementById('freqIntervalFields').style.display = freq === 'interval' ? 'block' : 'none';
     document.getElementById('dailySpecificTimes').style.display = (freq === 'daily' && dailyReset === 'specific') ? 'block' : 'none';
-
-    updateOverdueDefaults();
 }
 
-// Builds the assignee checkboxes in the routine modal.
 function populateRoutineAssignees(selectedUids = []) {
     const container = document.getElementById('routineAssignees');
+    if (!container) return;
     container.innerHTML = '';
     ALL_USERS.forEach(u => {
         const isChecked = selectedUids.includes(u.uid) ? 'checked' : '';
         container.innerHTML += `
         <label style="font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-        <input type="checkbox" value="${u.uid}" class="routine-assignee-cb" ${isChecked}> ${u.name}
+            <input type="checkbox" value="${u.uid}" class="routine-assignee-cb" ${isChecked}> ${escapeHtml(u.name)}
         </label>`;
     });
 }
 
-// Builds the grouped points dropdown for the routine modal.
 function populateRoutinePointsSelect() {
     const select = document.getElementById('routinePoints');
+    if (!select) return;
     select.innerHTML = '<option value="">-- No Points --</option>';
     if (!state.tasks || state.tasks.length === 0) return;
 
     const groupedTasks = state.tasks.reduce((acc, task) => {
         const categoryName = task.category || task.group || 'Uncategorized';
-        if (categoryName === "📌") return acc;
+        if (categoryName === "General" || categoryName === "Pinned") return acc;
         if (!acc[categoryName]) acc[categoryName] = [];
         acc[categoryName].push(task);
         return acc;
@@ -152,13 +416,12 @@ function populateRoutinePointsSelect() {
         optGroup.label = category;
         const tasksInCat = groupedTasks[category].sort((a, b) => a.name.localeCompare(b.name));
         tasksInCat.forEach(t => {
-            optGroup.innerHTML += `<option value="${t.uid}">${t.name} (${t.value} pts)</option>`;
+            optGroup.innerHTML += `<option value="${t.uid}">${escapeHtml(t.name)} (${t.value} pts)</option>`;
         });
         select.appendChild(optGroup);
     });
 }
 
-// Creates or updates a routine from the modal fields.
 export async function saveRoutine() {
     const name = document.getElementById('routineName').value.trim();
     if (!name) { alert("Routine Name is required!"); return; }
@@ -175,9 +438,6 @@ export async function saveRoutine() {
         if (resetType === 'specific') {
             const times = document.getElementById('routineSpecificTimes').value;
             scheduleData.specificTimes = times.split(',').map(t => t.trim()).filter(t => t);
-            if (scheduleData.specificTimes.length === 0) {
-                alert("Please enter at least one valid time (e.g., 05:00)"); return;
-            }
             scheduleData.specificTimes.sort();
         }
     } else if (freq === 'weekly') {
@@ -189,17 +449,13 @@ export async function saveRoutine() {
         scheduleData.unit = document.getElementById('routineIntervalUnit').value;
     }
 
-    let overdueVal = parseInt(document.getElementById('routineOverdueValue').value) || 14;
-    let overdueUnit = document.getElementById('routineOverdueUnit').value;
-    let overdueAfterHours = overdueUnit === 'days' ? overdueVal * 24 : overdueVal;
-
     let routineData = {
         name: name,
         completionType: document.getElementById('routineType').value,
         assignees: assignees,
         schedule: scheduleData,
-        linkedNiptoTask: document.getElementById('routinePoints').value || null,
-        overdueAfterHours: overdueAfterHours
+        timeOfDay: scheduleData.timeOfDay || 'Anytime',
+        linkedNiptoTask: document.getElementById('routinePoints').value || null
     };
 
     const id = document.getElementById('routineId').value;
@@ -208,591 +464,29 @@ export async function saveRoutine() {
             await api.updateFirestoreDocument('routines', id, routineData);
         } else {
             routineData.createdAt = new Date().toISOString();
-            routineData.lastCompleted = {};
-            routineData.lastCompletedBy = {};
+            routineData.completionsByDate = {};
             await api.addFirestoreDocument('routines', routineData);
         }
         closeRoutineModal();
-
         await api.loadRoutinesFromFirestore();
-        await syncRoutinesWithNiptoHistory();
-        renderRoutines();
-        renderSidebarRoutines();
+        renderRollingSchedule();
     } catch (error) {
         alert("Error saving routine: " + error.message);
     }
 }
 
-// Returns the default overdue grace period (hours) for a routine's schedule.
-function getDefaultOverdueHours(routine) {
-    const schedule = routine.schedule || {};
-    switch (schedule.type) {
-        case 'daily':
-            return schedule.resetType === 'specific' ? 4 : 14;
-        case 'weekly':
-            return 24;
-        case 'interval':
-            switch (schedule.unit) {
-                case 'days':   return 24;
-                case 'weeks':  return 48;
-                case 'months': return 168;
-                case 'years':  return 336;
-                default:       return 24;
-            }
-        default: return 24;
-    }
-}
-
-// Evaluates a routine's status (due / overdue / completed) and next due date.
-function getRoutineStatus(routine, targetUids) {
-    const now = new Date();
-    let lastComp = null;
-    let compNames = "";
-    let pendingNames = [];
-    let completedNames = [];
-let neverCompleted = false;
-    if (routine.completionType === 'shared') {
-        lastComp = routine.lastCompleted ? routine.lastCompleted['shared'] : null;
-        compNames = routine.lastCompletedBy ? routine.lastCompletedBy['shared'] : "";
-    } else {
-        let oldest = null;
-        let allDone = true;
-        let someCompleted = false;
-
-        targetUids.forEach(uid => {
-            const lc = routine.lastCompleted ? routine.lastCompleted[uid] : null;
-            const uObj = ALL_USERS.find(u => u.uid === uid);
-            const name = uObj ? uObj.name : 'Unknown';
-
-            if (!lc) {
-                allDone = false;
-                pendingNames.push(name);
-            } else {
-                someCompleted = true;
-                completedNames.push(name);
-                if (!oldest || new Date(lc) < new Date(oldest)) oldest = lc;
-            }
-        });
-
-        if (allDone) {
-            lastComp = oldest;
-            compNames = completedNames.join(', ');
-        } else if (someCompleted) {
-            return { status: 'due', nextDue: now, isCompleted: false, compNames: "", pendingNames, completedNames };
-        } else {
-            lastComp = null;
-        }
-    }
-
-    if (!lastComp) {
-    neverCompleted = true;
-        if (routine.createdAt) {
-            lastComp = routine.createdAt;
-            compNames = "";
-        } else {
-            return { status: 'due', nextDue: now, isCompleted: false, compNames: "", pendingNames: [], completedNames: [] };
-        }
-    }
-
-    const baseDate = new Date(lastComp);
-    if (isNaN(baseDate.getTime())) {
-        console.warn("Invalid baseDate in routine:", routine.name, lastComp);
-        return { status: 'due', nextDue: now, isCompleted: false, compNames: "", pendingNames: [], completedNames: [] };
-    }
-
-    let nextDue = new Date(baseDate);
-
-    if (routine.schedule.type === 'daily') {
-        if (routine.schedule.resetType === 'midnight') {
-            nextDue.setDate(nextDue.getDate() + 1);
-            nextDue.setHours(0, 0, 0, 0);
-        } else if (routine.schedule.resetType === 'specific') {
-            let foundNext = false;
-            let cleanTimes = (routine.schedule.specificTimes || []).map(t => {
-                let clean = t.trim().toLowerCase();
-                let isPM = clean.includes('pm');
-                let isAM = clean.includes('am');
-                clean = clean.replace(/[a-z\s]/g, '');
-                let parts = clean.split(':').map(Number);
-                let h = parts[0] || 0;
-                let m = parts[1] || 0;
-                if (isPM && h < 12) h += 12;
-                if (isAM && h === 12) h = 0;
-                return { h, m };
-            });
-            cleanTimes.sort((a, b) => (a.h * 60 + a.m) - (b.h * 60 + b.m));
-
-            for (let timeObj of cleanTimes) {
-                let candidate = new Date(baseDate);
-                candidate.setHours(timeObj.h, timeObj.m, 0, 0);
-                if (candidate > baseDate) { nextDue = candidate; foundNext = true; break; }
-            }
-            if (!foundNext && cleanTimes.length > 0) {
-                nextDue.setDate(nextDue.getDate() + 1);
-                nextDue.setHours(cleanTimes[0].h, cleanTimes[0].m, 0, 0);
-            }
-        }
-    } else if (routine.schedule.type === 'weekly') {
-        nextDue.setDate(nextDue.getDate() + 1);
-        nextDue.setHours(0, 0, 0, 0);
-        let safety = 0;
-        while (!routine.schedule.daysOfWeek.includes(nextDue.getDay()) && safety < 8) {
-            nextDue.setDate(nextDue.getDate() + 1);
-            safety++;
-        }
-    } else if (routine.schedule.type === 'interval') {
-        const val = routine.schedule.value;
-        const unit = routine.schedule.unit;
-        if (unit === 'days')   nextDue.setDate(nextDue.getDate() + val);
-        if (unit === 'weeks')  nextDue.setDate(nextDue.getDate() + (val * 7));
-        if (unit === 'months') nextDue.setMonth(nextDue.getMonth() + val);
-        if (unit === 'years')  nextDue.setFullYear(nextDue.getFullYear() + val);
-    }
-
-    if (isNaN(nextDue.getTime())) {
-        console.warn("Invalid nextDue calculated for routine:", routine.name);
-        return { status: 'due', nextDue: now, isCompleted: false, compNames: "", pendingNames: [], completedNames: [] };
-    }
-
-    const overdueHours = routine.overdueAfterHours || getDefaultOverdueHours(routine);
-    const overdueMs = overdueHours * 60 * 60 * 1000;
-
-    if (now >= nextDue) {
-        const isOverdue = (now.getTime() - nextDue.getTime()) > overdueMs;
-        return { status: isOverdue ? 'overdue' : 'due', nextDue, isCompleted: false, compNames: "", pendingNames, completedNames };
-    } else {
-if (neverCompleted) {
-            return { status: 'due', nextDue, isCompleted: false, compNames: "", pendingNames, completedNames };
-        }
-        return { status: 'completed', nextDue, isCompleted: true, compNames, completedAt: baseDate, pendingNames: [], completedNames };
-    }
-}
-// Fills the "All Routines" user-filter dropdown from ALL_USERS.
-function populateRoutineUserFilter() {
-    const select = document.getElementById('routineUserFilter');
-    if (!select) return;
-    const current = select.value || 'all';
-    select.innerHTML = '<option value="all">Everyone</option>';
-    ALL_USERS.forEach(u => {
-        select.innerHTML += `<option value="${u.uid}">${u.name}</option>`;
-    });
-    select.value = current;
-}
-
-// Builds one routine card. canComplete gates the ✅/⏭️ actions for the active user.
-function buildRoutineCard(r, ev, canComplete) {
-    const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
-    const ptsDisplay = linkedTaskInfo && linkedTaskInfo.value > 0
-        ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
-    const assigneesHtml = formatRoutineAssignees(r);
-
-    const card = document.createElement('div');
-    card.className = `chore-card ${ev.isCompleted ? 'completed' : ''}`;
-
-    let statusBadge = '';
-    if (ev.status === 'overdue') statusBadge = `<span style="color: white; background: var(--danger); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">⚠️ Overdue</span>`;
-    else if (ev.status === 'due') statusBadge = `<span style="color: white; background: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">📅 Due</span>`;
-
-    let completedText = '';
-    if (ev.isCompleted) {
-        const wasSkipped = ev.compNames && ev.compNames.includes('⏭️');
-        const resetLabel = ev.nextDue.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-        completedText = `<div style="font-size: 12px; color: ${wasSkipped ? 'var(--text-muted)' : 'var(--success)'}; margin-top: 5px; font-weight: bold;">
-            ${wasSkipped ? '⏭️ Skipped' : `✓ Done by ${ev.compNames}`} (Resets ${resetLabel})
-        </div>`;
-    } else if (r.completionType === 'individual' && ev.completedNames && ev.completedNames.length > 0) {
-        const doneStr = ev.completedNames.map(n => `<span style="color: var(--success);">✅ ${n}</span>`).join(' ');
-        const pendingStr = ev.pendingNames.map(n => `<span style="color: var(--text-muted);">⏳ ${n}</span>`).join(' ');
-        completedText = `<div style="font-size: 12px; margin-top: 5px; display: flex; gap: 8px; flex-wrap: wrap;">${doneStr} ${pendingStr}</div>`;
-    }
-
-    let actionButtons = '';
-    if (ev.isCompleted) {
-        actionButtons += `<button class="chore-btn undo-btn" onclick="undoRoutine('${r.uid}')" title="Undo">↩️</button>`;
-    } else if (canComplete) {
-        actionButtons += `<button class="chore-btn complete-btn" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>`;
-        actionButtons += `<button class="chore-btn" onclick="skipRoutine('${r.uid}')" title="Skip this occurrence" style="font-size: 14px; opacity: 0.7;">⏭️</button>`;
-    } else {
-        actionButtons += `<span style="font-size: 10px; color: var(--text-muted); max-width: 90px; text-align:right;">Select an assigned person at the top to complete</span>`;
-    }
-    actionButtons += `<button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit">✏️</button>`;
-    actionButtons += `<button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete">🗑️</button>`;
-
-    card.innerHTML = `
-    <div class="chore-header">
-        <div class="chore-title-area">
-            <div class="chore-title" style="${ev.isCompleted ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">
-                ${r.completionType === 'shared' ? '🤝' : '👤'} ${r.name}
-            </div>
-            <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                ${statusBadge}
-                ${assigneesHtml}
-                <span style="font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); padding: 2px 6px; border-radius: 4px;">↻ ${r.schedule.type}</span>
-                ${ptsDisplay ? `<span style="font-size: 11px; color: var(--primary); background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${ptsDisplay}</span>` : ''}
-            </div>
-            ${completedText}
-        </div>
-        <div class="chore-actions">${actionButtons}</div>
-    </div>`;
-    return card;
-}
-
-// Sorts evaluated routines: overdue → due → completed, individuals first, then by next due.
-function sortEvaluated(list) {
-    list.sort((a, b) => {
-        if (a.evaluation.status === 'overdue' && b.evaluation.status !== 'overdue') return -1;
-        if (a.evaluation.status !== 'overdue' && b.evaluation.status === 'overdue') return 1;
-        if (a.evaluation.isCompleted && !b.evaluation.isCompleted) return 1;
-        if (!a.evaluation.isCompleted && b.evaluation.isCompleted) return -1;
-        const aInd = a.routine.assignees.length === 1;
-        const bInd = b.routine.assignees.length === 1;
-        if (aInd && !bInd) return -1;
-        if (!aInd && bInd) return 1;
-        return a.evaluation.nextDue - b.evaluation.nextDue;
-    });
-    return list;
-}
-
-// "My Routines": those assigned to the active user(s), evaluated for them.
-export function renderMyRoutines() {
-    const container = document.getElementById('myRoutinesContainer');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!state.routines || state.routines.length === 0) {
-        container.innerHTML = '<div class="empty-dashboard-msg">No routines set up yet.</div>';
-        return;
-    }
-
-    let mine = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
-    if (mine.length === 0) {
-        container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No routines assigned to you.</div>';
-        return;
-    }
-
-    let evaluated = sortEvaluated(mine.map(r => ({ routine: r, evaluation: getRoutineStatus(r, state.activeUsers) })));
-    evaluated.forEach(item => container.appendChild(buildRoutineCard(item.routine, item.evaluation, true)));
-}
-
-// "All Routines": every routine, optionally filtered to one person (view only — completion stays gated).
-export function renderAllRoutines() {
-    const container = document.getElementById('allRoutinesContainer');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!state.routines || state.routines.length === 0) {
-        container.innerHTML = '<div class="empty-dashboard-msg">No routines set up yet.</div>';
-        return;
-    }
-
-    const filterSel = document.getElementById('routineUserFilter');
-    const filterUid = filterSel ? filterSel.value : 'all';
-
-    let list = state.routines;
-   if (filterUid !== 'all') list = list.filter(r => r.assignees && r.assignees.includes(filterUid));
-
-    if (list.length === 0) {
-        container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">No routines for that person.</div>';
-        return;
-    }
-
-    let evaluated = sortEvaluated(list.map(r => {
-        const targets = filterUid !== 'all' ? [filterUid] : r.assignees;
-        return { routine: r, evaluation: getRoutineStatus(r, targets) };
-    }));
-
-    evaluated.forEach(item => {
-        // Gate: only the user(s) selected at the TOP can actually log a completion.
-        const canComplete = state.activeUsers.some(uid => item.routine.assignees.includes(uid));
-        container.appendChild(buildRoutineCard(item.routine, item.evaluation, canComplete));
-    });
-}
-
-// Public entry: refresh the dropdown and both sections.
-export function renderRoutines() {
-    populateRoutineUserFilter();
-    renderMyRoutines();
-    renderAllRoutines();
-}
-
-// Clears the latest completion for the active users (or shared), reverting the routine to due.
-export async function undoRoutine(routineId) {
-    const routine = state.routines.find(r => r.uid === routineId);
-    if (!routine) return;
-    if (!confirm(`Undo completion of "${routine.name}"? Points already logged in Nipto are not removed.`)) return;
-
-    let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-    let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-
-    if (routine.completionType === 'shared') {
-        delete newLastCompleted['shared'];
-        delete newLastCompletedBy['shared'];
-    } else {
-        const targets = state.activeUsers.length ? state.activeUsers : Object.keys(newLastCompleted);
-        targets.forEach(uid => { delete newLastCompleted[uid]; delete newLastCompletedBy[uid]; });
-    }
-
-    try {
-        await api.updateFirestoreDocument('routines', routineId, {
-            lastCompleted: newLastCompleted,
-            lastCompletedBy: newLastCompletedBy
-        });
-        await api.loadRoutinesFromFirestore();
-        renderRoutines();
-        renderSidebarRoutines();
-    } catch (error) {
-        alert("Error undoing routine: " + error.message);
-    }
-}
-
-// Renders due/overdue routines for the active user in the sidebar.
-export function renderSidebarRoutines() {
-    const container = document.getElementById('sidebarRoutinesContainer');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!state.routines) return;
-
-    let visibleRoutines = state.routines.filter(r => state.activeUsers.some(uid => r.assignees.includes(uid)));
-
-    let dueRoutines = visibleRoutines
-        .map(r => ({ routine: r, evaluation: getRoutineStatus(r, state.activeUsers) }))
-        .filter(item => !item.evaluation.isCompleted);
-
-    if (dueRoutines.length === 0) {
-        container.innerHTML = '<div class="empty-history" style="margin-top: 10px;">All caught up! 🎉</div>';
-        return;
-    }
-
-    dueRoutines.sort((a, b) => {
-        if (a.evaluation.status === 'overdue' && b.evaluation.status !== 'overdue') return -1;
-        if (a.evaluation.status !== 'overdue' && b.evaluation.status === 'overdue') return 1;
-        return a.evaluation.nextDue - b.evaluation.nextDue;
-    });
-
-    dueRoutines.forEach(item => {
-        const r = item.routine;
-        const card = document.createElement('div');
-        card.className = 'chore-card';
-
-        const assigneesHtml = formatRoutineAssignees(r, true);
-        const timeStr = item.evaluation.nextDue.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const linkedTaskInfo = state.tasks.find(t => t.uid === r.linkedNiptoTask);
-        const pts = linkedTaskInfo && linkedTaskInfo.value > 0
-            ? `⭐ ${Math.ceil(linkedTaskInfo.value / state.currentSplitDivisor)} pts` : '';
-
-        card.innerHTML = `
-        <div class="chore-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
-            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                <div class="chore-title" style="font-size: 13px;">${item.evaluation.status === 'overdue' ? '⚠️ ' : ''}${r.name}</div>
-                <div style="display: flex; gap: 4px;">
-                    <button class="chore-btn complete-btn" style="padding: 4px 8px; font-size: 12px;" onclick="completeRoutine('${r.uid}', '${r.linkedNiptoTask}')">✅</button>
-                    <button class="chore-btn" style="padding: 4px 8px; font-size: 12px; opacity: 0.7;" onclick="skipRoutine('${r.uid}')" title="Skip">⏭️</button>
-                </div>
-            </div>
-            <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
-                ${assigneesHtml}
-                <span>🕒 ${timeStr}</span>
-                ${pts ? `<span style="color: var(--primary); font-weight: bold;">${pts}</span>` : ''}
-            </div>
-        </div>
-        `;
-        container.appendChild(card);
-    });
-}
-
-// Sets sensible overdue defaults in the modal based on frequency.
-export function updateOverdueDefaults() {
-    const freq = document.getElementById('routineFrequency').value;
-    const resetType = document.getElementById('routineDailyReset').value;
-    const valueInput = document.getElementById('routineOverdueValue');
-    const unitSelect = document.getElementById('routineOverdueUnit');
-    const hint = document.getElementById('overdueHint');
-    if (!valueInput || !unitSelect || !hint) return;
-
-    if (freq === 'daily') {
-        if (resetType === 'specific') {
-            valueInput.value = 4; unitSelect.value = 'hours';
-            hint.textContent = 'Default: 4 hours after each scheduled time';
-        } else {
-            valueInput.value = 14; unitSelect.value = 'hours';
-            hint.textContent = 'Default: 14 hours (~2pm if not done by midnight reset)';
-        }
-    } else if (freq === 'weekly') {
-        valueInput.value = 1; unitSelect.value = 'days';
-        hint.textContent = 'Default: 1 day after the scheduled day';
-    } else if (freq === 'interval') {
-        const unit = document.getElementById('routineIntervalUnit').value;
-        switch (unit) {
-            case 'days':   valueInput.value = 1;  unitSelect.value = 'days'; hint.textContent = 'Default: 1 day after due'; break;
-            case 'weeks':  valueInput.value = 2;  unitSelect.value = 'days'; hint.textContent = 'Default: 2 days after due'; break;
-            case 'months': valueInput.value = 7;  unitSelect.value = 'days'; hint.textContent = 'Default: 7 days after due'; break;
-            case 'years':  valueInput.value = 14; unitSelect.value = 'days'; hint.textContent = 'Default: 14 days after due'; break;
-            default:       valueInput.value = 1;  unitSelect.value = 'days';
-        }
-    }
-}
-
-// Marks a routine complete for the active users and awards linked points.
-export async function completeRoutine(routineId, linkedNiptoTask) {
-    if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return; }
-    if (state.activeUsers.length === 0) { alert("Select at least one user first!"); return; }
-
-    const routine = state.routines.find(r => r.uid === routineId);
-    if (!routine) return;
-
-    let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
-    let namesString = state.activeUsers.map(uid => ALL_USERS.find(u => u.uid === uid).name).join(', ');
-
-    try {
-        if (linkedNiptoTask && linkedNiptoTask !== "null") {
-    const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString()); // capture
-    await api.saveActivityLabels(activityUids, routine.name);                                     // NEW
-    const tObj = state.tasks.find(t => t.uid === linkedNiptoTask);
-    if (tObj) showToast(linkedNiptoTask, routine.name, Math.ceil(tObj.value / state.currentSplitDivisor), namesString);
-}
-
-        let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-        let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-
-        if (routine.completionType === 'shared') {
-            newLastCompleted['shared'] = targetDate.toISOString();
-            newLastCompletedBy['shared'] = namesString;
-        } else {
-            state.activeUsers.forEach(uid => {
-                newLastCompleted[uid] = targetDate.toISOString();
-                newLastCompletedBy[uid] = ALL_USERS.find(u => u.uid === uid).name;
-            });
-        }
-
-        await api.updateFirestoreDocument('routines', routineId, {
-            lastCompleted: newLastCompleted,
-            lastCompletedBy: newLastCompletedBy
-        });
-
-        await api.loadRoutinesFromFirestore();
-        renderRoutines();
-        renderSidebarRoutines();
-        updateLeaderboardUI();
-    } catch (error) {
-        alert("Error completing routine: " + error.message);
-    }
-}
-
-// Permanently deletes a routine after confirmation.
 export async function deleteRoutine(routineId) {
-    if (confirm("Are you sure you want to permanently delete this routine?")) {
+    if (!confirm("Are you sure you want to delete this routine?")) return;
+    try {
         await api.deleteFirestoreDocument('routines', routineId);
         await api.loadRoutinesFromFirestore();
-        renderRoutines();
-        renderSidebarRoutines();
+        renderRollingSchedule();
+    } catch (e) {
+        alert("Error deleting routine: " + e.message);
     }
 }
 
-// Advances a routine to its next occurrence without awarding points.
-export async function skipRoutine(routineId) {
-    const routine = state.routines.find(r => r.uid === routineId);
-    if (!routine) return;
-    if (!confirm(`Skip "${routine.name}"? No points will be awarded and it will advance to the next occurrence.`)) return;
-
-    const now = new Date();
-    let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-    let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-
-    if (routine.completionType === 'shared') {
-        newLastCompleted['shared'] = now.toISOString();
-        newLastCompletedBy['shared'] = '⏭️ Skipped';
-    } else {
-        if (state.activeUsers.length === 0) { alert("Select at least one user first!"); return; }
-        state.activeUsers.forEach(uid => {
-            newLastCompleted[uid] = now.toISOString();
-            const uObj = ALL_USERS.find(u => u.uid === uid);
-            newLastCompletedBy[uid] = `⏭️ Skipped by ${uObj ? uObj.name : 'Someone'}`;
-        });
-    }
-
-    try {
-        await api.updateFirestoreDocument('routines', routineId, {
-            lastCompleted: newLastCompleted,
-            lastCompletedBy: newLastCompletedBy
-        });
-
-        await api.loadRoutinesFromFirestore();
-        renderRoutines();
-        renderSidebarRoutines();
-
-        const statusDiv = document.getElementById('status');
-        if (statusDiv) {
-            statusDiv.innerText = `⏭️ Skipped: ${routine.name}`;
-            statusDiv.style.color = 'var(--text-muted)';
-            setTimeout(() => { statusDiv.innerText = ''; }, 3000);
-        }
-    } catch (error) {
-        alert("Error skipping routine: " + error.message);
-    }
-}
-
-// Reconciles routine completion state against logged Nipto history.
-export async function syncRoutinesWithNiptoHistory() {
-    if (!state.routines || !state.allWeekActivities) return;
-
-    let requiresDbUpdate = false;
-
-    for (const routine of state.routines) {
-        if (!routine.linkedNiptoTask) continue;
-
-        const linkedObj = state.tasks.find(t => t.uid === routine.linkedNiptoTask);
-
-        const matchingActivities = state.allWeekActivities.filter(act => {
-            const historicalTaskId = (act.task && (act.task.uid || act.task.id)) || act.taskId || act.task_id;
-            if (historicalTaskId && historicalTaskId === routine.linkedNiptoTask) return true;
-            if (linkedObj && act.task && act.task.name === linkedObj.name) return true;
-            return false;
-        });
-
-        if (matchingActivities.length === 0) continue;
-
-        matchingActivities.sort((a, b) => a.parsedDate - b.parsedDate);
-
-        let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-        let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-        let updatedThisRoutine = false;
-
-        for (const act of matchingActivities) {
-            const actDateStr = act.parsedDate.toISOString();
-            const actUserUid = (act.user && (act.user.uid || act.user.id)) || act.userId || "unknown";
-            const actUserName = (act.user && act.user.name) ? act.user.name : "Someone";
-
-            if (routine.completionType === 'shared') {
-                const currentSharedDate = newLastCompleted['shared'];
-                if (!currentSharedDate || new Date(actDateStr) > new Date(currentSharedDate)) {
-                    newLastCompleted['shared'] = actDateStr;
-                    newLastCompletedBy['shared'] = actUserName;
-                    updatedThisRoutine = true;
-                }
-            } else {
-                const currentUserDate = newLastCompleted[actUserUid];
-                if (!currentUserDate || new Date(actDateStr) > new Date(currentUserDate)) {
-                    newLastCompleted[actUserUid] = actDateStr;
-                    newLastCompletedBy[actUserUid] = actUserName;
-                    updatedThisRoutine = true;
-                }
-            }
-        }
-
-        if (updatedThisRoutine) {
-            routine.lastCompleted = newLastCompleted;
-            routine.lastCompletedBy = newLastCompletedBy;
-            requiresDbUpdate = true;
-
-            api.updateFirestoreDocument('routines', routine.uid, {
-                lastCompleted: newLastCompleted,
-                lastCompletedBy: newLastCompletedBy
-            }).catch(err => console.error("History auto-sync error:", err));
-        }
-    }
-
-    if (requiresDbUpdate) {
-        renderRoutines();
-        renderSidebarRoutines();
-    }
+// Public unified renderer
+export function renderRoutines() {
+    renderRollingSchedule();
 }

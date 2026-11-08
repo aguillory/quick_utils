@@ -110,7 +110,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
         ) : null;
 
         if (linkedTodo) {
-            if (linkedTodo.category === '⚡ Quick Add' || linkedTodo.notes === 'Quick added points') {
+            if (linkedTodo.category === '&#x26A1; Quick Add' || linkedTodo.notes === 'Quick added points') {
                 // Completely delete the quick add task from Firestore!
                 await api.deleteFirestoreDocument('custom_tasks', linkedTodo.id);
                 state.todoTasksData = state.todoTasksData.filter(t => t.id !== linkedTodo.id);
@@ -136,7 +136,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
                 .where('completedActivityUids', 'array-contains', activityUid).get();
             snap.forEach(async doc => {
                 const data = doc.data();
-                if (data.category === '⚡ Quick Add' || data.notes === 'Quick added points') {
+                if (data.category === '&#x26A1; Quick Add' || data.notes === 'Quick added points') {
                     await api.deleteFirestoreDocument('custom_tasks', doc.id);
                 } else {
                     await api.updateFirestoreDocument('custom_tasks', doc.id, {
@@ -178,12 +178,12 @@ export function handleTaskClick(btn, taskUid, taskName) {
             state.tempEditPrefs.delete(taskUid);
             btn.classList.remove('selected-pref');
             btn.classList.add('unselected-pref');
-            if (label) label.textContent = '❌ Hidden';
+            if (label) label.textContent = '&#x274C; Hidden';
         } else {
             state.tempEditPrefs.add(taskUid);
             btn.classList.add('selected-pref');
             btn.classList.remove('unselected-pref');
-            if (label) label.textContent = '✅ Selected';
+            if (label) label.textContent = '&#x2714; Selected';
         }
     } else {
         logTask(btn, taskUid, taskName);
@@ -303,7 +303,7 @@ export function renderTasks() {
         const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
 
 const orderControls = `
-        <span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">☰</span>
+        <span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">&#x2630;</span>
         <span class="sort-controls" style="font-size: 14px; opacity: 0.5;">
         <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
         <button onclick="moveCategory('${category}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
@@ -342,17 +342,17 @@ const orderControls = `
                 btn.classList.add('edit-mode');
                 if (state.tempEditPrefs.has(task.uid)) {
     btn.classList.add('selected-pref');
-    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">✅ Selected</span>';
+    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x2714; Selected</span>';
 } else {
     btn.classList.add('unselected-pref');
-    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">❌ Hidden</span>';
+    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x274C; Hidden</span>';
 }
 
                 const targetUid = state.activeUsers[0];
                 const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);
                 const pinBtn = document.createElement('button');
                 pinBtn.className = `pin-task-btn ${isPinned ? 'active' : ''}`;
-                pinBtn.innerHTML = '📌';
+                pinBtn.innerHTML = '&#x1F4CC;';
                 pinBtn.title = isPinned ? "Unpin task" : "Pin task to reminders";
                 pinBtn.onclick = (e) => {
                     e.stopPropagation();
@@ -396,12 +396,12 @@ export function renderPinnedTasks() {
         card.innerHTML = `
         <div class="chore-header">
         <div class="chore-title-area">
-        <div class="chore-title">📌 ${task.name}</div>
+        <div class="chore-title">&#x1F4CC; ${task.name}</div>
         <div class="chore-points">+${displayValue} pts</div>
         </div>
         <div class="chore-actions">
-        <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">✅</button>
-        <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">❌</button>
+        <button class="chore-btn complete-btn" onclick="logPinnedTask(this, '${task.uid}', '${task.name}')" title="Log Task">&#x2714;</button>
+        <button class="chore-btn delete-btn" onclick="togglePinTask('${task.uid}')" title="Unpin">&#x274C;</button>
         </div>
         </div>
         `;
@@ -528,7 +528,7 @@ export async function submitQuickAdd() {
         // 3. Save as completed in Firestore custom_tasks for audit/history
         await api.addFirestoreDocument('custom_tasks', {
             name: description,
-            category: '⚡ Quick Add',
+            category: '&#x26A1; Quick Add',
             priority: 'Medium',
             assignees: selectedUids,
             linkedNiptoTask: linkedNiptoTask,
@@ -552,7 +552,7 @@ export async function submitQuickAdd() {
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerText = "⚡ Award Points";
+            submitBtn.innerText = "&#x26A1; Award Points";
         }
     }
 }

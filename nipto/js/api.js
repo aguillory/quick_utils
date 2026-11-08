@@ -83,7 +83,7 @@ export async function loadTasksFromFirestore() {
         uid: doc.id,
         name: doc.data().name,
         value: doc.data().value || 0,
-        category: doc.data().group || "📌",
+        category: doc.data().group || "General",
         dashboardUsers: doc.data().dashboardUsers || [],
         pinnedUsers: doc.data().pinnedUsers || []
     }));
@@ -429,6 +429,8 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
             const activitiesToArchive = activityUids.map((uid, index) => {
                 const doerUid = activeDoers[index] || activeDoers[0] || "";
                 const userObj = ALL_USERS.find(u => u.uid === doerUid);
+                // Also award to boys' allowance ledger if Ayden or DJ
+                awardAllowancePoints(doerUid, ptsPerUser);
                 return {
                     uid: uid,
                     date: targetDate.toISOString(),
@@ -650,3 +652,215 @@ export async function saveActivityLabels(activityUids, name) {
     });
     try { await batch.commit(); } catch (e) { console.error("Error saving activity labels:", e); }
 }
+
+// ==========================================
+// ALLOWANCE LEDGER (AYDEN & DJ: 1 PT = $0.01)
+// ==========================================
+const AYDEN_UID = "NMRQaRQbvCwBaJbiMFId";
+const DJ_UID = "RMNUTP8VOHD9PDzNjf0g";
+
+export async function loadAllowanceLedgerFromFirestore() {
+    try {
+        const doc = await window.getNiptoCollection('allowance_ledger').doc('boys').get();
+        if (doc.exists) {
+            const data = doc.data();
+            state.allowanceLedger = {
+                ayden: { unpaidPoints: data.ayden?.unpaidPoints || 0, payoutHistory: data.ayden?.payoutHistory || [] },
+                dj: { unpaidPoints: data.dj?.unpaidPoints || 0, payoutHistory: data.dj?.payoutHistory || [] }
+            };
+        } else {
+            state.allowanceLedger = {
+                ayden: { unpaidPoints: 0, payoutHistory: [] },
+                dj: { unpaidPoints: 0, payoutHistory: [] }
+            };
+            await window.getNiptoCollection('allowance_ledger').doc('boys').set(state.allowanceLedger);
+        }
+    } catch (e) {
+        console.warn("Error loading allowance ledger:", e);
+    }
+    return state.allowanceLedger;
+}
+
+export async function saveAllowanceLedgerToFirestore() {
+    try {
+        await window.getNiptoCollection('allowance_ledger').doc('boys').set(state.allowanceLedger, { merge: true });
+    } catch (e) {
+        console.error("Error saving allowance ledger:", e);
+    }
+}
+
+export async function awardAllowancePoints(userUid, points) {
+    if (!points || points <= 0) return;
+    let modified = false;
+    if (userUid === AYDEN_UID) {
+        state.allowanceLedger.ayden.unpaidPoints = (state.allowanceLedger.ayden.unpaidPoints || 0) + points;
+        modified = true;
+    } else if (userUid === DJ_UID) {
+        state.allowanceLedger.dj.unpaidPoints = (state.allowanceLedger.dj.unpaidPoints || 0) + points;
+        modified = true;
+    }
+    if (modified) {
+        await saveAllowanceLedgerToFirestore();
+        if (window.renderAllowanceUI) window.renderAllowanceUI();
+    }
+}
+
+export async function payoutAllowance(boyKey, paidByName = "Admin") {
+    const boy = state.allowanceLedger[boyKey];
+    if (!boy || boy.unpaidPoints <= 0) return;
+    const unpaid = boy.unpaidPoints;
+    const dollars = (unpaid * 0.01).toFixed(2);
+    const entry = {
+        id: "payout_" + Date.now(),
+        timestamp: new Date().toISOString(),
+        points: unpaid,
+        amount: parseFloat(dollars),
+        paidBy: paidByName
+    };
+    boy.payoutHistory = boy.payoutHistory || [];
+    boy.payoutHistory.unshift(entry);
+    boy.unpaidPoints = 0;
+    await saveAllowanceLedgerToFirestore();
+    if (window.renderAllowanceUI) window.renderAllowanceUI();
+    return entry;
+}
+
+export async function adjustAllowancePoints(boyKey, deltaPoints, note = "", adjustedByName = "Admin") {
+    const boy = state.allowanceLedger[boyKey];
+    if (!boy) return;
+    const prev = boy.unpaidPoints || 0;
+    const next = Math.max(0, prev + deltaPoints);
+    boy.unpaidPoints = next;
+    const entry = {
+        id: "adj_" + Date.now(),
+        timestamp: new Date().toISOString(),
+        deltaPoints: deltaPoints,
+        newBalance: next,
+        note: note,
+        adjustedBy: adjustedByName
+    };
+    boy.payoutHistory = boy.payoutHistory || [];
+    boy.payoutHistory.unshift(entry);
+    await saveAllowanceLedgerToFirestore();
+    if (window.renderAllowanceUI) window.renderAllowanceUI();
+    return entry;
+}
+
+// ==========================================
+// CONFIG & INTEGRATIONS (GEMINI & HOME ASSISTANT)
+// ==========================================
+export async function loadIntegrationsConfigFromFirestore() {
+    try {
+        const doc = await window.getNiptoCollection('config').doc('integrations').get();
+        if (doc.exists) {
+            state.integrationsConfig = { ...state.integrationsConfig, ...doc.data() };
+        } else {
+            await window.getNiptoCollection('config').doc('integrations').set(state.integrationsConfig);
+        }
+    } catch (e) {
+        console.warn("Error loading integrations config:", e);
+    }
+    return state.integrationsConfig;
+}
+
+export async function saveIntegrationsConfigToFirestore(cfg) {
+    state.integrationsConfig = { ...state.integrationsConfig, ...cfg };
+    try {
+        await window.getNiptoCollection('config').doc('integrations').set(state.integrationsConfig, { merge: true });
+    } catch (e) {
+        console.error("Error saving integrations config:", e);
+    }
+}
+
+// ==========================================
+// NOTIFICATION PREFERENCES (ADULTS)
+// ==========================================
+export async function loadNotificationPreferencesFromFirestore() {
+    try {
+        const doc = await window.getNiptoCollection('preferences').doc('notifications').get();
+        if (doc.exists) {
+            state.notificationPreferences = { ...state.notificationPreferences, ...doc.data() };
+        } else {
+            await window.getNiptoCollection('preferences').doc('notifications').set(state.notificationPreferences);
+        }
+    } catch (e) {
+        console.warn("Error loading notification preferences:", e);
+    }
+    return state.notificationPreferences;
+}
+
+export async function saveNotificationPreferencesToFirestore(prefs) {
+    state.notificationPreferences = { ...state.notificationPreferences, ...prefs };
+    try {
+        await window.getNiptoCollection('preferences').doc('notifications').set(state.notificationPreferences, { merge: true });
+    } catch (e) {
+        console.error("Error saving notification preferences:", e);
+    }
+}
+
+// ==========================================
+// HOME ASSISTANT WEBHOOK DISPATCH
+// ==========================================
+export async function dispatchHomeAssistantNotification(payload) {
+    const url = state.integrationsConfig?.haWebhookUrl;
+    if (!url) {
+        console.warn("Home Assistant Webhook URL not configured.");
+        return false;
+    }
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        return res.ok;
+    } catch (err) {
+        console.error("Failed to POST to Home Assistant webhook:", err);
+        return false;
+    }
+}
+
+// ==========================================
+// FIRESTORE-FIRST LEADERBOARD LOADER
+// ==========================================
+export async function loadWeeklyPointsFromFirestore() {
+    // Computes weekly points from cached currentWeekScores or activities_history
+    if (Object.keys(state.currentWeekScores || {}).length > 0) {
+        return { points: state.currentWeekScores, activities: state.allWeekActivities || [] };
+    }
+    let points = {};
+    ALL_USERS.forEach(u => { points[u.uid] = 0; });
+    try {
+        const now = new Date();
+        const day = now.getDay();
+        const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+        const mon = new Date(now.getFullYear(), now.getMonth(), diffToMon, 0, 0, 0);
+        const snapshot = await window.getNiptoCollection('activities_history')
+            .where('date', '>=', mon.toISOString())
+            .get();
+        const activities = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const pts = data.awardedPts || data.taskValue || 0;
+            if (data.userUid && points[data.userUid] !== undefined) {
+                points[data.userUid] += pts;
+            }
+            activities.push({
+                uid: doc.id,
+                date: data.date,
+                parsedDate: new Date(data.date),
+                user: { uid: data.userUid, name: data.userName },
+                task: { name: data.taskName, value: pts },
+                awardedPts: pts,
+                label: data.label || ""
+            });
+        });
+        state.currentWeekScores = { ...points };
+        state.allWeekActivities = activities;
+        return { points, activities };
+    } catch (e) {
+        console.warn("Could not aggregate weekly points from Firestore cache:", e);
+        return { points, activities: [] };
+    }
+}
+

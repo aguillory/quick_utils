@@ -1,5 +1,5 @@
 // Client-side Two-Tier Watchlist Filtering & Brand Locking Engine
-import { normalizeDeal } from './normalizer.js';
+import { normalizeDeal, extractPackageSizeAndUnit } from './normalizer.js';
 
 export function cleanText(text) {
     if (!text) return '';
@@ -11,7 +11,7 @@ export function cleanText(text) {
 
 export function matchesKeyword(text, keyword) {
     const kw = cleanText(keyword);
-    if (!kw) return False;
+    if (!kw) return false;
     // Word boundary or punctuation match
     const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "['']?");
     const pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'i');
@@ -51,6 +51,33 @@ export function itemMatchesWatchlist(rawItem, watchlistItem) {
         const words = canonical.split(/\s+/).filter(w => w.length > 2 && !['and', 'the', 'for', 'with'].includes(w));
         if (words.length > 0 && !words.every(w => matchesKeyword(fullText, w))) {
             return false;
+        }
+    }
+
+    // 4. Container & Unit Guardrails for Target Units
+    const targetUnit = (watchlistItem.target_unit || '').toLowerCase();
+    if (targetUnit === 'gal') {
+        const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullText);
+
+        // Reject dry weight measurements (lb, lbs, g)
+        if (['lb', 'g'].includes(extractedUnit)) return false;
+
+        // Reject small ounce canisters/cartons (< 120 oz)
+        if (extractedUnit === 'oz' && extractedSize !== null && extractedSize < 120.0) return false;
+
+        // Reject sub-gallon sizes (half gallon, quart, pint)
+        if (extractedUnit === 'gal' && extractedSize !== null && extractedSize < 0.9) return false;
+
+        // Reject explicit sub-gallon or dry weight patterns in text
+        const subGallonPatterns = [
+            /\b(?:half|1\/2)\s*(?:-| )?gal(?:lon)?\b/i,
+            /\bquart\b|\bqt\b/i,
+            /\bpint\b|\bpt\b/i,
+            /\b\d+(?:\.\d+)?\s*(?:-| )?(?:lb|lbs|pounds?|g|grams?)\b/i,
+            /\b(?:[1-9]|[1-9]\d|1[0-1]\d)(?:\.\d+)?\s*(?:-| )?(?:fl\.?\s*oz|oz|ounces?)\b/i
+        ];
+        for (const pat of subGallonPatterns) {
+            if (pat.test(fullText)) return false;
         }
     }
 

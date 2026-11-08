@@ -1,17 +1,27 @@
 // users.js
-// User selection, "Together" multi-user mode, and the floating user indicator.
+// Active user management, compact navbar pill, and user dropdown menu.
+
 import { state, ALL_USERS, saveUserState } from './state.js';
 import { loadCloudPreferences } from './preferences.js';
 import { applyTheme } from './theme.js';
-import { setHistoryView } from './leaderboard.js';
-import { renderTasks, renderPinnedTasks } from './niptoTasks.js';
-import { renderTodoTasks, renderSidebarTodos } from './todos.js';
-import { renderRoutines, renderSidebarRoutines } from './routines.js';
+import { renderTasks } from './niptoTasks.js';
+import { renderTodoTasks } from './todos.js';
+import { renderRollingSchedule } from './routines.js';
+import { renderDoneTodayFeed } from './leaderboard.js';
+import { refreshChatUser } from './chat.js';
 
-// Restores the last-used user/together state on startup.
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export async function initUsers() {
-    generateUserToggles();
-    populateTogetherCheckboxes();
+    renderUserDropdownMenu();
     const stored = localStorage.getItem("nipto_merged_users");
     if (stored) {
         try {
@@ -21,169 +31,160 @@ export async function initUsers() {
             } else if (parsed.users && parsed.users.length === 1) {
                 await setActiveUser(parsed.users[0], true);
             } else {
-                await setActiveUser(ALL_USERS[0].uid, true);
+                await setActiveUser(ALL_USERS[0]?.uid || '', true);
             }
-        } catch (e) { await setActiveUser(ALL_USERS[0].uid, true); }
+        } catch (e) {
+            await setActiveUser(ALL_USERS[0]?.uid || '', true);
+        }
     } else {
-        await setActiveUser(ALL_USERS[0].uid, true);
+        await setActiveUser(ALL_USERS[0]?.uid || '', true);
     }
 }
 
-// Switches the dashboard to a single active user.
-export async function setActiveUser(uid, skipSave = false) {
-    if (state.isEditMode) {
-        alert("Please save your dashboard edits before switching users.");
-        return;
-    }
+export function renderUserDropdownMenu() {
+    const menu = document.getElementById('userDropdownMenu');
+    if (!menu) return;
 
+    let html = `<div style="padding: 6px; display: flex; flex-direction: column; gap: 4px;">`;
+
+    ALL_USERS.forEach(u => {
+        const pts = state.currentWeekScores?.[u.uid] || 0;
+        const isCurrent = !state.isTogetherMode && state.activeUsers[0] === u.uid;
+        html += `
+        <div class="user-dropdown-item ${isCurrent ? 'active' : ''}" onclick="selectUserFromDropdown('${u.uid}')" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: background 0.15s; ${isCurrent ? 'background: rgba(37, 99, 235, 0.1); font-weight: bold;' : ''}">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: ${u.color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;">
+                    ${u.name.charAt(0)}
+                </div>
+                <span style="font-size: 14px; color: var(--text-main);">${escapeHtml(u.name)}</span>
+            </div>
+            <span style="font-size: 12px; color: var(--text-muted); font-weight: 700;">${pts} pts</span>
+        </div>
+        `;
+    });
+
+    html += `
+        <div style="height: 1px; background: var(--border-color); margin: 4px 0;"></div>
+        <div class="user-dropdown-item ${state.isTogetherMode ? 'active' : ''}" onclick="toggleTogetherMode()" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">&#x1F91D;</span>
+                <span style="font-size: 14px; color: var(--text-main); font-weight: 600;">Together Mode</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">(Split Points)</span>
+        </div>
+    </div>
+    `;
+
+    menu.innerHTML = html;
+}
+
+export function toggleUserDropdown(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('userDropdownMenu');
+    if (!menu) return;
+    const isVisible = menu.style.display === 'block';
+    menu.style.display = isVisible ? 'none' : 'block';
+}
+
+// Global click outside to close dropdown
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('userDropdownMenu');
+    const pill = document.getElementById('activeUserPill');
+    if (menu && menu.style.display === 'block') {
+        if (!menu.contains(e.target) && !pill?.contains(e.target)) {
+            menu.style.display = 'none';
+        }
+    }
+});
+
+export async function selectUserFromDropdown(uid) {
+    const menu = document.getElementById('userDropdownMenu');
+    if (menu) menu.style.display = 'none';
+    await setActiveUser(uid);
+}
+
+export async function setActiveUser(uid, skipSave = false) {
     state.isTogetherMode = false;
     state.activeUsers = [uid];
     state.currentSplitDivisor = 1;
-    document.getElementById('together-drawer').classList.remove('visible');
 
-    ALL_USERS.forEach(user => {
-        const el = document.getElementById(`toggle-${user.uid}`);
-        if (el) {
-            if (user.uid === uid) { el.classList.add('active'); el.classList.remove('inactive'); }
-            else { el.classList.add('inactive'); el.classList.remove('active'); }
-        }
-    });
-
-    const togEl = document.getElementById('toggle-together');
-    togEl.classList.add('inactive');
-    togEl.classList.remove('active');
+    renderActiveUserPill();
+    renderUserDropdownMenu();
 
     await loadCloudPreferences(uid);
-
     applyTheme(state.userPrefs.theme || 'boring');
-    setHistoryView(state.userPrefs.historyView || 'everyone', true);
 
     if (!skipSave) saveUserState();
-    updateFloatingIndicator();
+
     renderTasks();
-    renderPinnedTasks();
     renderTodoTasks();
-    renderRoutines();
-    renderSidebarRoutines();
-    renderSidebarTodos();
+    renderRollingSchedule();
+    renderDoneTodayFeed();
+    refreshChatUser();
 }
 
-// Updates the floating avatar/indicator showing who's selected.
-export function updateFloatingIndicator() {
-    const container = document.getElementById('floating-avatars');
-    const indBox = document.getElementById('floating-user-indicator');
-    container.innerHTML = '';
+export function renderActiveUserPill() {
+    const pill = document.getElementById('activeUserPill');
+    if (!pill) return;
 
-    if (state.activeUsers.length === 0) {
-        container.innerHTML = '<span class="floating-avatar" style="background: var(--danger);">No one selected!</span>';
-        indBox.style.borderColor = 'var(--danger)';
+    if (state.isTogetherMode) {
+        pill.innerHTML = `
+            <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--text-muted); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                &#x1F91D;
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-main);">Together</span>
+            <span style="font-size: 10px; color: var(--text-muted);">&#x25BC;</span>
+        `;
         return;
     }
 
-    let borderColors = [];
-    state.activeUsers.forEach(uid => {
-        const user = ALL_USERS.find(u => u.uid === uid);
-        if (user) {
-            borderColors.push(user.color);
-            container.innerHTML += `<div class="floating-avatar" style="background: ${user.color};">${user.name}</div>`;
-        }
-    });
+    const currentUid = state.activeUsers[0];
+    const user = ALL_USERS.find(u => u.uid === currentUid) || ALL_USERS[0];
+    if (!user) return;
 
-    indBox.style.borderColor = state.isTogetherMode ? 'var(--text-muted)' : borderColors[0];
+    const userPts = state.currentWeekScores?.[user.uid] || 0;
+
+    pill.innerHTML = `
+        <div style="width: 24px; height: 24px; border-radius: 50%; background: ${user.color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;">
+            ${user.name.charAt(0)}
+        </div>
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-main);">${escapeHtml(user.name)}</span>
+        <span class="pts-badge" style="font-size: 11px;">${userPts} pts</span>
+        <span style="font-size: 10px; color: var(--text-muted);">&#x25BC;</span>
+    `;
 }
 
-// Enables "Together" mode (points split across selected users).
 export function toggleTogetherMode() {
-    if (state.isEditMode) {
-        alert("You cannot edit the dashboard while in 'Together' mode. Please select a specific person to edit their dashboard.");
-        return;
-    }
+    const menu = document.getElementById('userDropdownMenu');
+    if (menu) menu.style.display = 'none';
 
     state.isTogetherMode = true;
-
     if (state.activeUsers.length <= 1) {
         state.activeUsers = ALL_USERS.slice(0, 2).map(u => u.uid);
-        updateTogetherCheckboxes();
     }
-
-    ALL_USERS.forEach(user => {
-        const el = document.getElementById(`toggle-${user.uid}`);
-        el.classList.add('inactive');
-        el.classList.remove('active');
-    });
-
-    const togEl = document.getElementById('toggle-together');
-    togEl.classList.remove('inactive');
-    togEl.classList.add('active');
-
-    document.getElementById('together-drawer').classList.add('visible');
-    processTogetherSelection(true);
-}
-
-// Restores a saved together-mode selection.
-function setTogetherState(uids) {
-    state.activeUsers = uids;
-    updateTogetherCheckboxes();
-    toggleTogetherMode();
-}
-
-// Builds the together-mode user checkboxes.
-function populateTogetherCheckboxes() {
-    const container = document.getElementById('together-checkbox-container');
-    container.innerHTML = '';
-    ALL_USERS.forEach(u => {
-        container.innerHTML += `
-        <label class="together-label" style="border-left: 4px solid ${u.color};">
-        <input type="checkbox" value="${u.uid}" class="t-check" onchange="processTogetherSelection()">
-        ${u.name}
-        </label>
-        `;
-    });
-}
-
-// Syncs checkbox states to the current together selection.
-function updateTogetherCheckboxes() {
-    document.querySelectorAll('.t-check').forEach(cb => {
-        cb.checked = state.activeUsers.includes(cb.value);
-    });
-}
-
-// Reads the together checkboxes and updates split/render state.
-export function processTogetherSelection(skipSave = false) {
-    const checkboxes = document.querySelectorAll('.t-check:checked');
-    state.activeUsers = Array.from(checkboxes).map(cb => cb.value);
     state.currentSplitDivisor = Math.max(1, state.activeUsers.length);
 
-    if (!skipSave) saveUserState();
-    updateFloatingIndicator();
+    renderActiveUserPill();
+    renderUserDropdownMenu();
+    saveUserState();
+
     renderTasks();
-    renderPinnedTasks();
+    renderTodoTasks();
+    renderRollingSchedule();
+    renderDoneTodayFeed();
+    refreshChatUser();
 }
 
-export function generateUserToggles() {
-    const container = document.getElementById('user-toggles-container');
-    if (!container) return;
-    
-    let html = `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%;">`;
-    
-    ALL_USERS.forEach(u => {
-        html += `
-            <div class="user-toggle inactive" style="width: 100%; box-sizing: border-box; --user-theme-color: ${u.color};" id="toggle-${u.uid}" onclick="setActiveUser('${u.uid}')">
-                <div class="user-name">${u.name}</div>
-                <div class="user-points" id="points-${u.uid}">-- pts</div>
-            </div>
-        `;
-    });
-    
-    html += `
-        </div>
-        <div style="display: flex; justify-content: center; width: 100%; margin-top: 10px;">
-            <div class="user-toggle inactive" style="width: 100%; max-width: 400px; --user-theme-color: var(--text-muted);" id="toggle-together" onclick="toggleTogetherMode()">
-                <div class="user-name" style="font-size: 16px; margin-top: 5px;">🤝 Together</div>
-                <div class="user-points" style="font-size: 11px; font-weight: normal; margin-top: 5px;">(Split Points)</div>
-            </div>
-        </div>
-    `;
-    
-    container.innerHTML = html;
+function setTogetherState(uids) {
+    state.activeUsers = uids;
+    state.isTogetherMode = true;
+    state.currentSplitDivisor = Math.max(1, uids.length);
+    renderActiveUserPill();
 }
+
+// Bind to window for HTML onclicks
+window.setActiveUser = setActiveUser;
+window.toggleUserDropdown = toggleUserDropdown;
+window.selectUserFromDropdown = selectUserFromDropdown;
+window.toggleTogetherMode = toggleTogetherMode;
+window.renderActiveUserPill = renderActiveUserPill;

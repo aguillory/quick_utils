@@ -59,6 +59,10 @@ export function extractPackageSizeAndUnit(text) {
     const mLb = t.match(/(\d+(?:\.\d+)?)\s*(?:-| )?(?:lbs?|pounds?)\b/i);
     if (mLb) return { size: parseFloat(mLb[1]), unit: 'lb' };
 
+    // Weight in Grams
+    const mG = t.match(/(\d+(?:\.\d+)?)\s*(?:-| )?(?:g|grams?)\b/i);
+    if (mG) return { size: parseFloat(mG[1]), unit: 'g' };
+
     // Weight in Oz / Ounce
     const mOz = t.match(/(\d+(?:\.\d+)?)\s*(?:-| )?(?:fl(?:uid)?\.?\s*)?(?:oz|ounces?)\b/i);
     if (mOz) return { size: parseFloat(mOz[1]), unit: 'oz' };
@@ -214,16 +218,20 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
                 normalizedUnitPrice = basePrice;
             }
         } else if (targetUnit === 'gal') {
-            if (extractedUnit === 'gal' && extractedSize && extractedSize > 0) {
+            if (extractedUnit === 'gal' && extractedSize && extractedSize >= 0.9) {
                 normalizedUnitPrice = basePrice / extractedSize;
                 if (extractedSize !== 1.0) notes.push(`${extractedSize} gal`);
-            } else if (extractedUnit === 'oz' && extractedSize && extractedSize > 0) {
+            } else if (extractedUnit === 'oz' && extractedSize && extractedSize >= 120.0) {
                 normalizedUnitPrice = (basePrice / extractedSize) * 128.0;
                 notes.push(`${extractedSize} fl oz`);
-            } else if (defaultPackSize && defaultPackSize > 0) {
+            } else if (defaultPackSize && defaultPackSize > 0 && (!extractedUnit || extractedUnit === 'gal')) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
             } else {
-                normalizedUnitPrice = basePrice;
+                if (['lb', 'g'].includes(extractedUnit) || (extractedUnit === 'oz' && extractedSize && extractedSize < 120.0) || (extractedUnit === 'gal' && extractedSize && extractedSize < 0.9)) {
+                    normalizedUnitPrice = null;
+                } else {
+                    normalizedUnitPrice = basePrice;
+                }
             }
         } else {
             normalizedUnitPrice = basePrice;

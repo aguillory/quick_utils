@@ -239,7 +239,7 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
 
 /* The Stars */
 .leader-crown::after {
-    content: "★★★★";
+    content: "\2605\2605\2605\2605";
     font-family: Arial, sans-serif; /* For clean stars */
     font-size: 8px;
     color: #D50000; /* Deep Red Stars */

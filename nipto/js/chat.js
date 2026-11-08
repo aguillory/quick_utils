@@ -1,43 +1,53 @@
-// chat.js — Family Messages feature
-// Real-time chat stored in Firestore. Soft-deletes and edit history are
-// preserved in the DB (viewable via chat-admin.html), never shown in the panel.
+// chat.js — Household Messages feature & Home Assistant Webhook Integration
+// Real-time chat stored in Firestore with smart burst concatenation (last 10m)
+// and adult push notifications via Home Assistant script.notify_router bridge.
+
 import { state, ALL_USERS } from './state.js';
+import * as api from './api.js';
+
 const CHAT_COLLECTION = 'chat_messages';
 const READS_COLLECTION = 'chat_reads';
 const BASE_TITLE = document.title || 'Unified Nipto Dashboard';
+
 let chatMessagesCache = [];   // all messages (incl. deleted) from the live listener
 let lastReads = {};           // { userUid: FirestoreTimestamp }
 let unreadCount = 0;
 let listenersStarted = false;
 let lastReadWrite = 0;        // throttle for read-receipt writes
-/* ---------------- Helpers ---------------- */
+
 function getCurrentUser() {
     const uid = (state.activeUsers && state.activeUsers.length) ? state.activeUsers[0] : null;
     return ALL_USERS.find(u => u.uid === uid) || null;
 }
-// Sending (and editing/deleting) requires a single, unambiguous person
+
 function canSend() {
     return !state.isTogetherMode && !!getCurrentUser();
 }
+
 function isMessagesTabOpen() {
-    const pane = document.getElementById('pane-messages');
-    return !!pane && pane.style.display !== 'none';
+    const pane = document.getElementById('pane-hub');
+    const sidebar = document.getElementById('householdHubSidebar');
+    return (pane && pane.style.display !== 'none') || (sidebar && sidebar.offsetParent !== null);
 }
+
 function msgMillis(m) {
     return (m.createdAt && typeof m.createdAt.toMillis === 'function') ? m.createdAt.toMillis() : Date.now();
 }
+
 function escapeHtml(str) {
     return String(str || '')
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
+
 function updateSenderLabel() {
     const el = document.getElementById('chatSenderName');
     if (!el) return;
-    if (state.isTogetherMode) { el.textContent = '🤝 Together (sending disabled)'; return; }
+    if (state.isTogetherMode) { el.textContent = 'Together (sending disabled)'; return; }
     const me = getCurrentUser();
     el.textContent = me ? me.name : '—';
 }
+
 function updateChatInputState() {
     const input = document.getElementById('chatInput');
     const btn = document.getElementById('chatSendBtn');
@@ -45,20 +55,23 @@ function updateChatInputState() {
     if (input) {
         input.disabled = !allowed;
         input.placeholder = allowed
-            ? 'Type a message… (Enter to send, Shift+Enter for new line)'
-            : '🤝 Together mode is on — select a single person to send messages';
+            ? 'Type a message... (Enter to send)'
+            : 'Select a single person above to send messages';
     }
     if (btn) btn.disabled = !allowed;
 }
+
 function updateTitleBar() {
     document.title = (unreadCount > 0)
         ? `(${unreadCount > 99 ? '99+' : unreadCount}) ${BASE_TITLE}`
         : BASE_TITLE;
 }
-/* ---------------- Live listeners ---------------- */
+
+// ---------------- Live listeners ----------------
 function startChatListeners() {
     if (listenersStarted || !window.db) return;
     listenersStarted = true;
+
     window.getNiptoCollection(CHAT_COLLECTION).orderBy('createdAt', 'asc').onSnapshot(snap => {
         chatMessagesCache = [];
         snap.forEach(doc => chatMessagesCache.push({ id: doc.id, ...doc.data() }));
@@ -66,19 +79,23 @@ function startChatListeners() {
         updateUnreadBadge();
         if (isMessagesTabOpen() && document.visibilityState === 'visible') markAllRead();
     }, err => console.error('Chat listener error:', err));
+
     window.getNiptoCollection(READS_COLLECTION).onSnapshot(snap => {
         lastReads = {};
         snap.forEach(doc => { lastReads[doc.id] = doc.data().lastRead || null; });
         updateUnreadBadge();
     }, err => console.error('Chat reads listener error:', err));
 }
-/* ---------------- Unread badge + title bar ---------------- */
+
+// ---------------- Unread badge ----------------
 function updateUnreadBadge() {
     const badge = document.getElementById('chatBadge');
+    const navBadge = document.getElementById('navChatBadge');
     const me = getCurrentUser();
     if (!me) {
         unreadCount = 0;
         if (badge) badge.style.display = 'none';
+        if (navBadge) navBadge.style.display = 'none';
         updateTitleBar();
         return;
     }
@@ -87,21 +104,24 @@ function updateUnreadBadge() {
     unreadCount = chatMessagesCache.filter(m =>
         !m.deleted && m.senderUid !== me.uid && msgMillis(m) > lastMs
     ).length;
+
+    const countText = unreadCount > 99 ? '99+' : String(unreadCount);
     if (badge) {
-        if (unreadCount > 0) {
-            badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-            badge.style.display = 'inline-block';
-        } else {
-            badge.style.display = 'none';
-        }
+        badge.textContent = countText;
+        badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
+    }
+    if (navBadge) {
+        navBadge.textContent = countText;
+        navBadge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
     }
     updateTitleBar();
 }
+
 async function markAllRead() {
     const me = getCurrentUser();
     if (!me || unreadCount === 0) return;
     const now = Date.now();
-    if (now - lastReadWrite < 2000) return; // throttle writes
+    if (now - lastReadWrite < 2000) return;
     lastReadWrite = now;
     try {
         await window.getNiptoCollection(READS_COLLECTION).doc(me.uid).set({
@@ -110,22 +130,25 @@ async function markAllRead() {
         }, { merge: true });
     } catch (e) { console.error('Failed to update read receipt:', e); }
 }
-/* ---------------- Rendering ---------------- */
-function renderChat() {
+
+// ---------------- Rendering ----------------
+export function renderChat() {
     const container = document.getElementById('chatMessages');
     if (!container) return;
     updateSenderLabel();
     updateChatInputState();
     const me = getCurrentUser();
     const visible = chatMessagesCache.filter(m => !m.deleted);
+
     if (!visible.length) {
-        container.innerHTML = '<div class="chat-empty">No messages yet. Say hi! 👋</div>';
+        container.innerHTML = '<div class="chat-empty">No messages yet. Say hello!</div>';
         return;
     }
     const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 150;
     let html = '';
     let lastDay = '';
     const todayKey = new Date().toDateString();
+
     visible.forEach(m => {
         const d = new Date(msgMillis(m));
         const dayKey = d.toDateString();
@@ -136,11 +159,11 @@ function renderChat() {
             lastDay = dayKey;
         }
         const mine = me && m.senderUid === me.uid;
-        // Only the sender can edit/delete — and not while Together mode is active
         const showActions = mine && !state.isTogetherMode;
         const senderUser = ALL_USERS.find(u => u.uid === m.senderUid);
         const color = senderUser ? senderUser.color : 'var(--text-muted)';
         const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
         html += `
         <div class="chat-row ${mine ? 'sent' : 'received'}">
             ${mine ? '' : `<div class="chat-sender" style="color: ${color}">${escapeHtml(m.senderName || '?')}</div>`}
@@ -149,19 +172,22 @@ function renderChat() {
                 <span>${time}</span>
                 ${m.edited ? '<span class="chat-edited">(edited)</span>' : ''}
                 ${showActions ? `
-                <button class="chat-msg-btn" title="Edit" onclick="editChatMessage('${m.id}')">✏️</button>
-                <button class="chat-msg-btn" title="Delete" onclick="deleteChatMessage('${m.id}')">🗑️</button>` : ''}
+                <button class="chat-msg-btn" title="Edit" onclick="editChatMessage('${m.id}')">&#x270E;</button>
+                <button class="chat-msg-btn" title="Delete" onclick="deleteChatMessage('${m.id}')">&#x1F5D1;</button>` : ''}
             </div>
         </div>`;
     });
+
     container.innerHTML = html;
     if (nearBottom) container.scrollTop = container.scrollHeight;
 }
+
 function scrollChatToBottom() {
     const container = document.getElementById('chatMessages');
     if (container) container.scrollTop = container.scrollHeight;
 }
-/* ---------------- Actions (exported; bound to window in dashboard.js) ---------------- */
+
+// ---------------- Actions & Home Assistant Dispatch ----------------
 export async function sendChatMessage() {
     const input = document.getElementById('chatInput');
     if (!input) return;
@@ -169,12 +195,13 @@ export async function sendChatMessage() {
     if (!text) return;
     if (!canSend()) {
         alert(state.isTogetherMode
-            ? 'Sending is disabled in Together mode. Select a single person at the top first.'
-            : 'Select whose profile is active at the top first!');
+            ? 'Sending is disabled in Together mode. Select a single person first.'
+            : 'Select your profile at the top first!');
         return;
     }
     const me = getCurrentUser();
     input.value = '';
+
     try {
         await window.getNiptoCollection(CHAT_COLLECTION).add({
             text: text,
@@ -186,12 +213,69 @@ export async function sendChatMessage() {
             editHistory: []
         });
         scrollChatToBottom();
+
+        // Smart burst concatenation & Home Assistant notification routing
+        dispatchChatNotification(me, text);
     } catch (e) {
         console.error('Failed to send message:', e);
-        input.value = text; // give them their text back on failure
-        alert('Message failed to send. Check your connection and try again.');
+        input.value = text;
+        alert('Message failed to send. Check your connection.');
     }
 }
+
+// Concatenates unread messages from last 10 minutes and dispatches to HA
+function dispatchChatNotification(sender, newText) {
+    const adultProfiles = state.notificationPreferences?.adults || {};
+    const targetEntities = [];
+    const isDirectPing = /@[A-Za-z]+/.test(newText);
+
+    Object.keys(adultProfiles).forEach(uid => {
+        if (uid === sender.uid) return; // Never notify sender
+        const adult = adultProfiles[uid];
+        if (!adult || !adult.haTarget) return;
+
+        const mode = adult.chatMode || 'all_messages';
+        if (mode === 'all_messages') {
+            targetEntities.push(adult.haTarget);
+        } else if (mode === 'ping_only') {
+            const pingRegex = new RegExp(`@${adult.name}\\b`, 'i');
+            if (pingRegex.test(newText)) {
+                targetEntities.push(adult.haTarget);
+            }
+        }
+    });
+
+    if (targetEntities.length === 0) return;
+
+    // Gather messages from last 10 minutes from this sender
+    const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+    const burstTexts = [];
+
+    chatMessagesCache.forEach(m => {
+        if (!m.deleted && m.senderUid === sender.uid && msgMillis(m) >= tenMinutesAgo) {
+            burstTexts.push(m.text);
+        }
+    });
+    burstTexts.push(newText);
+
+    let concatenated = burstTexts.join(' | ');
+    if (concatenated.length > 240) {
+        concatenated = concatenated.slice(0, 237) + '...';
+    }
+
+    const payload = {
+        targets: targetEntities,
+        title: `Nipto Chat: ${sender.name}`,
+        message: concatenated,
+        tag: "nipto_chat_buffer",
+        cooldown_seconds: 90,
+        critical: isDirectPing,
+        dashboard_path: "/nipto/common.html"
+    };
+
+    api.dispatchHomeAssistantNotification(payload);
+}
+
 export async function deleteChatMessage(msgId) {
     const m = chatMessagesCache.find(x => x.id === msgId);
     if (!m) return;
@@ -210,6 +294,7 @@ export async function deleteChatMessage(msgId) {
         });
     } catch (e) { console.error('Failed to delete message:', e); }
 }
+
 export async function editChatMessage(msgId) {
     const m = chatMessagesCache.find(x => x.id === msgId);
     if (!m) return;
@@ -227,7 +312,7 @@ export async function editChatMessage(msgId) {
             text: trimmed,
             edited: true,
             editHistory: window.firebase.firestore.FieldValue.arrayUnion({
-                text: m.text, // the version being replaced
+                text: m.text,
                 editedAt: new Date().toISOString(),
                 editedByUid: me.uid,
                 editedByName: me.name
@@ -235,21 +320,31 @@ export async function editChatMessage(msgId) {
         });
     } catch (e) { console.error('Failed to edit message:', e); }
 }
-/* ---------------- Hooks called by dashboard.js ---------------- */
-// Called when the Messages tab is opened
+
+// Quick @Ping pill insertion
+export function insertChatPing(name) {
+    const input = document.getElementById('chatInput');
+    if (input) {
+        const val = input.value;
+        const spacer = (val.length > 0 && !val.endsWith(' ')) ? ' ' : '';
+        input.value = `${val}${spacer}@${name} `;
+        input.focus();
+    }
+}
+
 export function onChatTabOpened() {
     renderChat();
     scrollChatToBottom();
     markAllRead();
     updateUnreadBadge();
 }
-// Called whenever the active user / Together mode changes
+
 export function refreshChatUser() {
     renderChat();
     updateUnreadBadge();
     updateChatInputState();
 }
-/* ---------------- Init (called once from dashboard.js startup) ---------------- */
+
 export function initChat() {
     const input = document.getElementById('chatInput');
     if (input) {
@@ -262,17 +357,24 @@ export function initChat() {
     }
     updateSenderLabel();
     updateChatInputState();
-    // Activity while the Messages tab is open keeps unreads cleared
+
     ['click', 'keydown', 'touchstart', 'focus'].forEach(evt => {
         window.addEventListener(evt, () => {
             if (isMessagesTabOpen() && document.visibilityState === 'visible') markAllRead();
         }, { passive: true });
     });
+
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && isMessagesTabOpen()) markAllRead();
     });
-    // Start the live listeners once Firebase anonymous auth is ready
+
     window.firebase.auth().onAuthStateChanged(user => {
         if (user) startChatListeners();
     });
 }
+
+// Bind to window for HTML onclicks
+window.insertChatPing = insertChatPing;
+window.sendChatMessage = sendChatMessage;
+window.editChatMessage = editChatMessage;
+window.deleteChatMessage = deleteChatMessage;
