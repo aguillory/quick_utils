@@ -490,3 +490,8 @@ export async function deleteRoutine(routineId) {
 export function renderRoutines() {
     renderRollingSchedule();
 }
+
+// Backward-compatibility export for legacy callers
+export function renderSidebarRoutines() {
+    renderRollingSchedule();
+}

@@ -5,7 +5,7 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
 import { saveCloudCollapsed } from './preferences.js';
-import { renderRoutines, renderSidebarRoutines } from './routines.js';
+import { renderRoutines } from './routines.js';
 import { enableDragSort } from './dragSort.js';
 import { saveCloudPreference } from './preferences.js';
 // Logs a task to Nipto for the active users and cross-wires linked routines.
@@ -73,7 +73,7 @@ export async function logTask(buttonElement, taskUid, taskName) {
                 }).catch(e => console.error("Routine auto-update failed:", e));
             }
 
-            if (requiresRoutineRender) { renderRoutines(); renderSidebarRoutines(); }
+            if (requiresRoutineRender) { renderRoutines(); }
         }
 
         updateLeaderboardUI();
