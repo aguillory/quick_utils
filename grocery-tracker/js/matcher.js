@@ -18,6 +18,37 @@ export function matchesKeyword(text, keyword) {
     return pattern.test(text);
 }
 
+export function formatValidWindow(validFrom, validTo) {
+    if (!validFrom && !validTo) return { windowStr: null, isUpcoming: false };
+    const todayStr = new Date().toISOString().split('T')[0];
+    const fromStr = validFrom ? String(validFrom).slice(0, 10) : null;
+    const toStr = validTo ? String(validTo).slice(0, 10) : null;
+
+    if (fromStr && fromStr > todayStr) {
+        const parts = fromStr.split('-');
+        const mmDd = parts.length === 3 ? `${parts[1]}/${parts[2]}` : fromStr;
+        return { windowStr: `Starts ${mmDd}`, isUpcoming: true };
+    }
+
+    if (fromStr && toStr) {
+        const fParts = fromStr.split('-');
+        const tParts = toStr.split('-');
+        const windowStr = (fParts.length === 3 && tParts.length === 3)
+            ? `${fParts[1]}/${fParts[2]}–${tParts[1]}/${tParts[2]}`
+            : `${fromStr}–${toStr}`;
+        return { windowStr, isUpcoming: false };
+    } else if (toStr) {
+        const tParts = toStr.split('-');
+        const windowStr = tParts.length === 3 ? `Thru ${tParts[1]}/${tParts[2]}` : `Thru ${toStr}`;
+        return { windowStr, isUpcoming: false };
+    } else if (fromStr) {
+        const fParts = fromStr.split('-');
+        const windowStr = fParts.length === 3 ? `From ${fParts[1]}/${fParts[2]}` : `From ${fromStr}`;
+        return { windowStr, isUpcoming: false };
+    }
+    return { windowStr: null, isUpcoming: false };
+}
+
 export function itemMatchesWatchlist(rawItem, watchlistItem) {
     const name = cleanText(rawItem.name);
     const desc = cleanText(rawItem.description);
@@ -103,6 +134,12 @@ export function evaluateRawItem(rawItem, watchlist) {
                 savingsPct = parseFloat((((baseline - unitPrice) / baseline) * 100).toFixed(1));
             }
 
+            const { windowStr, isUpcoming } = formatValidWindow(rawItem.valid_from, rawItem.valid_to);
+            const notesList = [...(math.notes || [])];
+            if (isUpcoming && windowStr) {
+                notesList.push(windowStr);
+            }
+
             matchedDeals.push({
                 watchlist_id: wItem.id,
                 canonical_name: wItem.canonical_name,
@@ -121,6 +158,8 @@ export function evaluateRawItem(rawItem, watchlist) {
                 image_url: rawItem.image_url,
                 valid_from: rawItem.valid_from,
                 valid_to: rawItem.valid_to,
+                date_window_str: windowStr,
+                is_upcoming: isUpcoming,
                 target_unit: math.target_unit,
                 normalized_unit_price: unitPrice,
                 effective_price: math.effective_price,
@@ -132,8 +171,8 @@ export function evaluateRawItem(rawItem, watchlist) {
                 is_bogo: math.is_bogo,
                 is_estimated_bogo: math.is_estimated_bogo,
                 is_digital_coupon: math.is_digital_coupon,
-                notes: math.notes,
-                notes_str: math.notes_str
+                notes: notesList,
+                notes_str: notesList.join(' | ')
             });
         }
     }

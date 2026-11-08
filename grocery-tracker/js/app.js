@@ -11,7 +11,7 @@ import {
 } from './firebase-config.js';
 
 import { normalizeDeal } from './normalizer.js';
-import { itemMatchesWatchlist, evaluateRawItem } from './matcher.js';
+import { itemMatchesWatchlist, evaluateRawItem, formatValidWindow } from './matcher.js';
 
 // Application State
 const state = {
@@ -234,11 +234,25 @@ function renderPriceBook() {
 
     let html = '';
 
+    const todayStr = new Date().toISOString().split('T')[0];
+
     for (const item of filteredItems) {
         const itemAds = adsByItem[item.id] || [];
-        // Sort deals to find lowest normalized unit price
-        itemAds.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
-        const bestDeal = itemAds[0] || null;
+        
+        // Prioritize active sales over upcoming preview ads
+        const activeDeals = itemAds.filter(a => {
+            const fromStr = (a.valid_from || '').slice(0, 10);
+            return !a.is_upcoming && (!fromStr || fromStr <= todayStr);
+        });
+        activeDeals.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
+
+        const upcomingDeals = itemAds.filter(a => {
+            const fromStr = (a.valid_from || '').slice(0, 10);
+            return a.is_upcoming || (fromStr && fromStr > todayStr);
+        });
+        upcomingDeals.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
+
+        const bestDeal = activeDeals[0] || upcomingDeals[0] || null;
 
         const isExpanded = state.expandedRows.has(item.id);
         const unit = item.target_unit || 'ea';
@@ -264,6 +278,18 @@ function renderPriceBook() {
                 <span class="text-[11px] block text-slate-400">${item.baseline_source || 'Walmart'}</span>`;
         }
 
+        // Date window & upcoming badge for best deal
+        let dateBadgeHtml = '';
+        if (bestDeal) {
+            const { windowStr, isUpcoming } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
+            const displayWindow = bestDeal.date_window_str || windowStr;
+            if (bestDeal.is_upcoming || isUpcoming) {
+                dateBadgeHtml = `<span class="badge badge-upcoming" title="Upcoming Preview Deal"><i class="fas fa-clock"></i> ${displayWindow || 'Upcoming'}</span>`;
+            } else if (displayWindow) {
+                dateBadgeHtml = `<span class="badge badge-date" title="Sale Window"><i class="far fa-calendar-alt"></i> ${displayWindow}</span>`;
+            }
+        }
+
         // Best Sale Column HTML
         let bestSaleHtml = '';
         if (bestDeal && bestDeal.normalized_unit_price != null) {
@@ -280,7 +306,10 @@ function renderPriceBook() {
                     </span>
                     ${beatBadge}
                 </div>
-                <div class="text-xs text-slate-500 font-medium">${bestDeal.store}</div>`;
+                <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <span class="text-xs text-slate-500 font-medium">${bestDeal.store}</span>
+                    ${dateBadgeHtml}
+                </div>`;
         } else {
             bestSaleHtml = `<span class="text-slate-400 text-sm">No circular sale this week</span>`;
         }
@@ -289,6 +318,10 @@ function renderPriceBook() {
         let notesHtml = '';
         if (bestDeal) {
             const badges = [];
+            const { windowStr, isUpcoming } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
+            if (bestDeal.is_upcoming || isUpcoming) {
+                badges.push(`<span class="badge badge-upcoming"><i class="fas fa-clock"></i> ${bestDeal.date_window_str || windowStr || 'Upcoming'}</span>`);
+            }
             if (bestDeal.is_bogo) {
                 badges.push(`<span class="badge badge-bogo"><i class="fas fa-tag"></i> ${bestDeal.notes_str.includes('BOGO 1¢') ? 'BOGO 1¢' : 'BOGO Free'}</span>`);
             }
@@ -299,7 +332,7 @@ function renderPriceBook() {
                 if (n.startsWith('Limit')) {
                     badges.push(`<span class="badge badge-limit">${n}</span>`);
                 } else if (n.includes('pack') || n.includes('count') || n.includes('oz') || n.includes('lb')) {
-                    if (!n.includes('BOGO')) badges.push(`<span class="badge badge-store">${n}</span>`);
+                    if (!n.includes('BOGO') && !n.startsWith('Starts')) badges.push(`<span class="badge badge-store">${n}</span>`);
                 }
             }
             notesHtml = badges.join(' ') || `<span class="text-xs text-slate-400">Standard pack</span>`;
@@ -310,9 +343,10 @@ function renderPriceBook() {
         // Historical Low HTML
         let histLowHtml = '';
         if (item.historical_low_price != null) {
+            const isFuture = item.historical_low_date && item.historical_low_date > todayStr;
             histLowHtml = `
                 <div class="font-semibold text-slate-800">$${item.historical_low_price.toFixed(2)}<span class="text-xs text-slate-400">/${unit}</span></div>
-                <div class="text-[11px] text-slate-400">${item.historical_low_store || ''} (${item.historical_low_date || ''})</div>`;
+                <div class="text-[11px] ${isFuture ? 'text-amber-600 font-semibold' : 'text-slate-400'}">${item.historical_low_store || ''} (${item.historical_low_date || ''})</div>`;
         } else {
             histLowHtml = `--`;
         }
@@ -359,13 +393,23 @@ function renderPriceBook() {
             } else {
                 drawerContent = `
                     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
-                        ${itemAds.map(ad => `
+                        ${itemAds.map(ad => {
+                            const { windowStr: adWin, isUpcoming: isAdUp } = formatValidWindow(ad.valid_from, ad.valid_to);
+                            const adWinDisplay = ad.date_window_str || adWin;
+                            const adDateBadge = (ad.is_upcoming || isAdUp)
+                                ? `<span class="badge badge-upcoming text-[10px] py-0"><i class="fas fa-clock"></i> ${adWinDisplay || 'Upcoming'}</span>`
+                                : (adWinDisplay ? `<span class="badge badge-date text-[10px] py-0"><i class="far fa-calendar-alt"></i> ${adWinDisplay}</span>` : '');
+
+                            return `
                             <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex gap-3 items-center">
                                 ${ad.image_url ? `<img src="${ad.image_url}" alt="" class="w-16 h-16 object-contain rounded-lg bg-slate-50 border p-1" />` : `<div class="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300"><i class="fas fa-shopping-basket text-xl"></i></div>`}
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-start">
                                         <div class="font-bold text-xs text-slate-500 uppercase truncate">${ad.store}</div>
-                                        ${ad.beats_baseline ? `<span class="badge badge-beat text-[10px] py-0">Beats Baseline</span>` : ''}
+                                        <div class="flex items-center gap-1">
+                                            ${adDateBadge}
+                                            ${ad.beats_baseline ? `<span class="badge badge-beat text-[10px] py-0">Beats Baseline</span>` : ''}
+                                        </div>
                                     </div>
                                     <div class="font-semibold text-sm text-slate-800 truncate" title="${ad.raw_name}">${ad.raw_name}</div>
                                     <div class="text-sm font-bold text-emerald-600 mt-0.5">
@@ -375,7 +419,7 @@ function renderPriceBook() {
                                     <div class="text-[11px] text-slate-500 truncate">${ad.notes_str || ad.raw_description || ''}</div>
                                 </div>
                             </div>
-                        `).join('')}
+                        `}).join('')}
                     </div>`;
             }
 

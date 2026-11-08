@@ -65,6 +65,24 @@
     border: 1px solid #e2e8f0;
 }
 
+.badge-date {
+    background-color: #f8fafc;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+    font-weight: 500;
+}
+
+.badge-upcoming {
+    background-color: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+    font-weight: 700;
+}
+
 /* Row accordion animation */
 .store-drawer {
     transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
