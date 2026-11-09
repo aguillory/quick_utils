@@ -3,7 +3,7 @@
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { updateLeaderboardUI } from './leaderboard.js';
+import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { saveCloudCollapsed } from './preferences.js';
 import { renderRoutines } from './routines.js';
 import { enableDragSort } from './dragSort.js';
@@ -80,10 +80,10 @@ export async function logTask(buttonElement, taskUid, taskName) {
         // Record to daily_completions
         const todayKey = getLocalTodayKey();
         if (getLocalTodayKey(targetDate) === todayKey) {
-            state.activeUsers.forEach(uid => {
+            for (const uid of state.activeUsers) {
                 const uObj = ALL_USERS.find(u => u.uid === uid);
                 const actId = `nipto_${taskUid}_${uid}_${Date.now()}`;
-                api.recordDailyCompletion({
+                await api.recordDailyCompletion({
                     id: actId,
                     itemId: taskUid,
                     sourceType: 'nipto',
@@ -94,9 +94,11 @@ export async function logTask(buttonElement, taskUid, taskName) {
                     completedAt: targetDate.toISOString(),
                     dateKey: todayKey
                 });
-            });
+            }
         }
 
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         updateLeaderboardUI();
         buttonElement.disabled = false;
         return true;
@@ -121,7 +123,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
 
     try {
         await api.deleteActivityFromNipto(activityUid);
-        api.removeDailyCompletion(`nipto_${activityUid}`);
+        await api.removeDailyCompletion(`nipto_${activityUid}`, getLocalTodayKey());
 
 
 
@@ -181,6 +183,8 @@ export async function deleteTaskActivity(activityUid, btnElement) {
 
         statusDiv.innerText = `Activity and task deleted successfully!`;
         statusDiv.style.color = 'var(--success)';
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         updateLeaderboardUI();
         setTimeout(() => { statusDiv.innerText = ""; statusDiv.style.color = 'var(--text-main)'; }, 3000);
     } catch (error) {

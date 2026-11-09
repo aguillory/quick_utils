@@ -237,17 +237,143 @@ export function setDoneTodayView(mode) {
     renderDoneTodayFeed();
 }
 
+// Merges & deduplicates completed items from all 4 live sources for today
+export function rebuildCompletedToday() {
+    const todayKey = api.getLocalTodayKey();
+    const compMap = new Map();
+
+    // 1. Persisted daily completions from Firestore daily doc
+    (state.persistedDailyCompletions || []).forEach(it => {
+        if (it && it.id) {
+            compMap.set(it.id, { ...it });
+        }
+    });
+
+    // 2. Routines completed today (excluding dismissed/withoutPoints)
+    (state.routines || []).forEach(r => {
+        if (r.completionsByDate && r.completionsByDate[todayKey]) {
+            const comp = r.completionsByDate[todayKey];
+            if (!comp.withoutPoints) {
+                const compId = `routine_${r.uid}_${todayKey}`;
+                const linkedTask = (state.tasks || []).find(t => t.uid === r.linkedNiptoTask);
+                const routinePts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                const doerUid = comp.completedByUid || (r.assignees && r.assignees.length === 1 ? r.assignees[0] : '');
+                const userObj = ALL_USERS.find(u => u.uid === doerUid);
+                const userName = comp.completedByName || userObj?.name || 'User';
+
+                if (!compMap.has(compId)) {
+                    compMap.set(compId, {
+                        id: compId,
+                        itemId: r.uid,
+                        sourceType: 'routine',
+                        title: r.name,
+                        user: userName,
+                        userUid: doerUid,
+                        points: routinePts,
+                        completedAt: comp.completedAt || new Date().toISOString(),
+                        dateKey: todayKey
+                    });
+                }
+            }
+        }
+    });
+
+    // 3. To-Dos and Subtasks completed today
+    (state.todoTasksData || []).forEach(t => {
+        if (t.completed && t.completedAt) {
+            const taskDateKey = api.getLocalTodayKey(new Date(t.completedAt));
+            if (taskDateKey === todayKey) {
+                const compId = `todo_${t.id}`;
+                if (!compMap.has(compId)) {
+                    const doerUid = t.completedBy?.[0] || t.assignees?.[0] || '';
+                    const userObj = ALL_USERS.find(u => u.uid === doerUid);
+                    compMap.set(compId, {
+                        id: compId,
+                        itemId: t.id,
+                        sourceType: 'todo',
+                        title: t.name,
+                        user: userObj?.name || (t.completedBy?.[0] ? 'User' : 'Someone'),
+                        userUid: doerUid,
+                        points: t.points || 0,
+                        completedAt: t.completedAt,
+                        dateKey: todayKey
+                    });
+                }
+            }
+        }
+        if (Array.isArray(t.subTasks)) {
+            t.subTasks.forEach(st => {
+                if (st.completed && st.completedAt) {
+                    const subDateKey = api.getLocalTodayKey(new Date(st.completedAt));
+                    if (subDateKey === todayKey) {
+                        const compId = `subtask_${t.id}_${st.id}`;
+                        if (!compMap.has(compId)) {
+                            const doerName = st.completedBy || st.createdBy || 'Someone';
+                            const userObj = ALL_USERS.find(u => u.name.toLowerCase() === doerName.toLowerCase());
+                            compMap.set(compId, {
+                                id: compId,
+                                itemId: st.id,
+                                sourceType: 'subtask',
+                                title: `${t.name}: ${st.name || st.text || 'Subtask'}`,
+                                user: userObj ? userObj.name : doerName,
+                                userUid: userObj ? userObj.uid : '',
+                                points: 0,
+                                completedAt: st.completedAt,
+                                dateKey: todayKey
+                            });
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // 4. Live Nipto Chore activities for today
+    (state.allWeekActivities || []).forEach(act => {
+        const actDate = act.parsedDate || (act.date ? new Date(act.date) : null);
+        if (actDate && api.getLocalTodayKey(actDate) === todayKey) {
+            const compId = `nipto_${act.uid}`;
+            if (!compMap.has(compId)) {
+                compMap.set(compId, {
+                    id: compId,
+                    itemId: act.uid,
+                    sourceType: 'nipto',
+                    title: act.label || act.task?.name || 'Activity',
+                    user: act.user?.name || 'Unknown',
+                    userUid: act.user?.uid || '',
+                    points: act.awardedPts || act.task?.value || 0,
+                    completedAt: act.date || actDate.toISOString(),
+                    dateKey: todayKey
+                });
+            }
+        }
+    });
+
+    const items = Array.from(compMap.values());
+    items.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+    state.completedToday = items;
+    return items;
+}
+
 export function renderDoneTodayFeed() {
     const container = document.getElementById('doneTodayFeed');
     if (!container) return;
 
     const activeUid = state.activeUsers[0] || '';
+    const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
+    const activeName = (activeUserObj ? activeUserObj.name : '').toLowerCase();
     const items = state.completedToday || [];
 
     // Filter by view: everyone vs just me
     let filtered = items;
-    if (doneTodayView === 'me' && activeUid) {
-        filtered = items.filter(it => it.userUid === activeUid);
+    if (doneTodayView === 'me' && (activeUid || activeName)) {
+        filtered = items.filter(it => {
+            const itUid = (it.userUid || '').toLowerCase();
+            const itUser = (it.user || '').toLowerCase();
+            const matchesUid = activeUid && itUid === activeUid.toLowerCase();
+            const matchesName = activeName && itUser === activeName;
+            return matchesUid || matchesName;
+        });
     }
 
     filtered.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
@@ -296,6 +422,7 @@ export async function updateLeaderboardUI() {
         const { points } = await api.loadWeeklyPointsFromFirestore();
         state.currentWeekScores = { ...points };
         drawLeaderboard(points, false);
+        rebuildCompletedToday();
         renderDoneTodayFeed();
     } catch (e) {
         console.warn("Leaderboard UI update fallback:", e);
@@ -310,3 +437,5 @@ window.openAllowanceAdjustModal = openAllowanceAdjustModal;
 window.closeAllowanceAdjustModal = closeAllowanceAdjustModal;
 window.submitAllowanceAdjust = submitAllowanceAdjust;
 window.setDoneTodayView = setDoneTodayView;
+window.rebuildCompletedToday = rebuildCompletedToday;
+window.renderDoneTodayFeed = renderDoneTodayFeed;

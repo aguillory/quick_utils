@@ -5,7 +5,7 @@
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { updateLeaderboardUI } from './leaderboard.js';
+import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
@@ -525,6 +525,8 @@ export async function clearAllMissedRoutines() {
 
         await Promise.all(savePromises);
         showToast("admin_clear", `Dismissed ${missedToClear.length} missed item(s) (no points).`, 0, creditedName);
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         renderRollingSchedule();
         updateLeaderboardUI();
     } catch (err) {
@@ -583,19 +585,25 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
         // Record to daily_completions for today
         if (dateKey === getLocalTodayKey()) {
             const compId = `routine_${routineId}_${dateKey}`;
-            api.recordDailyCompletion({
-                id: compId,
-                itemId: routineId,
-                sourceType: 'routine',
-                title: routine.name,
-                user: creditedName,
-                userUid: creditedUid,
-                points: awardPoints ? routinePts : 0,
-                completedAt: new Date().toISOString(),
-                dateKey: dateKey
-            });
+            if (awardPoints) {
+                await api.recordDailyCompletion({
+                    id: compId,
+                    itemId: routineId,
+                    sourceType: 'routine',
+                    title: routine.name,
+                    user: creditedName,
+                    userUid: creditedUid,
+                    points: routinePts,
+                    completedAt: new Date().toISOString(),
+                    dateKey: dateKey
+                });
+            } else {
+                await api.removeDailyCompletion(compId, dateKey);
+            }
         }
 
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         renderRollingSchedule();
         updateLeaderboardUI();
     } catch (err) {
@@ -620,8 +628,10 @@ export async function undoRoutineForDate(routineId, dateKey) {
 
         // Remove from daily_completions
         const compId = `routine_${routineId}_${dateKey}`;
-        api.removeDailyCompletion(compId);
+        await api.removeDailyCompletion(compId, dateKey);
 
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         renderRollingSchedule();
         updateLeaderboardUI();
     } catch (err) {

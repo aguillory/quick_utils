@@ -6,7 +6,7 @@
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { updateLeaderboardUI } from './leaderboard.js';
+import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
@@ -413,6 +413,11 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
     const doerUid = state.activeUsers[0] || ALL_USERS[0].uid;
     const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone';
 
+    // Update in-memory task immediately
+    todo.completed = nextCompleted;
+    todo.completedAt = nextCompleted ? nowIso : null;
+    todo.completedBy = nextCompleted ? [doerUid] : [];
+
     try {
         await api.updateFirestoreDocument('custom_tasks', taskId, {
             completed: nextCompleted,
@@ -426,7 +431,7 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
             if (todo.points && todo.points > 0) {
                 api.awardAllowancePoints(doerUid, todo.points);
             }
-            api.recordDailyCompletion({
+            await api.recordDailyCompletion({
                 id: `todo_${taskId}`,
                 itemId: taskId,
                 sourceType: 'todo',
@@ -438,9 +443,12 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 dateKey: getLocalTodayKey()
             });
         } else {
-            api.removeDailyCompletion(`todo_${taskId}`);
+            await api.removeDailyCompletion(`todo_${taskId}`, getLocalTodayKey());
         }
 
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
+        renderTodoTasks();
         updateLeaderboardUI();
     } catch (e) {
         console.error("Error toggling task status:", e);
@@ -453,21 +461,30 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
     const todo = state.todoTasksData?.find(t => t.id === taskId);
     if (!todo || !todo.subTasks) return;
 
+    const nowIso = new Date().toISOString();
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Someone';
+
     const updated = todo.subTasks.map(st => {
-        if (st.id === subTaskId) return { ...st, completed: isChecked };
+        if (st.id === subTaskId) return {
+            ...st,
+            completed: isChecked,
+            completedAt: isChecked ? nowIso : null,
+            completedBy: isChecked ? activeName : null
+        };
         return st;
     });
+
+    todo.subTasks = updated;
 
     try {
         await api.updateFirestoreDocument('custom_tasks', taskId, { subTasks: updated });
 
         const subObj = todo.subTasks?.find(s => s.id === subTaskId);
         const subName = subObj?.name || subObj?.text || 'Subtask';
-        const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-        const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Someone';
 
         if (isChecked) {
-            api.recordDailyCompletion({
+            await api.recordDailyCompletion({
                 id: `subtask_${taskId}_${subTaskId}`,
                 itemId: subTaskId,
                 sourceType: 'subtask',
@@ -475,12 +492,16 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
                 user: activeName,
                 userUid: activeUid,
                 points: 0,
-                completedAt: new Date().toISOString(),
+                completedAt: nowIso,
                 dateKey: getLocalTodayKey()
             });
         } else {
-            api.removeDailyCompletion(`subtask_${taskId}_${subTaskId}`);
+            await api.removeDailyCompletion(`subtask_${taskId}_${subTaskId}`, getLocalTodayKey());
         }
+
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
+        renderTodoTasks();
     } catch (e) {
         console.error("Error updating subtask:", e);
     }

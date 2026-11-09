@@ -8,7 +8,7 @@ import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMe
 import { saveCloudPreference } from './preferences.js';
 import { savePin, setMode, setTimeOffset, getLocalTodayKey } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
-import { updateLeaderboardUI, drawLeaderboard, renderAllowanceUI } from './leaderboard.js';
+import { updateLeaderboardUI, drawLeaderboard, renderAllowanceUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import {
     deleteTaskActivity, populateTaskPointsSelect,
     renderTasks, openQuickAddModal, closeQuickAddModal, submitQuickAdd
@@ -131,7 +131,8 @@ Object.assign(window, {
     toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
     switchManageSubtab, filterManageList,
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
-    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin, getLocalTodayKey
+    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin, getLocalTodayKey,
+    rebuildCompletedToday, renderDoneTodayFeed
 });
 
 window.submitPin = async () => {
@@ -158,6 +159,7 @@ async function startDashboardData() {
         await Promise.all([
             api.loadTasksFromFirestore(),
             api.loadRoutinesFromFirestore(),
+            api.loadTodosFromFirestore(),
             api.loadActivityLabelsFromFirestore(),
             api.loadAllowanceLedgerFromFirestore(),
             api.loadIntegrationsConfigFromFirestore(),
@@ -172,7 +174,8 @@ async function startDashboardData() {
         renderAllowanceUI();
         updateLeaderboardUI();
         await api.loadDailyCompletionsFromFirestore();
-        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
 
         // Check for URL lockscreen quick actions
         handleUrlQuickActions();
@@ -191,18 +194,26 @@ async function startDashboardData() {
         snapshot.forEach(doc => {
             state.todoTasksData.push({ id: doc.id, ...doc.data() });
         });
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         renderTodoTasks();
         renderBulkTriageList();
     });
 
-    // Real-time listener for daily completions across devices
+    // Real-time listener for daily completions across devices (single doc for today)
     const todayKey = getLocalTodayKey();
-    window.getNiptoCollection('daily_completions').where('dateKey', '==', todayKey).onSnapshot(snapshot => {
-        const items = [];
-        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-        items.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
-        state.completedToday = items;
-        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+    window.getNiptoCollection('daily_completions').doc(todayKey).onSnapshot(doc => {
+        if (doc && doc.exists) {
+            const data = doc.data() || {};
+            const itemsMap = data.items || {};
+            state.persistedDailyCompletions = Object.values(itemsMap);
+        } else {
+            state.persistedDailyCompletions = [];
+        }
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
+    }, err => {
+        console.error("Error in daily_completions listener:", err);
     });
 
     // Real-time listener for sync signal

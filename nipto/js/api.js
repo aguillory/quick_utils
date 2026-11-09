@@ -498,6 +498,21 @@ export async function loadRoutinesFromFirestore() {
     });
 }
 
+export async function loadTodosFromFirestore() {
+    try {
+        const snapshot = await window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').get();
+        state.todoTasksData = [];
+        snapshot.forEach(doc => {
+            state.todoTasksData.push({ id: doc.id, ...doc.data() });
+        });
+        return state.todoTasksData;
+    } catch (e) {
+        console.error("Error loading todos from Firestore:", e);
+        state.todoTasksData = [];
+        return [];
+    }
+}
+
 // Notifies all other open dashboards that Nipto activity data changed,
 // so their leaderboards/history refresh automatically.
 function pingActivitySignal() {
@@ -881,132 +896,82 @@ export async function loadWeeklyPointsFromFirestore() {
 
 // ==========================================
 // DAILY COMPLETIONS ("DONE TODAY" PANEL)
+// Stored as a single doc per day at:
+// nipto/{env}/daily_completions/{YYYY-MM-DD}
+// with items: { [id]: { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey } }
 // ==========================================
 export async function recordDailyCompletion(entry) {
     if (!entry || !entry.id) return;
+    const todayKey = entry.dateKey || getLocalTodayKey();
+    entry.dateKey = todayKey;
     try {
-        await window.getNiptoCollection('daily_completions').doc(entry.id).set(entry, { merge: true });
+        await window.getNiptoCollection('daily_completions').doc(todayKey).set({
+            dateKey: todayKey,
+            updatedAt: new Date().toISOString(),
+            items: {
+                [entry.id]: entry
+            }
+        }, { merge: true });
         
-        // Update in-memory state
-        if (!state.completedToday) state.completedToday = [];
-        const existingIdx = state.completedToday.findIndex(it => it.id === entry.id);
+        // Update persisted array in memory
+        if (!state.persistedDailyCompletions) state.persistedDailyCompletions = [];
+        const existingIdx = state.persistedDailyCompletions.findIndex(it => it.id === entry.id);
         if (existingIdx !== -1) {
-            state.completedToday[existingIdx] = { ...state.completedToday[existingIdx], ...entry };
+            state.persistedDailyCompletions[existingIdx] = { ...state.persistedDailyCompletions[existingIdx], ...entry };
         } else {
-            state.completedToday.unshift(entry);
+            state.persistedDailyCompletions.unshift(entry);
         }
-        state.completedToday.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
 
+        if (window.rebuildCompletedToday) window.rebuildCompletedToday();
         if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
     } catch (e) {
-        console.warn("Error recording daily completion:", e);
+        console.error("Error recording daily completion to Firestore:", e);
     }
 }
 
-export async function removeDailyCompletion(id) {
+export async function removeDailyCompletion(id, dateKey = null) {
     if (!id) return;
+    const targetKey = dateKey || getLocalTodayKey();
     try {
-        await window.getNiptoCollection('daily_completions').doc(id).delete();
-        
-        // Update in-memory state
-        if (state.completedToday) {
-            state.completedToday = state.completedToday.filter(it => it.id !== id && it.itemId !== id);
-        }
-        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+        await window.getNiptoCollection('daily_completions').doc(targetKey).update({
+            [`items.${id}`]: window.firebase.firestore.FieldValue.delete(),
+            updatedAt: new Date().toISOString()
+        });
     } catch (e) {
-        console.warn("Error removing daily completion:", e);
+        // Document might not exist yet if clearing an item not yet committed
+        console.warn("Could not delete item from daily_completions doc:", e);
     }
+
+    // Update persisted array in memory
+    if (state.persistedDailyCompletions) {
+        state.persistedDailyCompletions = state.persistedDailyCompletions.filter(it => it.id !== id && it.itemId !== id);
+    }
+    if (window.rebuildCompletedToday) window.rebuildCompletedToday();
+    if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
 }
 
 export async function loadDailyCompletionsFromFirestore() {
     const todayKey = getLocalTodayKey();
-    const compMap = new Map();
-
     try {
-        const snapshot = await window.getNiptoCollection('daily_completions').where('dateKey', '==', todayKey).get();
-        snapshot.forEach(doc => {
-            compMap.set(doc.id, { id: doc.id, ...doc.data() });
-        });
+        const doc = await window.getNiptoCollection('daily_completions').doc(todayKey).get();
+        if (doc.exists) {
+            const data = doc.data() || {};
+            const itemsMap = data.items || {};
+            state.persistedDailyCompletions = Object.values(itemsMap);
+        } else {
+            state.persistedDailyCompletions = [];
+        }
     } catch (e) {
-        console.warn("Error fetching daily_completions:", e);
+        console.error("Error loading daily_completions from Firestore:", e);
+        state.persistedDailyCompletions = [];
     }
 
-    // Merge in routines already marked complete for today
-    (state.routines || []).forEach(r => {
-        if (r.completionsByDate && r.completionsByDate[todayKey]) {
-            const comp = r.completionsByDate[todayKey];
-            const compId = `routine_${r.uid}_${todayKey}`;
-            if (!compMap.has(compId)) {
-                const linkedTask = (state.tasks || []).find(t => t.uid === r.linkedNiptoTask);
-                const routinePts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
-                const entry = {
-                    id: compId,
-                    itemId: r.uid,
-                    sourceType: 'routine',
-                    title: r.name,
-                    user: comp.completedByName || 'User',
-                    userUid: comp.completedByUid || '',
-                    points: comp.withoutPoints ? 0 : routinePts,
-                    completedAt: comp.completedAt || new Date().toISOString(),
-                    dateKey: todayKey
-                };
-                compMap.set(compId, entry);
-                window.getNiptoCollection('daily_completions').doc(compId).set(entry).catch(() => {});
-            }
-        }
-    });
-
-    // Merge in To-Dos completed today
-    (state.todoTasksData || []).forEach(t => {
-        if (t.completed && t.completedAt) {
-            if (getLocalTodayKey(t.completedAt) === todayKey) {
-                const compId = `todo_${t.id}`;
-                if (!compMap.has(compId)) {
-                    const doerUid = t.completedBy?.[0] || t.assignees?.[0] || '';
-                    const entry = {
-                        id: compId,
-                        itemId: t.id,
-                        sourceType: 'todo',
-                        title: t.name,
-                        user: ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone',
-                        userUid: doerUid,
-                        points: t.points || 0,
-                        completedAt: t.completedAt,
-                        dateKey: todayKey
-                    };
-                    compMap.set(compId, entry);
-                    window.getNiptoCollection('daily_completions').doc(compId).set(entry).catch(() => {});
-                }
-            }
-        }
-    });
-
-    // Merge in Nipto chores completed today
-    (state.allWeekActivities || []).forEach(act => {
-        if (act.date && getLocalTodayKey(act.date) === todayKey) {
-            const compId = `nipto_${act.uid}`;
-            if (!compMap.has(compId)) {
-                const entry = {
-                    id: compId,
-                    itemId: act.uid,
-                    sourceType: 'nipto',
-                    title: act.label || act.task?.name || 'Activity',
-                    user: act.user?.name || 'Unknown',
-                    userUid: act.user?.uid || '',
-                    points: act.awardedPts || act.task?.value || 0,
-                    completedAt: act.date,
-                    dateKey: todayKey
-                };
-                compMap.set(compId, entry);
-                window.getNiptoCollection('daily_completions').doc(compId).set(entry).catch(() => {});
-            }
-        }
-    });
-
-    const items = Array.from(compMap.values());
-    items.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
-    state.completedToday = items;
-    if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
-    return items;
+    if (window.rebuildCompletedToday) {
+        window.rebuildCompletedToday();
+    }
+    if (window.renderDoneTodayFeed) {
+        window.renderDoneTodayFeed();
+    }
+    return state.completedToday;
 }
 

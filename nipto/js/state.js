@@ -80,6 +80,7 @@ export const state = {
         }
     },
     recentCompletions: [],
+    persistedDailyCompletions: [],
     completedToday: [], // Array of { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey }
     
     // Filter state

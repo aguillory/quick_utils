@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { renderTodoTasks } from './todos.js';
 import { renderRoutines } from './routines.js';
+import { rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
 
 // Helper to escape HTML characters
@@ -781,13 +782,19 @@ export async function executeBulkAction(actionType) {
         const doerUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
         const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
 
-        todoIds.forEach(id => {
+        for (const id of todoIds) {
             batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                 completed: true,
-                completedAt: nowIso
+                completedAt: nowIso,
+                completedBy: [doerUid]
             });
             const t = state.todoTasksData?.find(item => item.id === id);
-            api.recordDailyCompletion({
+            if (t) {
+                t.completed = true;
+                t.completedAt = nowIso;
+                t.completedBy = [doerUid];
+            }
+            await api.recordDailyCompletion({
                 id: `todo_${id}`,
                 itemId: id,
                 sourceType: 'todo',
@@ -798,11 +805,13 @@ export async function executeBulkAction(actionType) {
                 completedAt: nowIso,
                 dateKey: todayKey
             });
-        });
+        }
         await batch.commit();
         state.selectedTodoIds.clear();
         state.selectedRoutineIds.clear();
         showToast("bulk_comp", `Marked ${todoIds.length} To-Dos completed.`, 0, "");
+        rebuildCompletedToday();
+        renderDoneTodayFeed();
         renderBulkTriageList();
         renderTodoTasks();
     } else if (actionType === 'assign') {
