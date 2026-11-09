@@ -2,6 +2,7 @@
 // Centralized reactive state for the Nipto web application.
 
 export const ALL_USERS = [];
+export const NIPTO_PUBLIC_URL = "https://aguillory.github.io/quick_utils/nipto/common.html";
 
 export const state = {
     activeUsers: [],
@@ -39,7 +40,8 @@ export const state = {
     integrationsConfig: {
         geminiApiKey: "",
         geminiModel: "gemini-3.8-flash",
-        haWebhookUrl: "https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge"
+        haWebhookUrl: "https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge",
+        publicAppUrl: "https://aguillory.github.io/quick_utils/nipto/common.html"
     },
     notificationPreferences: {
         adults: {

@@ -2,8 +2,10 @@
 // Real-time chat stored in Firestore with smart burst concatenation (last 10m)
 // and adult push notifications via Home Assistant script.notify_router bridge.
 
-import { state, ALL_USERS } from './state.js';
+import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
+
+export { NIPTO_PUBLIC_URL };
 
 const CHAT_COLLECTION = 'chat_messages';
 const READS_COLLECTION = 'chat_reads';
@@ -270,7 +272,7 @@ function dispatchChatNotification(sender, newText) {
         tag: "nipto_chat_buffer",
         cooldown_seconds: 90,
         critical: isDirectPing,
-        dashboard_path: "/nipto/common.html"
+        dashboard_path: (state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL)
     };
 
     api.dispatchHomeAssistantNotification(payload);

@@ -36,7 +36,7 @@ import {
     toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill
 } from './users.js';
 import {
-    openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection, testGeminiConnection
+    openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection
 } from './settings.js';
 import { showToast } from './toast.js';
 

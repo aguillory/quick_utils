@@ -2,10 +2,12 @@
 // Settings modal for Gemini API Key, Gemini Model, Home Assistant Webhook URL,
 // and Adult Notification Profiles (Alyssa, Devyn, Carrina, Kenny).
 
-import { state } from './state.js';
+import { state, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { discoverActiveGeminiFlashModel, DEFAULT_GEMINI_MODEL } from './braindump.js';
+
+export { NIPTO_PUBLIC_URL };
 
 export function openSettingsModal() {
     const modal = document.getElementById('settingsModal');
@@ -77,7 +79,8 @@ export async function saveSettingsModal() {
     const newIntegrations = {
         geminiApiKey: geminiKey,
         geminiModel: geminiModel,
-        haWebhookUrl: haWebhook
+        haWebhookUrl: haWebhook,
+        publicAppUrl: state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL
     };
 
     const adultKeys = [

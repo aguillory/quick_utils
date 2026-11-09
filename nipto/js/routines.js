@@ -2,10 +2,12 @@
 // 3-Column Routine Board: Past (Missed), Current (Today), Upcoming (Next 3 Days)
 // Clean row-based rendering, compact assignee pills, and admin dismiss without points.
 
-import { state, ALL_USERS } from './state.js';
+import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
+
+export { NIPTO_PUBLIC_URL };
 
 function escapeHtml(str) {
     if (!str) return '';

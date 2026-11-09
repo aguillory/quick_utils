@@ -1,5 +1,5 @@
 // api.js
-import { state, ALL_USERS } from './state.js';
+import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 
 const NIPTO_URL = "https://nipto.app/graphql";
 
@@ -806,6 +806,19 @@ export async function dispatchHomeAssistantNotification(payload) {
     if (!url) {
         console.warn("Home Assistant Webhook URL not configured.");
         return false;
+    }
+    const publicUrl = state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL;
+    if (payload.dashboard_path && !payload.dashboard_path.startsWith('http')) {
+        payload.dashboard_path = publicUrl;
+    }
+    if (Array.isArray(payload.actions)) {
+        payload.actions = payload.actions.map(act => {
+            if (act.uri && !act.uri.startsWith('http')) {
+                const queryStr = act.uri.includes('?') ? act.uri.slice(act.uri.indexOf('?')) : '';
+                act.uri = ${publicUrl};
+            }
+            return act;
+        });
     }
     try {
         const res = await fetch(url, {

@@ -3,10 +3,12 @@
 // 3-Column Responsive Grid, hollow-square checkboxes, collapsed notes & subtasks,
 // and Direct Assignment Alerts to Home Assistant.
 
-import { state, ALL_USERS } from './state.js';
+import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
+
+export { NIPTO_PUBLIC_URL };
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -484,6 +486,7 @@ function dispatchDirectAssignmentAlerts(task, taskId) {
     task.assignees.forEach(uid => {
         const profile = adultProfiles[uid];
         if (profile && profile.haTarget && profile.directAssignmentAlerts) {
+            const appUrl = (state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL);
             const payload = {
                 targets: [profile.haTarget],
                 title: `Task Assigned: ${task.name}`,
@@ -491,10 +494,10 @@ function dispatchDirectAssignmentAlerts(task, taskId) {
                 tag: `task_${taskId}`,
                 cooldown_seconds: 0,
                 critical: false,
-                dashboard_path: `/nipto/common.html`,
+                dashboard_path: appUrl,
                 actions: [
-                    { action: "URI", title: "Mark Done", uri: `/nipto/common.html?quickAction=complete&taskId=${taskId}` },
-                    { action: "URI", title: "Snooze 1 Hr", uri: `/nipto/common.html?quickAction=snooze&taskId=${taskId}` }
+                    { action: "URI", title: "Mark Done", uri: `${appUrl}?quickAction=complete&taskId=${taskId}` },
+                    { action: "URI", title: "Snooze 1 Hr", uri: `${appUrl}?quickAction=snooze&taskId=${taskId}` }
                 ]
             };
             api.dispatchHomeAssistantNotification(payload);
