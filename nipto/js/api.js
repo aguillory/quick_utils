@@ -815,7 +815,7 @@ export async function dispatchHomeAssistantNotification(payload) {
         payload.actions = payload.actions.map(act => {
             if (act.uri && !act.uri.startsWith('http')) {
                 const queryStr = act.uri.includes('?') ? act.uri.slice(act.uri.indexOf('?')) : '';
-                act.uri = ${publicUrl};
+                act.uri = `${publicUrl}${queryStr}`;
             }
             return act;
         });
