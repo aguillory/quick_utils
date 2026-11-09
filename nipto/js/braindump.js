@@ -18,8 +18,94 @@ function escapeHtml(str) {
 }
 
 // ==========================================
-// GEMINI AI STUDIO PARSER
+// GEMINI AI STUDIO PARSER & AUTO-DISCOVERY
 // ==========================================
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+
+const BRAINDUMP_SYSTEM_INSTRUCTION = `Convert family brain dump into JSON array:
+[{"targetType":"todo"|"routine","title":"string","assignee":"Alyssa"|"Devyn"|"Carrina"|"Kenny"|"Ayden"|"DJ"|"Anyone","category":"Home"|"Farm"|"Errands"|"Tech"|"Kids"|"Project","bucket":"actionable"|"project_idea","frictionTag":"quick"|"low_brain"|"deep_focus","schedule":{"daysOfWeek":[0..6],"timeOfDay":"Morning"|"Afternoon"|"Evening"|"Anytime","points":15}}]
+Rules:
+- targetType: "routine" for recurring items (e.g. daily, weekly), else "todo".
+- schedule: only if targetType is "routine" (0=Sun..6=Sat).
+- Output pure JSON array only.`;
+
+export async function discoverActiveGeminiFlashModel(apiKey) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const models = data.models || [];
+
+    const flashModels = models.filter(m => {
+        const id = (m.name || '').replace(/^models\//, '');
+        const supportsGen = Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent');
+        const isFlash = id.toLowerCase().includes('flash');
+        const isExcluded = /(tts|image|embed)/i.test(id);
+        return supportsGen && isFlash && !isExcluded;
+    }).map(m => (m.name || '').replace(/^models\//, ''));
+
+    if (flashModels.length === 0) {
+        return DEFAULT_GEMINI_MODEL;
+    }
+
+    flashModels.sort((a, b) => {
+        if (a === DEFAULT_GEMINI_MODEL) return -1;
+        if (b === DEFAULT_GEMINI_MODEL) return 1;
+
+        const parseVer = (str) => {
+            const match = str.match(/gemini-(\d+(?:\.\d+)?)/i);
+            return match ? parseFloat(match[1]) : 0;
+        };
+        const verA = parseVer(a);
+        const verB = parseVer(b);
+        if (verA !== verB) {
+            return verB - verA;
+        }
+        const isStandardA = a.endsWith('-flash') ? 1 : 0;
+        const isStandardB = b.endsWith('-flash') ? 1 : 0;
+        return isStandardB - isStandardA;
+    });
+
+    return flashModels[0];
+}
+
+async function callGeminiGenerate(apiKey, model, text) {
+    const cleanModel = (model || DEFAULT_GEMINI_MODEL).replace(/^models\//, '');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+    const body = {
+        systemInstruction: {
+            parts: [{ text: BRAINDUMP_SYSTEM_INSTRUCTION }]
+        },
+        contents: [
+            {
+                parts: [{ text: text }]
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json"
+        }
+    };
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = errBody.error?.message || `HTTP ${res.status}`;
+        const err = new Error(errMsg);
+        err.status = res.status;
+        err.code = errBody.error?.code;
+        throw err;
+    }
+
+    return await res.json();
+}
+
 export async function parseWithGemini() {
     const inputEl = document.getElementById('brainDumpInput');
     const parseBtn = document.getElementById('btnParseGemini');
@@ -31,11 +117,16 @@ export async function parseWithGemini() {
         return;
     }
 
-    const apiKey = state.integrationsConfig?.geminiApiKey;
+    const apiKey = (state.integrationsConfig?.geminiApiKey || '').trim();
     if (!apiKey) {
         alert("Gemini API Key is not configured. Please open Settings (gear icon in the top bar) and enter your Gemini API key.");
         if (window.openSettingsModal) window.openSettingsModal();
         return;
+    }
+
+    let configuredModel = (state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
+    if (configuredModel === 'gemini-2.5-flash') {
+        configuredModel = DEFAULT_GEMINI_MODEL;
     }
 
     if (parseBtn) {
@@ -43,62 +134,58 @@ export async function parseWithGemini() {
         parseBtn.innerHTML = "Thinking (Gemini)...";
     }
     if (statusEl) {
-        statusEl.textContent = "Connecting to Gemini 2.5 Flash...";
+        statusEl.textContent = `Connecting to ${configuredModel}...`;
         statusEl.style.color = "var(--primary)";
     }
 
-    const knownUsers = ALL_USERS.map(u => u.name).join(', ');
-    const systemInstruction = `You are a structured family task assistant. Convert the user's unstructured brain dump of chores, one-off to-dos, project ideas, and recurring schedules into an array of structured JSON task objects.
-Available assignees: Alyssa, Devyn, Carrina, Kenny, Ayden, DJ, Anyone.
-Inferred categories: Home, Farm, Errands, Tech, Kids, Project.
-Friction tags: "quick" (<5 min), "low_brain" (mindless chores), "deep_focus" (projects or complex tasks).
-Buckets for todos: "actionable" or "project_idea".
-
-Strict JSON Schema for each item in the array:
-- targetType: "todo" or "routine" (use "routine" if recurring or periodic, e.g. "every day", "Mondays and Thursdays", "weekly")
-- title: concise title string
-- assignee: matched from available assignees or "Anyone"
-- category: Home | Farm | Errands | Tech | Kids | Project
-- bucket: "actionable" or "project_idea"
-- frictionTag: "quick" | "low_brain" | "deep_focus"
-- schedule: (only if targetType is "routine") object with:
-    - daysOfWeek: array of integers 0..6 where 0=Sun, 1=Mon, ..., 6=Sat (or [0,1,2,3,4,5,6] if daily)
-    - timeOfDay: "Morning" | "Afternoon" | "Evening" | "Anytime"
-    - points: suggested Nipto points (e.g. 10, 15, 20, 25)
-
-Return ONLY valid JSON: an array of these objects without any Markdown fences or formatting.`;
-
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-        const body = {
-            contents: [
-                {
-                    parts: [
-                        { text: systemInstruction + "\n\nUser Input:\n" + text }
-                    ]
+        let data;
+        let activeModel = configuredModel;
+
+        try {
+            data = await callGeminiGenerate(apiKey, activeModel, text);
+        } catch (firstErr) {
+            const isDeprecationOr404 = firstErr.status === 404 ||
+                firstErr.code === 404 ||
+                /no longer available|not found|deprecated/i.test(firstErr.message || '');
+
+            if (isDeprecationOr404) {
+                console.warn(`Gemini model ${activeModel} failed (${firstErr.message}). Initiating auto-discovery fallback...`);
+                if (statusEl) {
+                    statusEl.textContent = `Model ${activeModel} unavailable. Discovering active Flash model...`;
+                    statusEl.style.color = "var(--warning, #f59e0b)";
                 }
-            ],
-            generationConfig: {
-                responseMimeType: "application/json"
+
+                const discovered = await discoverActiveGeminiFlashModel(apiKey);
+                activeModel = discovered;
+
+                if (statusEl) {
+                    statusEl.textContent = `Retrying brain dump with ${activeModel}...`;
+                    statusEl.style.color = "var(--primary)";
+                }
+
+                data = await callGeminiGenerate(apiKey, activeModel, text);
+
+                // Save working model to Firestore config/integrations so subsequent calls succeed on first try
+                try {
+                    await api.saveIntegrationsConfigToFirestore({ geminiModel: activeModel });
+                } catch (saveErr) {
+                    console.error("Failed to save discovered geminiModel to Firestore:", saveErr);
+                }
+            } else {
+                throw firstErr;
             }
-        };
-
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-
-        if (!res.ok) {
-            const errBody = await res.json().catch(() => ({}));
-            throw new Error(errBody.error?.message || `HTTP ${res.status}`);
         }
 
-        const data = await res.json();
         const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!candidateText) throw new Error("Gemini returned empty response.");
 
-        let parsedItems = JSON.parse(candidateText);
+        let cleanedText = candidateText.trim();
+        if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        }
+
+        let parsedItems = JSON.parse(cleanedText);
         if (!Array.isArray(parsedItems)) {
             if (parsedItems.items && Array.isArray(parsedItems.items)) parsedItems = parsedItems.items;
             else if (parsedItems.tasks && Array.isArray(parsedItems.tasks)) parsedItems = parsedItems.tasks;
@@ -119,7 +206,7 @@ Return ONLY valid JSON: an array of these objects without any Markdown fences or
 
         renderBrainDumpStaging();
         if (statusEl) {
-            statusEl.textContent = `Parsed ${state.brainDumpStaging.length} items successfully. Review and commit below.`;
+            statusEl.textContent = `Parsed ${state.brainDumpStaging.length} items successfully with ${activeModel}. Review and commit below.`;
             statusEl.style.color = "var(--success)";
         }
     } catch (err) {

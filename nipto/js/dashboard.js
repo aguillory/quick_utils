@@ -36,7 +36,7 @@ import {
     toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill
 } from './users.js';
 import {
-    openSettingsModal, closeSettingsModal, saveSettingsModal
+    openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection, testGeminiConnection
 } from './settings.js';
 import { showToast } from './toast.js';
 
@@ -128,7 +128,7 @@ Object.assign(window, {
     parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
-    openSettingsModal, closeSettingsModal, saveSettingsModal,
+    openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
     setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin
 });
 

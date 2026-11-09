@@ -339,7 +339,21 @@
                 <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 6px;">Gemini API Key (for Brain Dump AI):</label>
                 <input type="password" id="settingGeminiApiKey" placeholder="AIzaSy..." style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
 
-                <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 10px;">Home Assistant Cloud Webhook URL:</label>
+                <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 10px;">Gemini Model:</label>
+                <input type="text" id="settingGeminiModel" value="gemini-3.8-flash" placeholder="gemini-3.8-flash" list="geminiModelOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
+                <datalist id="geminiModelOptions">
+                    <option value="gemini-3.8-flash"></option>
+                    <option value="gemini-2.5-flash"></option>
+                </datalist>
+
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                    <button type="button" id="btnTestGeminiKey" class="action-btn" onclick="testGeminiConnection()" style="padding: 6px 14px; font-size: 12px; font-weight: 700; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                        &#x26A1; Test Key &amp; Model
+                    </button>
+                    <span id="geminiTestBadge" style="display: none; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px;"></span>
+                </div>
+
+                <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 12px;">Home Assistant Cloud Webhook URL:</label>
                 <input type="text" id="settingHaWebhookUrl" value="https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
             </div>
 
