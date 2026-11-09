@@ -80,6 +80,7 @@ export const state = {
         }
     },
     recentCompletions: [],
+    completedToday: [], // Array of { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey }
     
     // Filter state
     scheduleFilter: 'me',           // 'me' (default) | 'all' | uid
@@ -88,6 +89,9 @@ export const state = {
     todoPersonFilter: 'all',        // 'all' | 'me' | 'unassigned' | uid
     todoBucketFilter: 'all',        // 'all' | 'actionable' | 'project_idea'
     todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'
+    todoPriorityFilter: 'all',      // 'all' | 'high' | 'medium' | 'low'
+    manageSubtab: 'todos',          // 'todos' | 'routines'
+    manageSearchQuery: '',
     
     // Bulk triage selection
     selectedTodoIds: new Set(),

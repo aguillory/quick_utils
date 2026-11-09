@@ -8,6 +8,7 @@ import { saveCloudCollapsed } from './preferences.js';
 import { renderRoutines } from './routines.js';
 import { enableDragSort } from './dragSort.js';
 import { saveCloudPreference } from './preferences.js';
+import { getLocalTodayKey } from './utils.js';
 // Logs a task to Nipto for the active users and cross-wires linked routines.
 export async function logTask(buttonElement, taskUid, taskName) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return false; }
@@ -76,6 +77,26 @@ export async function logTask(buttonElement, taskUid, taskName) {
             if (requiresRoutineRender) { renderRoutines(); }
         }
 
+        // Record to daily_completions
+        const todayKey = getLocalTodayKey();
+        if (getLocalTodayKey(targetDate) === todayKey) {
+            state.activeUsers.forEach(uid => {
+                const uObj = ALL_USERS.find(u => u.uid === uid);
+                const actId = `nipto_${taskUid}_${uid}_${Date.now()}`;
+                api.recordDailyCompletion({
+                    id: actId,
+                    itemId: taskUid,
+                    sourceType: 'nipto',
+                    title: taskName,
+                    user: uObj ? uObj.name : namesString,
+                    userUid: uid,
+                    points: points,
+                    completedAt: targetDate.toISOString(),
+                    dateKey: todayKey
+                });
+            });
+        }
+
         updateLeaderboardUI();
         buttonElement.disabled = false;
         return true;
@@ -96,10 +117,11 @@ export async function deleteTaskActivity(activityUid, btnElement) {
     const statusDiv = document.getElementById('status');
     const originalHtml = btnElement.innerHTML;
     btnElement.disabled = true;
-    btnElement.innerHTML = "⏳";
+    btnElement.innerHTML = "&#x23F3;";
 
     try {
         await api.deleteActivityFromNipto(activityUid);
+        api.removeDailyCompletion(`nipto_${activityUid}`);
 
 
 

@@ -6,6 +6,7 @@ import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
+import { getLocalTodayKey } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -95,10 +96,7 @@ function routineAppliesToDate(routine, targetDate) {
 
 // Format local YYYY-MM-DD
 function toLocalDateKey(d) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getLocalTodayKey(d);
 }
 
 // Filter matching helper
@@ -265,28 +263,59 @@ export function renderRollingSchedule() {
     if (missedItems.length === 0) {
         boardHtml += `<div class="empty-col-msg">&#x2714; No missed routines in past 3 days</div>`;
     } else {
+        // Group missed items chronologically by dateKey (descending: yesterday, -2, -3)
+        const missedGroups = {};
         missedItems.forEach(item => {
-            const r = item.routine;
-            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-            const pts = linkedTask ? linkedTask.value : 0;
-            const assigneesLabel = formatRoutineAssignees(r, true);
+            if (!missedGroups[item.dateKey]) {
+                const d = new Date(item.dateKey + 'T12:00:00');
+                const fullDateStr = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+                missedGroups[item.dateKey] = {
+                    dateKey: item.dateKey,
+                    fullDateStr: fullDateStr,
+                    dayName: item.dayName,
+                    items: []
+                };
+            }
+            missedGroups[item.dateKey].items.push(item);
+        });
 
+        const sortedMissedKeys = Object.keys(missedGroups).sort((a, b) => b.localeCompare(a));
+        sortedMissedKeys.forEach(dKey => {
+            const grp = missedGroups[dKey];
             boardHtml += `
-            <div class="routine-board-row">
-                <button type="button" class="item-checkbox" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', true)" title="Mark done for ${item.dayName} (awards points)" aria-label="Mark done for ${item.dayName}"></button>
-                <div class="routine-row-info">
-                    <div class="routine-row-title-line">
-                        <span class="missed-day-badge">${item.dayName}</span>
-                        <span class="routine-row-name">${escapeHtml(r.name)}</span>
-                    </div>
-                    <div class="routine-row-meta">
-                        ${assigneesLabel}
-                        ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
-                    </div>
-                </div>
-                <button type="button" class="btn-dismiss-missed" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', false)" title="Dismiss without points" aria-label="Dismiss">&times;</button>
+            <div class="routine-day-divider">
+                <span class="routine-day-divider-title">${grp.fullDateStr}</span>
+                <span class="routine-day-divider-count">${grp.items.length}</span>
             </div>
             `;
+
+            grp.items.forEach(item => {
+                const r = item.routine;
+                const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+                const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                const assigneesLabel = formatRoutineAssignees(r, true);
+
+                boardHtml += `
+                <div class="routine-board-row">
+                    <button type="button" class="item-checkbox" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', true)" title="Mark done for ${item.dayName} (awards points)" aria-label="Mark done for ${item.dayName}"></button>
+                    <div class="routine-row-info">
+                        <div class="routine-row-title-line">
+                            <span class="missed-day-badge">${item.dayName}</span>
+                            <span class="routine-row-name">${escapeHtml(r.name)}</span>
+                        </div>
+                        <div class="routine-row-meta">
+                            ${assigneesLabel}
+                            ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="routine-row-actions">
+                        <button type="button" class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+                        <button type="button" class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x1F5D1;</button>
+                        <button type="button" class="btn-dismiss-missed" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', false)" title="Dismiss without points" aria-label="Dismiss">&times;</button>
+                    </div>
+                </div>
+                `;
+            });
         });
     }
     boardHtml += `</div></div>`;
@@ -322,7 +351,7 @@ export function renderRollingSchedule() {
             const withoutPts = isDone && comp?.withoutPoints;
 
             const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-            const pts = linkedTask ? linkedTask.value : 0;
+            const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
             const assigneesLabel = formatRoutineAssignees(r, true);
 
             boardHtml += `
@@ -340,7 +369,10 @@ export function renderRollingSchedule() {
                         ${isDone ? `<span class="completed-by-tag">&#x2714; ${escapeHtml(doneByName)}${withoutPts ? ' (No pts)' : ''}</span>` : ''}
                     </div>
                 </div>
-                <button type="button" class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+                <div class="routine-row-actions">
+                    <button type="button" class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+                    <button type="button" class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x1F5D1;</button>
+                </div>
             </div>
             `;
         });
@@ -363,29 +395,62 @@ export function renderRollingSchedule() {
     if (upcomingItems.length === 0) {
         boardHtml += `<div class="empty-col-msg">No upcoming non-daily routines</div>`;
     } else {
+        // Group upcoming items chronologically by dateKey (ascending: tomorrow, +2, +3)
+        const upcomingGroups = {};
         upcomingItems.forEach(item => {
-            const r = item.routine;
-            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-            const pts = linkedTask ? linkedTask.value : 0;
-            const assigneesLabel = formatRoutineAssignees(r, true);
+            if (!upcomingGroups[item.dateKey]) {
+                const d = new Date(item.dateKey + 'T12:00:00');
+                const fullDateStr = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+                upcomingGroups[item.dateKey] = {
+                    dateKey: item.dateKey,
+                    fullDateStr: fullDateStr,
+                    dayName: item.dayName,
+                    items: []
+                };
+            }
+            upcomingGroups[item.dateKey].items.push(item);
+        });
 
+        const sortedUpcomingKeys = Object.keys(upcomingGroups).sort((a, b) => a.localeCompare(b));
+        sortedUpcomingKeys.forEach(dKey => {
+            const grp = upcomingGroups[dKey];
             boardHtml += `
-            <div class="routine-board-row is-upcoming-row">
-                <span class="upcoming-day-badge">${item.dayName}</span>
-                <div class="routine-row-info">
-                    <div class="routine-row-title-line">
-                        <span class="routine-row-name">${escapeHtml(r.name)}</span>
-                    </div>
-                    <div class="routine-row-meta">
-                        ${assigneesLabel}
-                        ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
-                    </div>
-                </div>
+            <div class="routine-day-divider">
+                <span class="routine-day-divider-title">${grp.fullDateStr}</span>
+                <span class="routine-day-divider-count">${grp.items.length}</span>
             </div>
             `;
+
+            grp.items.forEach(item => {
+                const r = item.routine;
+                const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+                const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                const assigneesLabel = formatRoutineAssignees(r, true);
+
+                boardHtml += `
+                <div class="routine-board-row is-upcoming-row">
+                    <span class="upcoming-day-badge">${item.dayName}</span>
+                    <div class="routine-row-info">
+                        <div class="routine-row-title-line">
+                            <span class="routine-row-name">${escapeHtml(r.name)}</span>
+                        </div>
+                        <div class="routine-row-meta">
+                            ${assigneesLabel}
+                            ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="routine-row-actions">
+                        <button type="button" class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+                        <button type="button" class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x1F5D1;</button>
+                    </div>
+                </div>
+                `;
+            });
         });
     }
     boardHtml += `</div></div>`;
+
+    boardHtml += `</div>`; // Close .routine-board-grid
 
     boardHtml += `</div>`; // Close .routine-board-grid
 
@@ -497,14 +562,38 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
         });
         routine.completionsByDate = completions;
 
-        if (awardPoints && routine.linkedNiptoTask && state.apiToken) {
-            const backdatedDateIso = new Date(`${dateKey}T12:00:00`).toISOString();
-            await api.logActivityToNipto(routine.linkedNiptoTask, backdatedDateIso, [creditedUid]);
-            const taskObj = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
-            const pts = taskObj ? taskObj.value : 0;
-            showToast(routine.linkedNiptoTask, routine.name, pts, creditedName);
-        } else if (!awardPoints) {
+        const linkedTask = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
+        const routinePts = routine.points !== undefined && routine.points !== null ? routine.points : (linkedTask ? linkedTask.value : 0);
+
+        if (awardPoints) {
+            if (routine.linkedNiptoTask && state.apiToken) {
+                const backdatedDateIso = new Date(`${dateKey}T12:00:00`).toISOString();
+                await api.logActivityToNipto(routine.linkedNiptoTask, backdatedDateIso, [creditedUid]);
+                showToast(routine.linkedNiptoTask, routine.name, routinePts, creditedName);
+            } else if (routinePts > 0) {
+                api.awardAllowancePoints(creditedUid, routinePts);
+                showToast("routine_done", routine.name, routinePts, creditedName);
+            } else {
+                showToast("routine_done", routine.name, 0, creditedName);
+            }
+        } else {
             showToast("admin_clear", `Dismissed "${routine.name}" on ${dateKey} (no points)`, 0, creditedName);
+        }
+
+        // Record to daily_completions for today
+        if (dateKey === getLocalTodayKey()) {
+            const compId = `routine_${routineId}_${dateKey}`;
+            api.recordDailyCompletion({
+                id: compId,
+                itemId: routineId,
+                sourceType: 'routine',
+                title: routine.name,
+                user: creditedName,
+                userUid: creditedUid,
+                points: awardPoints ? routinePts : 0,
+                completedAt: new Date().toISOString(),
+                dateKey: dateKey
+            });
         }
 
         renderRollingSchedule();
@@ -528,6 +617,11 @@ export async function undoRoutineForDate(routineId, dateKey) {
             completionsByDate: completions
         });
         routine.completionsByDate = completions;
+
+        // Remove from daily_completions
+        const compId = `routine_${routineId}_${dateKey}`;
+        api.removeDailyCompletion(compId);
+
         renderRollingSchedule();
         updateLeaderboardUI();
     } catch (err) {
@@ -548,8 +642,19 @@ export function openRoutineModal() {
     document.querySelectorAll('.routine-day-cb').forEach(cb => cb.checked = false);
     document.getElementById('routineIntervalValue').value = '1';
     document.getElementById('routineIntervalUnit').value = 'months';
+
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+    const createdByEl = document.getElementById('routineCreatedBy');
+    if (createdByEl) createdByEl.value = activeName;
+    const timeOfDayEl = document.getElementById('routineTimeOfDay');
+    if (timeOfDayEl) timeOfDayEl.value = 'Anytime';
+    const pointsEl = document.getElementById('routinePoints');
+    if (pointsEl) pointsEl.value = '15';
+    const btnDel = document.getElementById('btnDeleteRoutine');
+    if (btnDel) btnDel.style.display = 'none';
+
     populateRoutineAssignees([]);
-    populateRoutinePointsSelect();
     toggleRoutineFrequencyFields();
     document.getElementById('routineModal').style.display = 'flex';
 }
@@ -565,29 +670,48 @@ export function editRoutine(routineId) {
     document.getElementById('routineModalTitle').innerText = "Edit Routine";
     document.getElementById('routineId').value = routine.uid;
     document.getElementById('routineName').value = routine.name;
-    document.getElementById('routineType').value = routine.completionType;
-    document.getElementById('routineFrequency').value = routine.schedule.type;
+    document.getElementById('routineType').value = routine.completionType || 'shared';
+    document.getElementById('routineFrequency').value = routine.schedule?.type || 'daily';
 
-    const freq = routine.schedule.type;
+    const freq = routine.schedule?.type || 'daily';
     if (freq === 'daily') {
-        document.getElementById('routineDailyReset').value = routine.schedule.resetType || 'midnight';
-        if (routine.schedule.resetType === 'specific') {
-            document.getElementById('routineSpecificTimes').value = (routine.schedule.specificTimes || []).join(', ');
+        document.getElementById('routineDailyReset').value = routine.schedule?.resetType || 'midnight';
+        if (routine.schedule?.resetType === 'specific') {
+            document.getElementById('routineSpecificTimes').value = (routine.schedule?.specificTimes || []).join(', ');
         }
     } else if (freq === 'weekly') {
         document.querySelectorAll('.routine-day-cb').forEach(cb => {
-            cb.checked = (routine.schedule.daysOfWeek || []).includes(parseInt(cb.value));
+            cb.checked = (routine.schedule?.daysOfWeek || []).includes(parseInt(cb.value));
         });
     } else if (freq === 'interval') {
-        document.getElementById('routineIntervalValue').value = routine.schedule.value || 1;
-        document.getElementById('routineIntervalUnit').value = routine.schedule.unit || 'months';
+        document.getElementById('routineIntervalValue').value = routine.schedule?.value || 1;
+        document.getElementById('routineIntervalUnit').value = routine.schedule?.unit || 'months';
     }
 
+    const timeOfDayEl = document.getElementById('routineTimeOfDay');
+    if (timeOfDayEl) timeOfDayEl.value = routine.timeOfDay || routine.schedule?.timeOfDay || 'Anytime';
+
+    const createdByEl = document.getElementById('routineCreatedBy');
+    if (createdByEl) createdByEl.value = routine.createdBy || 'Alyssa';
+
+    const linkedTask = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
+    const pts = routine.points !== undefined && routine.points !== null ? routine.points : (linkedTask ? linkedTask.value : 0);
+    const pointsEl = document.getElementById('routinePoints');
+    if (pointsEl) pointsEl.value = pts;
+
+    const btnDel = document.getElementById('btnDeleteRoutine');
+    if (btnDel) btnDel.style.display = 'inline-block';
+
     populateRoutineAssignees(routine.assignees || []);
-    populateRoutinePointsSelect();
-    document.getElementById('routinePoints').value = routine.linkedNiptoTask || '';
     toggleRoutineFrequencyFields();
     document.getElementById('routineModal').style.display = 'flex';
+}
+
+export async function deleteRoutineFromModal() {
+    const id = document.getElementById('routineId').value;
+    if (!id) return;
+    closeRoutineModal();
+    await deleteRoutine(id);
 }
 
 export function toggleRoutineFrequencyFields() {
@@ -613,32 +737,6 @@ function populateRoutineAssignees(selectedUids = []) {
     });
 }
 
-function populateRoutinePointsSelect() {
-    const select = document.getElementById('routinePoints');
-    if (!select) return;
-    select.innerHTML = '<option value="">-- No Points --</option>';
-    if (!state.tasks || state.tasks.length === 0) return;
-
-    const groupedTasks = state.tasks.reduce((acc, task) => {
-        const categoryName = task.category || task.group || 'Uncategorized';
-        if (categoryName === "General" || categoryName === "Pinned") return acc;
-        if (!acc[categoryName]) acc[categoryName] = [];
-        acc[categoryName].push(task);
-        return acc;
-    }, {});
-
-    const sortedCategories = Object.keys(groupedTasks).sort((a, b) => a.localeCompare(b));
-    sortedCategories.forEach(category => {
-        const optGroup = document.createElement('optgroup');
-        optGroup.label = category;
-        const tasksInCat = groupedTasks[category].sort((a, b) => a.name.localeCompare(b.name));
-        tasksInCat.forEach(t => {
-            optGroup.innerHTML += `<option value="${t.uid}">${escapeHtml(t.name)} (${t.value} pts)</option>`;
-        });
-        select.appendChild(optGroup);
-    });
-}
-
 export async function saveRoutine() {
     const name = document.getElementById('routineName').value.trim();
     if (!name) { alert("Routine Name is required!"); return; }
@@ -647,7 +745,13 @@ export async function saveRoutine() {
     if (assignees.length === 0) { alert("Assign the routine to at least one person!"); return; }
 
     const freq = document.getElementById('routineFrequency').value;
-    let scheduleData = { type: freq };
+    const timeOfDayVal = document.getElementById('routineTimeOfDay')?.value || 'Anytime';
+    const pointsVal = parseInt(document.getElementById('routinePoints')?.value, 10) || 0;
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+    const createdByVal = document.getElementById('routineCreatedBy')?.value || activeName;
+
+    let scheduleData = { type: freq, timeOfDay: timeOfDayVal };
 
     if (freq === 'daily') {
         const resetType = document.getElementById('routineDailyReset').value;
@@ -666,16 +770,20 @@ export async function saveRoutine() {
         scheduleData.unit = document.getElementById('routineIntervalUnit').value;
     }
 
+    const id = document.getElementById('routineId').value;
+    const routine = id ? state.routines.find(r => r.uid === id) : null;
+
     let routineData = {
         name: name,
         completionType: document.getElementById('routineType').value,
         assignees: assignees,
         schedule: scheduleData,
-        timeOfDay: scheduleData.timeOfDay || 'Anytime',
-        linkedNiptoTask: document.getElementById('routinePoints').value || null
+        timeOfDay: timeOfDayVal,
+        points: pointsVal,
+        createdBy: createdByVal,
+        linkedNiptoTask: routine?.linkedNiptoTask || null
     };
 
-    const id = document.getElementById('routineId').value;
     try {
         if (id) {
             await api.updateFirestoreDocument('routines', id, routineData);
@@ -687,6 +795,7 @@ export async function saveRoutine() {
         closeRoutineModal();
         await api.loadRoutinesFromFirestore();
         renderRollingSchedule();
+        if (window.renderBulkTriageList) window.renderBulkTriageList();
     } catch (error) {
         alert("Error saving routine: " + error.message);
     }
@@ -698,6 +807,7 @@ export async function deleteRoutine(routineId) {
         await api.deleteFirestoreDocument('routines', routineId);
         await api.loadRoutinesFromFirestore();
         renderRollingSchedule();
+        if (window.renderBulkTriageList) window.renderBulkTriageList();
     } catch (e) {
         alert("Error deleting routine: " + e.message);
     }
@@ -723,6 +833,7 @@ if (typeof window !== 'undefined') {
     window.closeRoutineModal = closeRoutineModal;
     window.editRoutine = editRoutine;
     window.saveRoutine = saveRoutine;
+    window.deleteRoutineFromModal = deleteRoutineFromModal;
     window.deleteRoutine = deleteRoutine;
     window.toggleRoutineFrequencyFields = toggleRoutineFrequencyFields;
     window.renderRollingSchedule = renderRollingSchedule;

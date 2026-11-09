@@ -183,12 +183,30 @@
 
                 <!-- Bulk Triage & Management Card -->
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color);">
-                    <h3 style="margin: 0 0 6px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-                        &#x2699; Bulk Triage &amp; Management
-                    </h3>
-                    <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted);">
-                        Select multiple tasks and routines to batch delete, complete, reassign, or adjust tags.
-                    </p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h3 style="margin: 0 0 4px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                                &#x2699; Bulk Triage &amp; Management
+                            </h3>
+                            <div style="font-size: 12px; color: var(--text-muted);">
+                                View, search, individually edit, or batch triage household To-Dos and Routines.
+                            </div>
+                        </div>
+                        <button type="button" class="action-btn save-mode" onclick="if(state.manageSubtab === 'routines') openRoutineModal(); else openTaskModal();" style="font-size: 12px; padding: 6px 12px;">
+                            + Add New
+                        </button>
+                    </div>
+
+                    <!-- Manage Sub-Tabs & Search Row -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div class="manage-subtabs" style="display: flex; gap: 8px;">
+                            <button type="button" id="btnSubtabTodos" class="filter-pill active" onclick="switchManageSubtab('todos')">&#x1F4CB; Manage To-Dos</button>
+                            <button type="button" id="btnSubtabRoutines" class="filter-pill" onclick="switchManageSubtab('routines')">&#x1F4C5; Manage Routines</button>
+                        </div>
+                        <div style="flex: 1; max-width: 260px; min-width: 180px;">
+                            <input type="text" id="manageSearchInput" placeholder="Filter / search..." oninput="filterManageList(this.value)" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; box-sizing: border-box;">
+                        </div>
+                    </div>
 
                     <div id="bulkTriageContainer">
                         <!-- Populated by braindump.js -->
@@ -203,6 +221,7 @@
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="action-btn" onclick="executeBulkAction('complete')" style="background: var(--success); color: white;">&#x2714; Bulk Complete</button>
                         <button class="action-btn" onclick="executeBulkAction('assign')">&#x1F464; Bulk Assign User</button>
+                        <button class="action-btn" onclick="executeBulkAction('priority')">&#x1F525; Bulk Set Priority</button>
                         <button class="action-btn" onclick="executeBulkAction('category')">&#x1F4C1; Bulk Change Category</button>
                         <button class="action-btn" onclick="executeBulkAction('friction')">&#x26A1; Bulk Set Friction</button>
                         <button class="action-btn" onclick="executeBulkAction('delete')" style="background: var(--danger); color: white;">&#x1F5D1; Bulk Delete</button>
@@ -510,12 +529,35 @@
                     </select>
                 </div>
                 <div>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Priority Level</label>
+                    <select id="taskPriority" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <option value="">None (Standard)</option>
+                        <option value="high">&#x1F525; High Priority</option>
+                        <option value="medium">&#x26A1; Medium Priority</option>
+                        <option value="low">&#x1F53D; Low Priority</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Friction Level</label>
                     <select id="taskFriction" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
                         <option value="">None (Standard)</option>
-                        <option value="quick">Quick (&lt;5m)</option>
-                        <option value="low_brain">Low Brain</option>
-                        <option value="deep_focus">Deep Focus</option>
+                        <option value="quick">&#x26A1; Quick (&lt;5m)</option>
+                        <option value="low_brain">&#x1F9E0; Low Brain</option>
+                        <option value="deep_focus">&#x1F3AF; Deep Focus</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Created By</label>
+                    <select id="taskCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <option value="Alyssa">Alyssa</option>
+                        <option value="Devyn">Devyn</option>
+                        <option value="Carrina">Carrina</option>
+                        <option value="Kenny">Kenny</option>
+                        <option value="Ayden">Ayden</option>
+                        <option value="DJ">DJ</option>
                     </select>
                 </div>
             </div>
@@ -564,11 +606,26 @@
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Routine Name</label>
             <input type="text" id="routineName" placeholder="e.g. Milk Goats, Feed Chickens, Change Filters" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
             
-            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Completion Type</label>
-            <select id="routineType" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
-                <option value="shared">Shared (As long as one person does it, it's done for everyone)</option>
-                <option value="individual">Individual (Every assigned person must complete it)</option>
-            </select>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Completion Type</label>
+                    <select id="routineType" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <option value="shared">Shared (One person completes for all)</option>
+                        <option value="individual">Individual (Every assigned person must complete)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Created By</label>
+                    <select id="routineCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <option value="Alyssa">Alyssa</option>
+                        <option value="Devyn">Devyn</option>
+                        <option value="Carrina">Carrina</option>
+                        <option value="Kenny">Kenny</option>
+                        <option value="Ayden">Ayden</option>
+                        <option value="DJ">DJ</option>
+                    </select>
+                </div>
+            </div>
 
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To</label>
             <div id="routineAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: var(--bg-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
@@ -577,20 +634,31 @@
             <div style="background: rgba(37, 99, 235, 0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(37, 99, 235, 0.2);">
                 <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Schedule &amp; Frequency</label>
                 
-                <div style="margin-top: 8px;">
-                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Base Frequency</label>
-                    <select id="routineFrequency" onchange="toggleRoutineFrequencyFields()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 4px;">
-                        <option value="daily">Daily (Every day)</option>
-                        <option value="weekly">Weekly (Specific days of week)</option>
-                        <option value="interval">Custom Interval</option>
-                    </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Frequency</label>
+                        <select id="routineFrequency" onchange="toggleRoutineFrequencyFields()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 4px;">
+                            <option value="daily">Daily / Every Day</option>
+                            <option value="weekly">Specific Days of Week</option>
+                            <option value="interval">Custom Interval</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Time-of-Day Bucket</label>
+                        <select id="routineTimeOfDay" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 4px;">
+                            <option value="Anytime">Anytime</option>
+                            <option value="Morning">Morning</option>
+                            <option value="Afternoon">Afternoon</option>
+                            <option value="Evening">Evening</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="freqDailyFields" style="margin-top: 8px;">
-                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Time-of-Day Bucket</label>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Daily Reset Type</label>
                     <select id="routineDailyReset" onchange="toggleRoutineFrequencyFields()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 4px;">
-                        <option value="midnight">Once a day (Anytime)</option>
-                        <option value="specific">Specific Time-of-Day</option>
+                        <option value="midnight">Once a day (Midnight reset)</option>
+                        <option value="specific">Specific Times of Day</option>
                     </select>
                     <div id="dailySpecificTimes" style="display: none; margin-top: 6px;">
                         <label style="font-size: 11px; color: var(--text-muted);">Enter 24-hr times separated by commas (e.g. 07:00, 18:00)</label>
@@ -625,12 +693,14 @@
             </div>
 
             <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
-            <select id="routinePoints" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 13px;">
-            </select>
+            <input type="number" id="routinePoints" min="0" placeholder="e.g. 15" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px; width: 100%; box-sizing: border-box;">
             
-            <div class="modal-buttons" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-                <button type="button" class="action-btn" onclick="closeRoutineModal()">Cancel</button>
-                <button type="button" class="action-btn save-mode" onclick="saveRoutine()">Save Routine</button>
+            <div class="modal-buttons" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <button type="button" id="btnDeleteRoutine" class="action-btn" onclick="deleteRoutineFromModal()" style="display: none; background: var(--danger); color: white;">&#x1F5D1; Delete</button>
+                <div style="display: flex; gap: 10px; margin-left: auto;">
+                    <button type="button" class="action-btn" onclick="closeRoutineModal()">Cancel</button>
+                    <button type="button" class="action-btn save-mode" onclick="saveRoutine()">Save Routine</button>
+                </div>
             </div>
         </div>
     </div>

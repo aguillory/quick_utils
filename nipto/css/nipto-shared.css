@@ -434,6 +434,54 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     font-style: italic;
 }
 
+/* Day separator headers in Upcoming and Past (Missed) columns */
+.routine-day-divider {
+    width: 100%;
+    margin: 10px 0 6px 0;
+    padding: 5px 8px;
+    background: var(--card-bg, #FFFFFF);
+    border-left: 4px solid var(--primary, #4F46E5);
+    border-bottom: 2px solid var(--border-color, #E5E7EB);
+    border-radius: 4px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.routine-col-past .routine-day-divider {
+    border-left-color: var(--danger, #EF4444);
+}
+
+.routine-col-upcoming .routine-day-divider {
+    border-left-color: #2563eb;
+}
+
+.routine-day-divider-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-main, #1F2937);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.routine-day-divider-count {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: var(--bg-color);
+    padding: 1px 5px;
+    border-radius: 10px;
+}
+
+.routine-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 /* ==========================================
    HOLLOW SQUARE & CHECKED CHECKBOXES
    ========================================== */
@@ -631,6 +679,111 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 .todo-friction-badge.deep_focus {
     color: #7c3aed;
     background: rgba(124, 58, 237, 0.1);
+}
+
+/* Priority Badges */
+.todo-priority-badge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.todo-priority-badge.high {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.todo-priority-badge.medium {
+    color: #d97706;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.todo-priority-badge.low {
+    color: #64748b;
+    background: rgba(100, 116, 139, 0.12);
+    border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+/* Creator Indicator Tags */
+.todo-creator-tag {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.todo-creator-tag.different-user {
+    color: #4338ca;
+    background: rgba(79, 70, 229, 0.08);
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+/* Split To-Do Sections */
+.todo-section-container {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.todo-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-color);
+    border-left: 3px solid var(--primary);
+    border-radius: 6px;
+    margin-bottom: 4px;
+}
+
+.todo-section-header.shared-header {
+    border-left-color: #0284c7;
+}
+
+.todo-section-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.todo-section-count {
+    font-size: 11px;
+    font-weight: 800;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+}
+
+.empty-section-muted {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 6px;
+    border: 1px dashed var(--border-color);
 }
 
 .btn-clear-friction {

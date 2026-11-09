@@ -7,6 +7,7 @@ import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI } from './leaderboard.js';
+import { getLocalTodayKey } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -44,6 +45,11 @@ export function setTodoBucketFilter(val) {
 
 export function setTodoFrictionFilter(val) {
     state.todoFrictionFilter = val;
+    renderTodoTasks();
+}
+
+export function setTodoPriorityFilter(val) {
+    state.todoPriorityFilter = val;
     renderTodoTasks();
 }
 
@@ -113,6 +119,7 @@ export function renderTodoTasks() {
     const currentView = state.todoView;
     const personFilter = state.todoPersonFilter || 'all';
     const frictionFilter = state.todoFrictionFilter || 'all';
+    const priorityFilter = state.todoPriorityFilter || 'all';
 
     // 1. Primary View Filter
     if (currentView === 'my_actionable') {
@@ -151,7 +158,12 @@ export function renderTodoTasks() {
         tasks = tasks.filter(t => t.frictionTag === frictionFilter);
     }
 
-    // 4. Render Single Compact Toolbar Row
+    // 4. Secondary Priority Filter
+    if (priorityFilter !== 'all') {
+        tasks = tasks.filter(t => (t.priority || '').toLowerCase() === priorityFilter);
+    }
+
+    // 5. Render Single Compact Toolbar Row
     let toolbarHtml = `
     <div class="todo-toolbar-row">
         <!-- Left: Primary View Pills -->
@@ -178,6 +190,12 @@ export function renderTodoTasks() {
                 <option value="unassigned" ${personFilter === 'unassigned' ? 'selected' : ''}>Anyone</option>
                 ${ALL_USERS.map(u => `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
             </select>
+            <select class="todo-compact-select" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
+                <option value="all" ${priorityFilter === 'all' ? 'selected' : ''}>Priority: All</option>
+                <option value="high" ${priorityFilter === 'high' ? 'selected' : ''}>&#x1F525; High</option>
+                <option value="medium" ${priorityFilter === 'medium' ? 'selected' : ''}>&#x26A1; Medium</option>
+                <option value="low" ${priorityFilter === 'low' ? 'selected' : ''}>&#x1F53D; Low</option>
+            </select>
             <select class="todo-compact-select" onchange="setTodoFrictionFilter(this.value)" title="Filter by Friction Level">
                 <option value="all" ${frictionFilter === 'all' ? 'selected' : ''}>Friction: All</option>
                 <option value="quick" ${frictionFilter === 'quick' ? 'selected' : ''}>&#x26A1; Quick (&lt;5m)</option>
@@ -196,20 +214,61 @@ export function renderTodoTasks() {
         return;
     }
 
-    // Sort: incomplete first, then newest first
+    function getPriorityWeight(p) {
+        if (!p) return 0;
+        const lp = p.toLowerCase();
+        if (lp === 'high') return 3;
+        if (lp === 'medium') return 2;
+        if (lp === 'low') return 1;
+        return 0;
+    }
+
+    // Sort: incomplete first, then highest priority first, then newest first
     tasks.sort((a, b) => {
         if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        const pA = getPriorityWeight(a.priority);
+        const pB = getPriorityWeight(b.priority);
+        if (pA !== pB) return pB - pA;
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     });
 
-    // 5. Render Responsive 3-Column Card Grid
-    let gridHtml = `<div class="todo-grid">`;
+    // Partition tasks into Individual vs Shared / Anyone
+    const individualTasks = [];
+    const sharedTasks = [];
 
     tasks.forEach(t => {
+        const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
+        if (isShared) {
+            sharedTasks.push(t);
+        } else {
+            individualTasks.push(t);
+        }
+    });
+
+    let individualSectionTitle = "Assigned to Me (Individual)";
+    if (personFilter !== 'all' && personFilter !== 'unassigned' && personFilter !== 'me') {
+        const u = ALL_USERS.find(user => user.uid === personFilter);
+        individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'} (Individual)`;
+    } else if (currentView === 'all') {
+        individualSectionTitle = "Individual Tasks (Single Assignee)";
+    }
+
+    // Helper to render individual To-Do Card HTML
+    function renderCard(t) {
         const isCompleted = !!t.completed;
         const assigneePill = formatTodoAssigneePill(t);
 
-        // Friction tag: strictly render ONLY if user or AI set it
+        // Priority badge
+        let priorityBadge = '';
+        if (t.priority === 'high') {
+            priorityBadge = `<span class="todo-priority-badge high">&#x1F525; High</span>`;
+        } else if (t.priority === 'medium') {
+            priorityBadge = `<span class="todo-priority-badge medium">&#x26A1; Med</span>`;
+        } else if (t.priority === 'low') {
+            priorityBadge = `<span class="todo-priority-badge low">&#x1F53D; Low</span>`;
+        }
+
+        // Friction tag
         let frictionBadge = '';
         if (t.frictionTag === 'quick') {
             frictionBadge = `<span class="todo-friction-badge quick" title="Quick (<5m). Click x to clear.">&#x26A1; Quick <button type="button" class="btn-clear-friction" onclick="clearTaskFriction('${t.id}', event)">&times;</button></span>`;
@@ -225,7 +284,7 @@ export function renderTodoTasks() {
             ? `<span class="todo-pill project-pill">&#x1F4A1; Project</span>`
             : '';
 
-        // Category badge (only if set and not duplicating an assignee name or "List")
+        // Category badge
         let categoryBadge = '';
         if (t.category && !t.category.toLowerCase().includes('list') && !ALL_USERS.some(u => u.name.toLowerCase() === t.category.toLowerCase())) {
             categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
@@ -236,7 +295,20 @@ export function renderTodoTasks() {
             ? `<span class="pts-badge">+${t.points} pts</span>`
             : '';
 
-        // Subtasks: collapsed by default with compact toggle
+        // Creator badge
+        const createdBy = t.createdBy || 'Alyssa';
+        const isSingleAssignee = t.assignees && t.assignees.length === 1;
+        const assigneeObj = isSingleAssignee ? ALL_USERS.find(u => u.uid === t.assignees[0]) : null;
+        const isDifferentCreator = isSingleAssignee && assigneeObj && assigneeObj.name.toLowerCase() !== createdBy.toLowerCase();
+
+        let creatorBadge = '';
+        if (isDifferentCreator) {
+            creatorBadge = `<span class="todo-creator-tag different-user" title="Added by ${escapeHtml(createdBy)}">&#x270D; Added by ${escapeHtml(createdBy)}</span>`;
+        } else if (createdBy) {
+            creatorBadge = `<span class="todo-creator-tag" title="Added by ${escapeHtml(createdBy)}">by ${escapeHtml(createdBy)}</span>`;
+        }
+
+        // Subtasks section
         let subtasksSection = '';
         if (t.subTasks && t.subTasks.length > 0) {
             const completedCount = t.subTasks.filter(st => st.completed).length;
@@ -250,6 +322,7 @@ export function renderTodoTasks() {
                         <label class="todo-subtask-item">
                             <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTask('${t.id}', '${st.id}', this.checked)">
                             <span class="${st.completed ? 'completed-subtask' : ''}">${escapeHtml(st.name || st.text)}</span>
+                            ${st.createdBy && st.createdBy !== createdBy ? `<span style="font-size: 10px; color: var(--text-muted);">(${escapeHtml(st.createdBy)})</span>` : ''}
                         </label>
                     `).join('')}
                 </div>
@@ -257,7 +330,7 @@ export function renderTodoTasks() {
             `;
         }
 
-        gridHtml += `
+        return `
         <div class="todo-card ${isCompleted ? 'completed' : ''}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
@@ -275,10 +348,12 @@ export function renderTodoTasks() {
 
                 <div class="todo-badges-row">
                     ${assigneePill}
+                    ${priorityBadge}
                     ${frictionBadge}
                     ${projectBadge}
                     ${categoryBadge}
                     ${ptsDisplay}
+                    ${creatorBadge}
                 </div>
 
                 ${t.notes ? `
@@ -291,10 +366,40 @@ export function renderTodoTasks() {
             </div>
         </div>
         `;
-    });
+    }
 
-    gridHtml += `</div>`;
-    container.innerHTML = toolbarHtml + gridHtml;
+    // 6. Build Split Visual Sections HTML
+    let bodyHtml = `
+    <!-- SECTION 1: INDIVIDUAL / MINE -->
+    <div class="todo-section-container">
+        <div class="todo-section-header">
+            <h4 class="todo-section-title">
+                <span>&#x1F464; ${individualSectionTitle}</span>
+                <span class="todo-section-count">${individualTasks.length}</span>
+            </h4>
+        </div>
+        ${individualTasks.length > 0
+            ? `<div class="todo-grid">${individualTasks.map(renderCard).join('')}</div>`
+            : `<div class="empty-section-muted">&#x1F464; No individual tasks matching current filters.</div>`
+        }
+    </div>
+
+    <!-- SECTION 2: SHARED / ANYONE CAN DO -->
+    <div class="todo-section-container">
+        <div class="todo-section-header shared-header">
+            <h4 class="todo-section-title">
+                <span>&#x1F465; Shared / Anyone Can Do</span>
+                <span class="todo-section-count">${sharedTasks.length}</span>
+            </h4>
+        </div>
+        ${sharedTasks.length > 0
+            ? `<div class="todo-grid">${sharedTasks.map(renderCard).join('')}</div>`
+            : `<div class="empty-section-muted">&#x1F465; No shared or household-wide tasks matching current filters.</div>`
+        }
+    </div>
+    `;
+
+    container.innerHTML = toolbarHtml + bodyHtml;
 }
 
 // Completes or uncompletes a task
@@ -321,6 +426,19 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
             if (todo.points && todo.points > 0) {
                 api.awardAllowancePoints(doerUid, todo.points);
             }
+            api.recordDailyCompletion({
+                id: `todo_${taskId}`,
+                itemId: taskId,
+                sourceType: 'todo',
+                title: todo.name,
+                user: doerName,
+                userUid: doerUid,
+                points: todo.points || 0,
+                completedAt: nowIso,
+                dateKey: getLocalTodayKey()
+            });
+        } else {
+            api.removeDailyCompletion(`todo_${taskId}`);
         }
 
         updateLeaderboardUI();
@@ -342,6 +460,27 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
 
     try {
         await api.updateFirestoreDocument('custom_tasks', taskId, { subTasks: updated });
+
+        const subObj = todo.subTasks?.find(s => s.id === subTaskId);
+        const subName = subObj?.name || subObj?.text || 'Subtask';
+        const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+        const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Someone';
+
+        if (isChecked) {
+            api.recordDailyCompletion({
+                id: `subtask_${taskId}_${subTaskId}`,
+                itemId: subTaskId,
+                sourceType: 'subtask',
+                title: `${todo.name}: ${subName}`,
+                user: activeName,
+                userUid: activeUid,
+                points: 0,
+                completedAt: new Date().toISOString(),
+                dateKey: getLocalTodayKey()
+            });
+        } else {
+            api.removeDailyCompletion(`subtask_${taskId}_${subTaskId}`);
+        }
     } catch (e) {
         console.error("Error updating subtask:", e);
     }
@@ -355,7 +494,13 @@ export function openTaskModal() {
     document.getElementById('taskCategory').value = 'Home';
     document.getElementById('taskLocation').value = 'Inside';
     document.getElementById('taskBucket').value = 'actionable';
+    const priorityEl = document.getElementById('taskPriority');
+    if (priorityEl) priorityEl.value = '';
     document.getElementById('taskFriction').value = ''; // Default without friction tag
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+    const createdByEl = document.getElementById('taskCreatedBy');
+    if (createdByEl) createdByEl.value = activeName;
     document.getElementById('taskNotes').value = '';
     populateTodoAssignees([]);
     populateSubTaskFields([]);
@@ -376,7 +521,11 @@ export function editTask(id) {
     document.getElementById('taskCategory').value = task.category || 'Home';
     document.getElementById('taskLocation').value = task.location || 'Inside';
     document.getElementById('taskBucket').value = task.bucket || 'actionable';
+    const priorityEl = document.getElementById('taskPriority');
+    if (priorityEl) priorityEl.value = task.priority || '';
     document.getElementById('taskFriction').value = task.frictionTag || '';
+    const createdByEl = document.getElementById('taskCreatedBy');
+    if (createdByEl) createdByEl.value = task.createdBy || 'Alyssa';
     document.getElementById('taskNotes').value = task.notes || '';
     populateTodoAssignees(task.assignees || []);
     populateSubTaskFields(task.subTasks || []);
@@ -396,11 +545,15 @@ function populateTodoAssignees(selected = []) {
     });
 }
 
-export function addSubTaskField(name = '', completed = false) {
+export function addSubTaskField(name = '', completed = false, createdBy = '') {
     const container = document.getElementById('subTasksContainer');
     if (!container) return;
     const emptyMsg = container.querySelector('.empty-subtasks-msg');
     if (emptyMsg) emptyMsg.remove();
+
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+    const creator = createdBy || activeName;
 
     const subId = 'st_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     const row = document.createElement('div');
@@ -408,7 +561,9 @@ export function addSubTaskField(name = '', completed = false) {
     row.style.cssText = 'display: flex; gap: 8px; align-items: center; margin-bottom: 6px;';
     row.innerHTML = `
         <input type="hidden" class="subtask-id" value="${subId}">
+        <input type="hidden" class="subtask-created-by" value="${escapeHtml(creator)}">
         <input type="text" class="subtask-name" value="${escapeHtml(name)}" placeholder="Sub-task name" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+        <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap;">by ${escapeHtml(creator)}</span>
         <button type="button" onclick="this.closest('.subtask-field-row').remove()" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px;">&times;</button>
     `;
     container.appendChild(row);
@@ -422,7 +577,7 @@ function populateSubTaskFields(subtasks = []) {
         container.innerHTML = '<div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
         return;
     }
-    subtasks.forEach(st => addSubTaskField(st.name || st.text, st.completed));
+    subtasks.forEach(st => addSubTaskField(st.name || st.text, st.completed, st.createdBy));
 }
 
 // Saves a task to Firestore and triggers Direct Assignment Alerts
@@ -433,16 +588,22 @@ export async function saveTask() {
 
     const assignees = Array.from(document.querySelectorAll('.todo-assignee-cb:checked')).map(cb => cb.value);
     const bucket = document.getElementById('taskBucket')?.value || 'actionable';
+    const priority = document.getElementById('taskPriority')?.value || '';
     const frictionTag = document.getElementById('taskFriction')?.value || '';
     const category = document.getElementById('taskCategory')?.value || 'Home';
     const location = document.getElementById('taskLocation')?.value || 'Inside';
     const notes = document.getElementById('taskNotes')?.value.trim() || '';
 
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+    const createdBy = document.getElementById('taskCreatedBy')?.value || activeName;
+
     const subTasks = [];
     document.querySelectorAll('.subtask-field-row').forEach(row => {
         const subId = row.querySelector('.subtask-id').value;
         const subName = row.querySelector('.subtask-name').value.trim();
-        if (subName) subTasks.push({ id: subId, name: subName, completed: false });
+        const subCreator = row.querySelector('.subtask-created-by')?.value || createdBy;
+        if (subName) subTasks.push({ id: subId, name: subName, completed: false, createdBy: subCreator, createdAt: new Date().toISOString() });
     });
 
     const taskData = {
@@ -450,7 +611,9 @@ export async function saveTask() {
         category,
         location,
         bucket,
+        priority,
         frictionTag,
+        createdBy,
         notes,
         assignees,
         subTasks
@@ -520,6 +683,7 @@ if (typeof window !== 'undefined') {
     window.setTodoPersonFilter = setTodoPersonFilter;
     window.setTodoBucketFilter = setTodoBucketFilter;
     window.setTodoFrictionFilter = setTodoFrictionFilter;
+    window.setTodoPriorityFilter = setTodoPriorityFilter;
     window.toggleSubtasksList = toggleSubtasksList;
     window.clearTaskFriction = clearTaskFriction;
     window.toggleTaskStatus = toggleTaskStatus;

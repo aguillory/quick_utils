@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { renderTodoTasks } from './todos.js';
 import { renderRoutines } from './routines.js';
+import { getLocalTodayKey } from './utils.js';
 
 // Helper to escape HTML characters
 function escapeHtml(str) {
@@ -23,10 +24,11 @@ function escapeHtml(str) {
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 const BRAINDUMP_SYSTEM_INSTRUCTION = `Convert family brain dump into JSON array:
-[{"targetType":"todo"|"routine","title":"string","assignee":"Alyssa"|"Devyn"|"Carrina"|"Kenny"|"Ayden"|"DJ"|"Anyone","category":"Home"|"Farm"|"Errands"|"Tech"|"Kids"|"Project","bucket":"actionable"|"project_idea","frictionTag":"quick"|"low_brain"|"deep_focus","schedule":{"daysOfWeek":[0..6],"timeOfDay":"Morning"|"Afternoon"|"Evening"|"Anytime","points":15}}]
+[{"targetType":"todo"|"routine","title":"string","assignee":"Alyssa"|"Devyn"|"Carrina"|"Kenny"|"Ayden"|"DJ"|"Anyone","category":"Home"|"Farm"|"Errands"|"Tech"|"Kids"|"Project","bucket":"actionable"|"project_idea","frictionTag":"quick"|"low_brain"|"deep_focus","priority":"high"|"medium"|"low","schedule":{"daysOfWeek":[0..6],"timeOfDay":"Morning"|"Afternoon"|"Evening"|"Anytime","points":15}}]
 Rules:
 - targetType: "routine" for recurring items (e.g. daily, weekly), else "todo".
 - schedule: only if targetType is "routine" (0=Sun..6=Sat).
+- priority: "high" (urgent/critical), "medium" (normal), or "low" (someday/nice-to-have).
 - Output pure JSON array only.`;
 
 export async function discoverActiveGeminiFlashModel(apiKey) {
@@ -201,6 +203,7 @@ export async function parseWithGemini() {
             category: item.category || 'Home',
             bucket: item.bucket === 'project_idea' ? 'project_idea' : 'actionable',
             frictionTag: item.frictionTag || 'quick',
+            priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : 'medium',
             schedule: item.schedule || { daysOfWeek: [1, 4], timeOfDay: 'Morning', points: 15 }
         }));
 
@@ -249,6 +252,7 @@ export function rawLineByLineAdd() {
         category: 'Home',
         bucket: 'actionable',
         frictionTag: 'quick',
+        priority: 'medium',
         schedule: { daysOfWeek: [1, 4], timeOfDay: 'Morning', points: 15 }
     }));
 
@@ -292,6 +296,7 @@ export function renderBrainDumpStaging() {
                     <th style="padding: 8px 10px; width: 110px;">Assignee</th>
                     <th style="padding: 8px 10px; width: 100px;">Category</th>
                     <th style="padding: 8px 10px; width: 110px;">Bucket / Schedule</th>
+                    <th style="padding: 8px 10px; width: 90px;">Priority</th>
                     <th style="padding: 8px 10px; width: 100px;">Friction</th>
                     <th style="padding: 8px 10px; width: 40px;"></th>
                 </tr>
@@ -340,6 +345,13 @@ export function renderBrainDumpStaging() {
                         ${item.schedule?.timeOfDay || 'Anytime'} (${(item.schedule?.daysOfWeek || []).length}d/wk)
                     </span>
                 `}
+            </td>
+            <td style="padding: 8px 10px;">
+                <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
+                    <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
+                    <option value="medium" ${item.priority === 'medium' || !item.priority ? 'selected' : ''}>Medium</option>
+                    <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
+                </select>
             </td>
             <td style="padding: 8px 10px;">
                 <select onchange="updateStagingItem(${idx}, 'frictionTag', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
@@ -401,6 +413,9 @@ export async function commitBrainDumpToFirestore() {
     let todosCount = 0;
     let routinesCount = 0;
 
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
+
     selectedItems.forEach(item => {
         let assigneeUids = [];
         if (item.assignee && item.assignee !== 'Anyone') {
@@ -424,9 +439,11 @@ export async function commitBrainDumpToFirestore() {
                 schedule: scheduleData,
                 timeOfDay: item.schedule?.timeOfDay || 'Anytime',
                 linkedNiptoTask: null,
+                points: parseInt(item.schedule?.points, 10) || 15,
                 overdueAfterHours: 14,
-                frictionTag: item.frictionTag,
-                category: item.category,
+                frictionTag: item.frictionTag || 'quick',
+                category: item.category || 'Home',
+                createdBy: activeName,
                 createdAt: nowIso,
                 lastCompleted: {},
                 lastCompletedBy: {},
@@ -442,6 +459,8 @@ export async function commitBrainDumpToFirestore() {
                 assignees: assigneeUids,
                 bucket: item.bucket || 'actionable',
                 frictionTag: item.frictionTag || 'quick',
+                priority: item.priority || 'medium',
+                createdBy: activeName,
                 points: null,
                 notes: '',
                 subTasks: [],
@@ -476,84 +495,197 @@ export async function commitBrainDumpToFirestore() {
 // ==========================================
 // BULK TRIAGE & MANAGEMENT TOOLBAR
 // ==========================================
+export function switchManageSubtab(subtab) {
+    state.manageSubtab = subtab;
+    const btnTodos = document.getElementById('btnSubtabTodos');
+    const btnRoutines = document.getElementById('btnSubtabRoutines');
+    if (btnTodos) {
+        if (subtab === 'todos') btnTodos.classList.add('active');
+        else btnTodos.classList.remove('active');
+    }
+    if (btnRoutines) {
+        if (subtab === 'routines') btnRoutines.classList.add('active');
+        else btnRoutines.classList.remove('active');
+    }
+    renderBulkTriageList();
+}
+
+export function filterManageList(query) {
+    state.manageSearchQuery = (query || '').toLowerCase().trim();
+    renderBulkTriageList();
+}
+
 export function renderBulkTriageList() {
     const container = document.getElementById('bulkTriageContainer');
     if (!container) return;
 
+    const subtab = state.manageSubtab || 'todos';
+    const query = state.manageSearchQuery || '';
+
+    // Synchronize subtab buttons
+    const btnTodos = document.getElementById('btnSubtabTodos');
+    const btnRoutines = document.getElementById('btnSubtabRoutines');
+    if (btnTodos) {
+        if (subtab === 'todos') btnTodos.classList.add('active');
+        else btnTodos.classList.remove('active');
+    }
+    if (btnRoutines) {
+        if (subtab === 'routines') btnRoutines.classList.add('active');
+        else btnRoutines.classList.remove('active');
+    }
+
     const allTodos = state.todoTasksData || [];
     const allRoutines = state.routines || [];
-
-    if (allTodos.length === 0 && allRoutines.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No items available for triage.</div>';
-        return;
-    }
 
     const totalSelected = state.selectedTodoIds.size + state.selectedRoutineIds.size;
     updateBulkActionBarVisibility(totalSelected);
 
     let html = `
     <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden;">
+    `;
+
+    if (subtab === 'todos') {
+        let filteredTodos = allTodos;
+        if (query) {
+            filteredTodos = allTodos.filter(t => {
+                const nameMatch = (t.name || '').toLowerCase().includes(query);
+                const notesMatch = (t.notes || '').toLowerCase().includes(query);
+                const catMatch = (t.category || '').toLowerCase().includes(query);
+                const creatorMatch = (t.createdBy || '').toLowerCase().includes(query);
+                const assigneeMatch = (t.assignees || []).some(uid => {
+                    const name = ALL_USERS.find(u => u.uid === uid)?.name || '';
+                    return name.toLowerCase().includes(query);
+                });
+                return nameMatch || notesMatch || catMatch || creatorMatch || assigneeMatch;
+            });
+        }
+
+        html += `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--border-color);">
-            <div style="font-weight: 800; font-size: 14px;">All Items (${allTodos.length} To-Dos, ${allRoutines.length} Routines)</div>
+            <div style="font-weight: 800; font-size: 14px;">Household To-Dos (${filteredTodos.length}${query ? ` matching "${escapeHtml(query)}"` : ''})</div>
             <label style="font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                 <input type="checkbox" id="bulkSelectAllCheckbox" onchange="toggleBulkSelectAll(this.checked)"> Select All
             </label>
         </div>
-        <div style="max-height: 500px; overflow-y: auto; padding: 10px;">
-    `;
+        <div style="max-height: 520px; overflow-y: auto; padding: 10px;">
+        `;
 
-    // To-Dos Section
-    if (allTodos.length > 0) {
-        html += `<div style="font-size: 12px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin: 8px 0 4px 6px;">To-Dos (${allTodos.length})</div>`;
-        allTodos.forEach(t => {
-            const isChecked = state.selectedTodoIds.has(t.id);
-            const assigneesStr = (t.assignees && t.assignees.length)
-                ? t.assignees.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown').join(', ')
-                : 'Anyone';
-            html += `
-            <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : 'transparent'};">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)">
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-size: 14px; font-weight: 600; text-decoration: ${t.completed ? 'line-through' : 'none'};">${escapeHtml(t.name)}</div>
-                    <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
-                        <span>Assignee: <strong>${escapeHtml(assigneesStr)}</strong></span>
-                        <span>Category: <strong>${escapeHtml(t.category || 'Home')}</strong></span>
-                        <span>Bucket: <strong>${escapeHtml(t.bucket || 'actionable')}</strong></span>
-                        <span>Friction: <strong>${escapeHtml(t.frictionTag || 'quick')}</strong></span>
+        if (filteredTodos.length === 0) {
+            html += `<div style="text-align: center; color: var(--text-muted); padding: 25px;">No To-Dos match the current criteria.</div>`;
+        } else {
+            filteredTodos.forEach(t => {
+                const isChecked = state.selectedTodoIds.has(t.id);
+                const assigneesStr = (t.assignees && t.assignees.length)
+                    ? t.assignees.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown').join(', ')
+                    : 'Anyone';
+                const creator = t.createdBy || 'Alyssa';
+                const pri = (t.priority || '').toLowerCase();
+
+                html += `
+                <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : 'transparent'};">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 14px; font-weight: 600; text-decoration: ${t.completed ? 'line-through' : 'none'};">${escapeHtml(t.name)}</span>
+                            ${pri ? `<span class="todo-priority-badge ${escapeHtml(pri)}">${escapeHtml(pri.toUpperCase())}</span>` : ''}
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                            <span>Assignee: <strong>${escapeHtml(assigneesStr)}</strong></span>
+                            <span>Category: <strong>${escapeHtml(t.category || 'Home')}</strong></span>
+                            <span>Bucket: <strong>${escapeHtml(t.bucket || 'actionable')}</strong></span>
+                            <span>Friction: <strong>${escapeHtml(t.frictionTag || 'quick')}</strong></span>
+                            <span style="color: var(--primary);">Added by ${escapeHtml(creator)}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center; margin-left: 8px;">
+                        <button type="button" class="action-btn" onclick="editTask('${t.id}')" title="Edit To-Do" style="padding: 5px 10px; font-size: 12px; font-weight: 600;">
+                            &#x270E; Edit
+                        </button>
+                        <button type="button" class="action-btn" onclick="deleteTask('${t.id}')" title="Delete To-Do" style="padding: 5px 8px; font-size: 12px; color: var(--danger);">
+                            &#x1F5D1;
+                        </button>
                     </div>
                 </div>
-            </div>
-            `;
-        });
-    }
+                `;
+            });
+        }
 
-    // Routines Section
-    if (allRoutines.length > 0) {
-        html += `<div style="font-size: 12px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin: 16px 0 4px 6px;">Routines (${allRoutines.length})</div>`;
-        allRoutines.forEach(r => {
-            const isChecked = state.selectedRoutineIds.has(r.uid);
-            const assigneesStr = (r.assignees && r.assignees.length)
-                ? r.assignees.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown').join(', ')
-                : 'Anyone';
-            html += `
-            <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : 'transparent'};">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)">
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-size: 14px; font-weight: 600;">&#x21BB; ${escapeHtml(r.name)}</div>
-                    <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
-                        <span>Assignee: <strong>${escapeHtml(assigneesStr)}</strong></span>
-                        <span>Schedule: <strong>${escapeHtml(r.schedule?.type || 'daily')} (${escapeHtml(r.timeOfDay || r.schedule?.timeOfDay || 'Anytime')})</strong></span>
-                    </div>
-                </div>
-            </div>
-            `;
-        });
-    }
+        html += `</div>`;
+    } else {
+        // Routines subtab
+        let filteredRoutines = allRoutines;
+        if (query) {
+            filteredRoutines = allRoutines.filter(r => {
+                const nameMatch = (r.name || '').toLowerCase().includes(query);
+                const catMatch = (r.category || '').toLowerCase().includes(query);
+                const timeMatch = (r.timeOfDay || r.schedule?.timeOfDay || '').toLowerCase().includes(query);
+                const creatorMatch = (r.createdBy || '').toLowerCase().includes(query);
+                const assigneeMatch = (r.assignees || []).some(uid => {
+                    const name = ALL_USERS.find(u => u.uid === uid)?.name || '';
+                    return name.toLowerCase().includes(query);
+                });
+                return nameMatch || catMatch || timeMatch || creatorMatch || assigneeMatch;
+            });
+        }
 
-    html += `
+        html += `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 14px;">Household Routines (${filteredRoutines.length}${query ? ` matching "${escapeHtml(query)}"` : ''})</div>
+            <label style="font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="bulkSelectAllCheckbox" onchange="toggleBulkSelectAll(this.checked)"> Select All
+            </label>
         </div>
-    </div>
-    `;
+        <div style="max-height: 520px; overflow-y: auto; padding: 10px;">
+        `;
+
+        if (filteredRoutines.length === 0) {
+            html += `<div style="text-align: center; color: var(--text-muted); padding: 25px;">No Routines match the current criteria.</div>`;
+        } else {
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            filteredRoutines.forEach(r => {
+                const isChecked = state.selectedRoutineIds.has(r.uid);
+                const assigneesStr = (r.assignees && r.assignees.length)
+                    ? r.assignees.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown').join(', ')
+                    : 'Anyone';
+                const creator = r.createdBy || 'Alyssa';
+                const sched = r.schedule || {};
+                let freqText = 'Daily';
+                if (sched.type === 'weekly' && Array.isArray(sched.daysOfWeek) && sched.daysOfWeek.length < 7) {
+                    freqText = sched.daysOfWeek.map(d => dayNames[d]).join(', ');
+                }
+                const timeStr = r.timeOfDay || sched.timeOfDay || 'Anytime';
+                const pts = r.points || r.linkedNiptoTask?.points || 15;
+
+                html += `
+                <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : 'transparent'};">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 600;">&#x21BB; ${escapeHtml(r.name)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                            <span>Assignee: <strong>${escapeHtml(assigneesStr)}</strong></span>
+                            <span>Schedule: <strong>${escapeHtml(freqText)} (${escapeHtml(timeStr)})</strong></span>
+                            <span>Points: <strong>${pts} pts</strong></span>
+                            <span>Category: <strong>${escapeHtml(r.category || 'Home')}</strong></span>
+                            <span style="color: var(--primary);">Added by ${escapeHtml(creator)}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center; margin-left: 8px;">
+                        <button type="button" class="action-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="padding: 5px 10px; font-size: 12px; font-weight: 600;">
+                            &#x270E; Edit
+                        </button>
+                        <button type="button" class="action-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="padding: 5px 8px; font-size: 12px; color: var(--danger);">
+                            &#x1F5D1;
+                        </button>
+                    </div>
+                </div>
+                `;
+            });
+        }
+
+        html += `</div>`;
+    }
+
+    html += `</div>`;
 
     container.innerHTML = html;
 }
@@ -571,12 +703,41 @@ export function toggleBulkItem(type, id, isChecked) {
 }
 
 export function toggleBulkSelectAll(checked) {
-    if (checked) {
-        (state.todoTasksData || []).forEach(t => state.selectedTodoIds.add(t.id));
-        (state.routines || []).forEach(r => state.selectedRoutineIds.add(r.uid));
+    const subtab = state.manageSubtab || 'todos';
+    const query = state.manageSearchQuery || '';
+
+    if (subtab === 'todos') {
+        let filteredTodos = state.todoTasksData || [];
+        if (query) {
+            filteredTodos = filteredTodos.filter(t => {
+                const nameMatch = (t.name || '').toLowerCase().includes(query);
+                const notesMatch = (t.notes || '').toLowerCase().includes(query);
+                const catMatch = (t.category || '').toLowerCase().includes(query);
+                const creatorMatch = (t.createdBy || '').toLowerCase().includes(query);
+                return nameMatch || notesMatch || catMatch || creatorMatch;
+            });
+        }
+        if (checked) {
+            filteredTodos.forEach(t => state.selectedTodoIds.add(t.id));
+        } else {
+            state.selectedTodoIds.clear();
+        }
     } else {
-        state.selectedTodoIds.clear();
-        state.selectedRoutineIds.clear();
+        let filteredRoutines = state.routines || [];
+        if (query) {
+            filteredRoutines = filteredRoutines.filter(r => {
+                const nameMatch = (r.name || '').toLowerCase().includes(query);
+                const catMatch = (r.category || '').toLowerCase().includes(query);
+                const timeMatch = (r.timeOfDay || r.schedule?.timeOfDay || '').toLowerCase().includes(query);
+                const creatorMatch = (r.createdBy || '').toLowerCase().includes(query);
+                return nameMatch || catMatch || timeMatch || creatorMatch;
+            });
+        }
+        if (checked) {
+            filteredRoutines.forEach(r => state.selectedRoutineIds.add(r.uid));
+        } else {
+            state.selectedRoutineIds.clear();
+        }
     }
     renderBulkTriageList();
 }
@@ -616,10 +777,26 @@ export async function executeBulkAction(actionType) {
     } else if (actionType === 'complete') {
         const batch = window.db.batch();
         const nowIso = new Date().toISOString();
+        const todayKey = getLocalTodayKey();
+        const doerUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+        const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
+
         todoIds.forEach(id => {
             batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                 completed: true,
                 completedAt: nowIso
+            });
+            const t = state.todoTasksData?.find(item => item.id === id);
+            api.recordDailyCompletion({
+                id: `todo_${id}`,
+                itemId: id,
+                sourceType: 'todo',
+                title: t ? t.name : 'To-Do',
+                user: doerName,
+                userUid: doerUid,
+                points: t ? (t.points || 0) : 0,
+                completedAt: nowIso,
+                dateKey: todayKey
             });
         });
         await batch.commit();
@@ -648,6 +825,22 @@ export async function executeBulkAction(actionType) {
         renderBulkTriageList();
         renderTodoTasks();
         renderRoutines();
+    } else if (actionType === 'priority') {
+        const priPrompt = prompt("Set priority ('high', 'medium', 'low', or leave blank to clear):", "medium");
+        if (priPrompt === null) return;
+        const cleanPri = priPrompt.trim().toLowerCase();
+        if (cleanPri && !['high', 'medium', 'low'].includes(cleanPri)) {
+            alert("Invalid priority. Must be 'high', 'medium', 'low', or blank.");
+            return;
+        }
+        const batch = window.db.batch();
+        todoIds.forEach(id => batch.update(window.getNiptoCollection('custom_tasks').doc(id), { priority: cleanPri }));
+        await batch.commit();
+        state.selectedTodoIds.clear();
+        state.selectedRoutineIds.clear();
+        showToast("bulk_pri", `Updated priority for ${todoIds.length} To-Dos.`, 0, "");
+        renderBulkTriageList();
+        renderTodoTasks();
     } else if (actionType === 'category') {
         const catPrompt = prompt("Set category (Home, Farm, Errands, Tech, Kids, Project):", "Home");
         if (!catPrompt) return;

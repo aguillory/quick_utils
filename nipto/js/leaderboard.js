@@ -242,45 +242,7 @@ export function renderDoneTodayFeed() {
     if (!container) return;
 
     const activeUid = state.activeUsers[0] || '';
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-    const items = [];
-
-    // 1. Gather Nipto activities completed today
-    (state.allWeekActivities || []).forEach(act => {
-        const actDate = act.parsedDate || new Date(act.date);
-        if (actDate.getTime() >= todayMidnight) {
-            items.push({
-                id: act.uid,
-                type: 'nipto',
-                title: act.label || act.task?.name || 'Activity',
-                points: act.awardedPts || act.task?.value || 0,
-                userUid: act.user?.uid || '',
-                userName: act.user?.name || 'Unknown',
-                timestamp: actDate.getTime()
-            });
-        }
-    });
-
-    // 2. Gather To-Dos completed today
-    (state.todoTasksData || []).forEach(t => {
-        if (t.completed && t.completedAt) {
-            const cDate = new Date(t.completedAt);
-            if (cDate.getTime() >= todayMidnight) {
-                const doerUid = t.completedBy?.[0] || t.assignees?.[0] || '';
-                items.push({
-                    id: t.id,
-                    type: 'todo',
-                    title: t.name,
-                    points: t.points || 0,
-                    userUid: doerUid,
-                    userName: ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone',
-                    timestamp: cDate.getTime()
-                });
-            }
-        }
-    });
+    const items = state.completedToday || [];
 
     // Filter by view: everyone vs just me
     let filtered = items;
@@ -288,7 +250,7 @@ export function renderDoneTodayFeed() {
         filtered = items.filter(it => it.userUid === activeUid);
     }
 
-    filtered.sort((a, b) => b.timestamp - a.timestamp);
+    filtered.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
 
     if (filtered.length === 0) {
         container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 10px 0; text-align: center;">No tasks completed today yet.</div>';
@@ -298,18 +260,24 @@ export function renderDoneTodayFeed() {
     let html = `<div style="display: flex; flex-direction: column; gap: 6px;">`;
 
     filtered.forEach(it => {
-        const timeStr = new Date(it.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const timeStr = it.completedAt ? new Date(it.completedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
         const userObj = ALL_USERS.find(u => u.uid === it.userUid);
         const color = userObj ? userObj.color : 'var(--text-muted)';
+        const userName = it.user || userObj?.name || 'Someone';
+
+        let typeIcon = '&#x2714;';
+        if (it.sourceType === 'routine') typeIcon = '&#x21BB;';
+        else if (it.sourceType === 'todo') typeIcon = '&#x1F4CB;';
+        else if (it.sourceType === 'subtask') typeIcon = '&#x25AA;';
 
         html += `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--bg-color); border: 1px solid var(--border-color); font-size: 12px;">
             <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-                <span style="color: var(--success); font-weight: bold;">&#x2714;</span>
+                <span style="color: var(--success); font-weight: bold;">${typeIcon}</span>
                 <div style="min-width: 0;">
                     <div style="font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(it.title)}</div>
                     <div style="font-size: 10px; color: var(--text-muted);">
-                        <strong style="color: ${color};">${escapeHtml(it.userName)}</strong> &bull; ${timeStr}
+                        <strong style="color: ${color};">${escapeHtml(userName)}</strong>${timeStr ? ` &bull; ${timeStr}` : ''}
                     </div>
                 </div>
             </div>
@@ -328,6 +296,7 @@ export async function updateLeaderboardUI() {
         const { points } = await api.loadWeeklyPointsFromFirestore();
         state.currentWeekScores = { ...points };
         drawLeaderboard(points, false);
+        renderDoneTodayFeed();
     } catch (e) {
         console.warn("Leaderboard UI update fallback:", e);
     }

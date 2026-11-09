@@ -6,7 +6,7 @@ import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import { saveCloudPreference } from './preferences.js';
-import { savePin, setMode, setTimeOffset } from './utils.js';
+import { savePin, setMode, setTimeOffset, getLocalTodayKey } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
 import { updateLeaderboardUI, drawLeaderboard, renderAllowanceUI } from './leaderboard.js';
 import {
@@ -17,11 +17,11 @@ import {
     renderTodoTasks, openTaskModal, editTask, saveTask,
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
-    toggleSubtasksList, clearTaskFriction
+    setTodoPriorityFilter, toggleSubtasksList, clearTaskFriction
 } from './todos.js';
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
-    saveRoutine, deleteRoutine, renderRoutines, renderRollingSchedule,
+    saveRoutine, deleteRoutine, deleteRoutineFromModal, renderRoutines, renderRollingSchedule,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter,
     toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine
 } from './routines.js';
@@ -29,7 +29,8 @@ import {
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     clearBrainDumpStaging, commitBrainDumpToFirestore,
-    renderBulkTriageList, toggleBulkItem, toggleBulkSelectAll, executeBulkAction
+    renderBulkTriageList, toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
+    switchManageSubtab, filterManageList
 } from './braindump.js';
 import {
     initUsers, setActiveUser, toggleTogetherMode,
@@ -105,7 +106,7 @@ async function handleUrlQuickActions() {
             // Check if taskId matches a Routine
             const routine = state.routines?.find(r => r.uid === taskId);
             if (routine) {
-                const todayKey = new Date().toISOString().split('T')[0];
+                const todayKey = getLocalTodayKey();
                 await completeRoutineForDate(taskId, todayKey, true);
                 showToast("url_act", `Quick Action: Completed routine "${routine.name}"!`, 0, "Notification");
             }
@@ -122,14 +123,15 @@ Object.assign(window, {
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
-    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, toggleSubtasksList, clearTaskFriction,
-    openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine,
+    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter, toggleSubtasksList, clearTaskFriction,
+    openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine, deleteRoutineFromModal,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
     parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
+    switchManageSubtab, filterManageList,
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
-    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin
+    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin, getLocalTodayKey
 });
 
 window.submitPin = async () => {
@@ -169,6 +171,8 @@ async function startDashboardData() {
         renderTasks();
         renderAllowanceUI();
         updateLeaderboardUI();
+        await api.loadDailyCompletionsFromFirestore();
+        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
 
         // Check for URL lockscreen quick actions
         handleUrlQuickActions();
@@ -189,6 +193,16 @@ async function startDashboardData() {
         });
         renderTodoTasks();
         renderBulkTriageList();
+    });
+
+    // Real-time listener for daily completions across devices
+    const todayKey = getLocalTodayKey();
+    window.getNiptoCollection('daily_completions').where('dateKey', '==', todayKey).onSnapshot(snapshot => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+        state.completedToday = items;
+        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
     });
 
     // Real-time listener for sync signal

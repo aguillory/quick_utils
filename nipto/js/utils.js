@@ -2,6 +2,15 @@
 // Generic helpers: PIN auth, date/time mode controls, tab switching, collapsible sections.
 import { state } from './state.js';
 
+// Formats local YYYY-MM-DD from a Date object (defaults to now) to prevent 6:00 PM CST UTC rollover bugs
+export function getLocalTodayKey(date = new Date()) {
+    const d = (date instanceof Date) ? date : new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 // Reconstructs the API key from a 4-digit PIN.
 function decodeKey(pin) {
     const masked = "$a#0$*fa-*a07-%%f%-a%*%-f*c8$9c*%8*8";
