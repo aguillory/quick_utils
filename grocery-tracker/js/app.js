@@ -337,7 +337,7 @@ function renderPriceBook() {
             }
             notesHtml = badges.join(' ') || `<span class="text-xs text-slate-400">Standard pack</span>`;
         } else {
-            notesHtml = `--`;
+            notesHtml = `<span class="text-slate-400 font-medium">—</span>`;
         }
 
         // Historical Low HTML
@@ -348,13 +348,13 @@ function renderPriceBook() {
                 <div class="font-semibold text-slate-800">$${item.historical_low_price.toFixed(2)}<span class="text-xs text-slate-400">/${unit}</span></div>
                 <div class="text-[11px] ${isFuture ? 'text-amber-600 font-semibold' : 'text-slate-400'}">${item.historical_low_store || ''} (${item.historical_low_date || ''})</div>`;
         } else {
-            histLowHtml = `--`;
+            histLowHtml = `<span class="text-slate-400 font-medium">—</span>`;
         }
 
         // Rolling Avg HTML
         const rollingAvgHtml = item.rolling_avg_price != null 
             ? `<span class="font-medium text-slate-700">$${item.rolling_avg_price.toFixed(2)}<span class="text-xs text-slate-400">/${unit}</span></span>` 
-            : `--`;
+            : `<span class="text-slate-400 font-medium">—</span>`;
 
         // Item Header Column
         const starClass = item.is_priority ? 'fas fa-star star-active' : 'far fa-star star-inactive';

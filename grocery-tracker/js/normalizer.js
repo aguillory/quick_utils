@@ -35,8 +35,46 @@ export function extractLimit(text) {
     return m ? parseInt(m[1], 10) : null;
 }
 
+export function extractPackageRange(text) {
+    if (!text) return null;
+    // Range pattern: e.g. 10-16 lbs, 10 to 16 lbs, 10 - 16 lb, 10 lbs - 16 lbs
+    const pattern = /(?:^|[^\/])\b(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?|fl(?:uid)?\.?\s*oz|oz|ounces?|g|grams?|ct|count|pods?|pacs?|tabs?|capsules?|gal(?:lon)?s?)?\s*(?:-|–|—|\bto\b)\s*(\d+(?:\.\d+)?)\s*(?:-| )?(lbs?|pounds?|fl(?:uid)?\.?\s*oz|oz|ounces?|g|grams?|ct|count|pods?|pacs?|tabs?|capsules?|gal(?:lon)?s?)\b(?!\/)/i;
+    const m = text.match(pattern);
+    if (!m) return null;
+    const minVal = parseFloat(m[1]);
+    const maxVal = parseFloat(m[2]);
+    const rawUnit = m[3].toLowerCase();
+    if (minVal > 0 && maxVal > minVal) {
+        let unit = rawUnit;
+        if (/lbs?|pounds?/i.test(rawUnit)) unit = 'lb';
+        else if (/fl(?:uid)?\.?\s*oz|oz|ounces?/i.test(rawUnit)) unit = 'oz';
+        else if (/g|grams?/i.test(rawUnit)) unit = 'g';
+        else if (/ct|count|pods?|pacs?|tabs?|capsules?/i.test(rawUnit)) unit = 'ct';
+        else if (/gal(?:lon)?s?/i.test(rawUnit)) unit = 'gal';
+
+        const midpoint = (minVal + maxVal) / 2.0;
+        const fmt = (n) => Number(n.toFixed(2)).toString();
+        const note = `${fmt(minVal)}-${fmt(maxVal)} ${unit} range (avg ${fmt(midpoint)} ${unit})`;
+        return {
+            minVal,
+            maxVal,
+            midpoint,
+            unit,
+            note
+        };
+    }
+    return null;
+}
+
 export function extractPackageSizeAndUnit(text) {
     if (!text) return { size: null, unit: null };
+
+    // 0. Check weight/count ranges first (e.g. 10-16 lbs -> midpoint 13.0 lbs)
+    const r = extractPackageRange(text);
+    if (r) {
+        return { size: r.midpoint, unit: r.unit };
+    }
+
     const t = text.toLowerCase();
 
     // Gallon / Half Gallon / Quart
@@ -148,6 +186,7 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     // BOGO
     const bogo = extractBogoInfo(allText);
     let isEstimatedBogo = false;
+
     if (bogo.isBogo) {
         const bogoLabel = bogo.is1Cent ? "BOGO 1¢" : "BOGO Free";
         if (bogo.regPrice) {
@@ -169,9 +208,11 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     }
 
     // Extracted size & unit
-    const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(
-        `${rawItem.description || ''} ${rawItem.name || ''}`
-    );
+    const fullDesc = `${rawItem.description || ''} ${rawItem.name || ''}`;
+    const rangeInfo = extractPackageRange(fullDesc);
+    const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullDesc);
+    const isRange = !!rangeInfo;
+    const rangeNote = rangeInfo ? rangeInfo.note : null;
 
     const isPerLbAd = /\/\s*lb|\bper\s+lb\b|\blb\b/i.test(`${rawItem.price_text || ''} ${rawItem.name || ''}`);
 
@@ -184,10 +225,18 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
                 normalizedUnitPrice = basePrice;
             } else if (extractedUnit === 'lb' && extractedSize && extractedSize > 0) {
                 normalizedUnitPrice = isPerLbAd ? basePrice : basePrice / extractedSize;
-                notes.push(`${extractedSize} lb pack`);
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} lb pack`);
+                }
             } else if (extractedUnit === 'oz' && extractedSize && extractedSize > 0) {
                 normalizedUnitPrice = (basePrice / extractedSize) * 16.0;
-                notes.push(`${extractedSize} oz pack`);
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} oz pack`);
+                }
             } else if (defaultPackSize && defaultPackSize > 0) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
                 notes.push(`Assumed default pack size (${defaultPackSize} lb)`);
@@ -197,10 +246,18 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
         } else if (targetUnit === 'oz') {
             if (extractedUnit === 'oz' && extractedSize && extractedSize > 0) {
                 normalizedUnitPrice = basePrice / extractedSize;
-                notes.push(`${extractedSize} oz`);
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} oz`);
+                }
             } else if (extractedUnit === 'lb' && extractedSize && extractedSize > 0) {
                 normalizedUnitPrice = basePrice / (extractedSize * 16.0);
-                notes.push(`${extractedSize} lb (${extractedSize * 16} oz)`);
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} lb (${extractedSize * 16} oz)`);
+                }
             } else if (defaultPackSize && defaultPackSize > 0) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
                 notes.push(`Assumed default pack size (${defaultPackSize} oz)`);
@@ -210,7 +267,11 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
         } else if (targetUnit === 'ct') {
             if (extractedUnit === 'ct' && extractedSize && extractedSize > 0) {
                 normalizedUnitPrice = basePrice / extractedSize;
-                notes.push(`${extractedSize} count`);
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} count`);
+                }
             } else if (defaultPackSize && defaultPackSize > 0) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
                 notes.push(`Assumed default pack size (${defaultPackSize} ct)`);
@@ -235,7 +296,9 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
             }
         } else {
             normalizedUnitPrice = basePrice;
-            if (extractedSize && extractedUnit) {
+            if (isRange && rangeNote) {
+                notes.push(rangeNote);
+            } else if (extractedSize && extractedUnit) {
                 notes.push(`${extractedSize} ${extractedUnit}`);
             }
         }
