@@ -215,172 +215,515 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 }
 
 /* ==========================================
-   7-DAY ROLLING SCHEDULE GRID
+/* ==========================================
+   3-COLUMN ROUTINE BOARD
    ========================================== */
-.rolling-schedule-grid {
+.routine-filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    align-items: center;
+}
+
+.routine-filter-bar .filter-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.routine-board-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(130px, 1fr));
-    gap: 10px;
-    overflow-x: auto;
+    grid-template-columns: 1fr 1.15fr 1fr;
+    gap: 12px;
     width: 100%;
-    padding-bottom: 8px;
     box-sizing: border-box;
 }
 
-.schedule-day-col {
-    background: var(--card-bg);
+@media (max-width: 900px) {
+    .routine-board-grid {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+}
+
+.routine-board-col {
+    background: var(--bg-color, #F9FAFB);
     border-radius: 10px;
-    border: 1px solid var(--border-color);
-    padding: 8px;
+    border: 1px solid var(--border-color, #E5E7EB);
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    min-height: 280px;
+    min-height: 220px;
     box-sizing: border-box;
     transition: all 0.15s ease;
 }
 
-.schedule-day-col.is-today {
-    border: 2px solid var(--primary);
-    background: rgba(37, 99, 235, 0.03);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+.routine-board-col.routine-col-today {
+    border: 2px solid var(--primary, #4F46E5);
+    background: color-mix(in srgb, var(--primary, #4F46E5) 4%, var(--card-bg, #ffffff));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.schedule-day-col.is-past {
-    opacity: 0.92;
-    background: rgba(0, 0, 0, 0.015);
-}
-
-.schedule-day-col.is-future {
-    opacity: 0.85;
-}
-
-.schedule-day-header {
+.routine-col-header {
     display: flex;
-    flex-direction: column;
     align-items: center;
+    justify-content: space-between;
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 6px;
+    padding-bottom: 8px;
     margin-bottom: 8px;
-    text-align: center;
 }
 
-.schedule-day-badge {
-    font-size: 10px;
+.routine-col-title {
+    font-size: 13px;
     font-weight: 800;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: var(--bg-color);
-    color: var(--text-muted);
+    color: var(--text-main);
 }
 
-.schedule-day-col.is-today .schedule-day-badge {
+.routine-count-badge {
+    font-size: 11px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--border-color);
+    color: var(--text-main);
+}
+
+.routine-count-badge.highlight {
     background: var(--primary);
     color: #ffffff;
 }
 
-.schedule-day-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-top: 3px;
+.routine-count-badge.alert {
+    background: var(--danger);
+    color: #ffffff;
 }
 
-.schedule-day-body {
+.btn-clear-all-missed {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-clear-all-missed:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.routine-col-body {
     display: flex;
     flex-direction: column;
     gap: 6px;
     flex: 1;
 }
 
-.bucket-header {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin: 6px 0 2px 2px;
-    letter-spacing: 0.5px;
-}
-
-.routine-slot {
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
+.routine-board-row {
+    background: var(--card-bg, #FFFFFF);
+    border: 1px solid var(--border-color, #E5E7EB);
     border-radius: 6px;
     padding: 6px 8px;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 6px;
-    font-size: 12px;
+    align-items: center;
+    gap: 8px;
     box-sizing: border-box;
+    transition: all 0.15s ease;
 }
 
-.routine-slot.is-completed {
-    opacity: 0.7;
-    border-color: rgba(16, 185, 129, 0.4);
+.routine-board-row.is-completed {
+    opacity: 0.65;
     background: rgba(16, 185, 129, 0.04);
 }
 
-.routine-slot-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.routine-slot-title {
-    font-weight: 700;
-    font-size: 12px;
-    color: var(--text-main);
-    line-height: 1.3;
-}
-
-.routine-slot-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    align-items: flex-end;
-    flex-shrink: 0;
-}
-
-.btn-check-routine {
-    background: var(--primary);
-    color: #ffffff;
-    border: none;
-    border-radius: 4px;
-    padding: 3px 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: bold;
-    transition: opacity 0.15s;
-}
-
-.btn-check-routine:hover {
+.routine-board-row.is-upcoming-row {
+    background: var(--card-bg);
     opacity: 0.9;
 }
 
-.btn-clear-routine {
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    border-radius: 4px;
-    padding: 1px 4px;
-    cursor: pointer;
-    font-size: 9px;
+.routine-row-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.routine-row-title-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.routine-row-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.btn-clear-routine:hover {
-    color: var(--danger);
-    border-color: var(--danger);
+.routine-row-name.completed-text {
+    text-decoration: line-through;
+    color: var(--text-muted);
 }
 
-.btn-undo-routine {
+.routine-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.missed-day-badge {
+    font-size: 10px;
+    font-weight: 800;
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger, #EF4444);
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.upcoming-day-badge {
+    font-size: 10px;
+    font-weight: 800;
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--primary, #3B82F6);
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.btn-dismiss-missed {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: color 0.15s;
+}
+
+.btn-dismiss-missed:hover {
+    color: var(--danger);
+}
+
+.completed-by-tag {
+    font-size: 10px;
+    color: var(--success);
+    font-weight: 700;
+}
+
+.empty-col-msg {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 24px 8px;
+    font-style: italic;
+}
+
+/* ==========================================
+   HOLLOW SQUARE & CHECKED CHECKBOXES
+   ========================================== */
+.item-checkbox {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    min-height: 20px !important;
+    max-width: 20px !important;
+    max-height: 20px !important;
+    background: transparent !important;
+    border: 2px solid var(--border-color, #9ca3af) !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transition: all 0.15s ease !important;
+    color: transparent !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+.item-checkbox:hover {
+    border-color: var(--success, #10B981) !important;
+}
+
+.item-checkbox.checked {
+    background: var(--success, #10B981) !important;
+    border-color: var(--success, #10B981) !important;
+    color: #ffffff !important;
+}
+
+/* ==========================================
+   ACTIVE TO-DOS RESPONSIVE 3-COLUMN CARD GRID
+   ========================================== */
+.todo-toolbar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.todo-view-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.todo-secondary-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.todo-compact-select {
+    font-size: 12px;
+    font-family: inherit;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-main);
+    cursor: pointer;
+}
+
+.todo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.todo-card {
+    background: var(--card-bg, #FFFFFF);
+    border: 1px solid var(--border-color, #E5E7EB);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 6px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+}
+
+.todo-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.todo-card.completed {
+    opacity: 0.6;
+    background: var(--bg-color, #F9FAFB);
+    border-color: var(--border-color, #E5E7EB);
+}
+
+.todo-card-main-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.todo-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+    flex: 1;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.todo-title.completed-text {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.todo-card-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.todo-badges-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    margin-left: 28px;
+}
+
+.todo-pill, .routine-assignee-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.todo-pill.shared-pill, .routine-assignee-pill.shared-pill {
+    background: rgba(107, 114, 128, 0.1);
+    color: var(--text-muted);
+    border-color: rgba(107, 114, 128, 0.25);
+}
+
+.todo-pill.project-pill {
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+    border-color: rgba(217, 119, 6, 0.25);
+}
+
+.todo-friction-badge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.todo-friction-badge.quick {
+    color: #0284c7;
+    background: rgba(2, 132, 199, 0.1);
+}
+
+.todo-friction-badge.low_brain {
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.1);
+}
+
+.todo-friction-badge.deep_focus {
+    color: #7c3aed;
+    background: rgba(124, 58, 237, 0.1);
+}
+
+.btn-clear-friction {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 1px;
+    opacity: 0.6;
+}
+
+.btn-clear-friction:hover {
+    opacity: 1;
+}
+
+.todo-notes-preview {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.35;
+    cursor: pointer;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    margin-top: 6px;
+    margin-left: 28px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.todo-notes-preview.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    white-space: pre-wrap;
+}
+
+.todo-subtasks-wrapper {
+    margin-top: 6px;
+    margin-left: 28px;
+}
+
+.todo-subtasks-toggle {
     background: none;
     border: 1px solid var(--border-color);
-    color: var(--text-muted);
     border-radius: 4px;
     padding: 2px 6px;
-    cursor: pointer;
     font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.todo-subtasks-toggle:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.todo-subtasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: var(--bg-color);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.todo-subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-main);
+    cursor: pointer;
+}
+
+.todo-subtask-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.completed-subtask {
+    text-decoration: line-through;
+    color: var(--text-muted);
 }
 
 /* Filter Pills */

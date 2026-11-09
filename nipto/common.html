@@ -106,10 +106,10 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
                         <div>
                             <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-                                &#x23F3; 7-Day Rolling Schedule
+                                &#x1F4C5; Routine Board
                             </h3>
                             <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
-                                Past days (-3 to -1) keep missed items for retroactive check-off. No overdue stacking!
+                                Past missed items, today's schedule, and upcoming non-daily exceptions.
                             </div>
                         </div>
                         <button class="action-btn save-mode" onclick="openRoutineModal()" style="font-size: 12px; padding: 6px 12px;">
@@ -119,7 +119,7 @@
 
                     <!-- Rolling Schedule Container (rendered by routines.js) -->
                     <div id="rollingScheduleContainer">
-                        <div style="text-align: center; color: var(--text-muted); padding: 20px;">Loading 7-day schedule...</div>
+                        <div style="text-align: center; color: var(--text-muted); padding: 20px;">Loading routine board...</div>
                     </div>
                 </div>
 
@@ -498,6 +498,7 @@
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Friction Level</label>
                     <select id="taskFriction" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <option value="">None (Standard)</option>
                         <option value="quick">Quick (&lt;5m)</option>
                         <option value="low_brain">Low Brain</option>
                         <option value="deep_focus">Deep Focus</option>

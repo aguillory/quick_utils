@@ -127,20 +127,55 @@ h1, h2, h3, h4 {
 .user-toggle.active .user-points { color: #DCD3C6; }
 
 /* ==========================================
-   CHORE CARDS (RECIPE CARDS)
+   CHORE CARDS & TO-DO CARDS (CLEAN HOMESTEAD)
    ========================================== */
-.chore-card { 
-    background: #FFFfff !important; 
-    /* The red line at the top of an index card */
-    border-top: 12px solid var(--primary) !important; 
-    border-bottom: 2px solid var(--border-color) !important; 
-    border-left: 2px solid var(--border-color) !important; 
-    border-right: 2px solid var(--border-color) !important; 
-    border-radius: 2px !important; 
-    box-shadow: 2px 2px 5px rgba(44, 35, 30, 0.2) !important;
-    /* Faint blue ruled lines */
-    background-image: repeating-linear-gradient(transparent, transparent 24px, rgba(0, 100, 200, 0.1) 24px, rgba(0, 100, 200, 0.1) 25px) !important;
-    background-position: 0 10px !important;
+.chore-card, .todo-card { 
+    background: #FFFFFF !important; 
+    border: 2px solid var(--border-color) !important; 
+    border-radius: 8px !important; 
+    box-shadow: 2px 2px 4px rgba(44, 35, 30, 0.1) !important;
+    background-image: none !important;
+    padding: 10px 12px !important;
+}
+
+.todo-card.completed {
+    background: #F3ECE2 !important;
+    opacity: 0.65;
+}
+
+.routine-board-col {
+    background: #EDE6DC !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 8px !important;
+}
+
+.routine-board-col.routine-col-today {
+    border: 2px solid var(--primary) !important;
+    background: #F5EFEB !important;
+}
+
+.routine-board-row {
+    background: #FFFFFF !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 6px !important;
+}
+
+/* Checkbox fixes for Homestead: Empty hollow square when unchecked, sage green when checked */
+.item-checkbox {
+    background: transparent !important;
+    border: 2px solid var(--border-color, #8C7A6B) !important;
+    border-radius: 4px !important;
+    color: transparent !important;
+}
+
+.item-checkbox:hover {
+    border-color: var(--success, #4A5D23) !important;
+}
+
+.item-checkbox.checked {
+    background: var(--success, #4A5D23) !important;
+    border-color: var(--success, #4A5D23) !important;
+    color: #F8F5F0 !important;
 }
 
 .chore-title { 

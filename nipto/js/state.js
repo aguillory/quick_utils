@@ -79,7 +79,9 @@ export const state = {
     recentCompletions: [],
     
     // Filter state
-    scheduleFilter: 'all',          // 'all' | 'me' | uid
+    scheduleFilter: 'me',           // 'me' (default) | 'all' | uid
+    hideCompletedRoutines: false,
+    todoView: 'my_actionable',      // 'my_actionable' (default) | 'shared' | 'projects' | 'all'
     todoPersonFilter: 'all',        // 'all' | 'me' | 'unassigned' | uid
     todoBucketFilter: 'all',        // 'all' | 'actionable' | 'project_idea'
     todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'

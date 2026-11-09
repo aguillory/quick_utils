@@ -16,12 +16,14 @@ import {
 import {
     renderTodoTasks, openTaskModal, editTask, saveTask,
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
-    setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter
+    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
+    toggleSubtasksList, clearTaskFriction
 } from './todos.js';
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
     saveRoutine, deleteRoutine, renderRoutines, renderRollingSchedule,
-    completeRoutineForDate, undoRoutineForDate, setScheduleFilter
+    completeRoutineForDate, undoRoutineForDate, setScheduleFilter,
+    toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine
 } from './routines.js';
 import {
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
@@ -120,9 +122,9 @@ Object.assign(window, {
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
-    setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
+    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, toggleSubtasksList, clearTaskFriction,
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine,
-    completeRoutineForDate, undoRoutineForDate, setScheduleFilter,
+    completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
     parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     toggleBulkItem, toggleBulkSelectAll, executeBulkAction,

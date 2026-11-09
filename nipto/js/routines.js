@@ -1,6 +1,6 @@
 // routines.js
-// 7-Day Rolling Schedule (-3 Days | TODAY | +3 Days), Time-of-Day Buckets,
-// Retroactive Check-Off with Backdated Points, and Admin Clear (No Points).
+// 3-Column Routine Board: Past (Missed), Current (Today), Upcoming (Next 3 Days)
+// Clean row-based rendering, compact assignee pills, and admin dismiss without points.
 
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
@@ -17,14 +17,31 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-// Compact assignee label for a routine card
-export function formatRoutineAssignees(routine, compact = false) {
+// Determines if routine runs every single day (daily frequency or 7 days/week)
+export function isDailyRoutine(routine) {
+    if (!routine) return false;
+    const sched = routine.schedule || { type: 'daily' };
+    if (sched.type === 'daily') return true;
+    if (sched.type === 'weekly' && Array.isArray(sched.daysOfWeek) && sched.daysOfWeek.length >= 7) return true;
+    if (sched.type === 'interval' && Number(sched.value) === 1 && sched.unit === 'days') return true;
+    return false;
+}
+
+// Compact assignee label for a routine card or row
+export function formatRoutineAssignees(routine, compact = true) {
     const assignees = routine.assignees || [];
-    const fontSize = compact ? '10px' : '11px';
-    const baseStyle = `font-size: ${fontSize}; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);`;
+    const baseClass = "routine-assignee-pill";
 
     if (!assignees.length || assignees.length >= ALL_USERS.length) {
-        return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F465; Anyone</span>`;
+        return `<span class="${baseClass}">&#x1F465; Anyone</span>`;
+    }
+
+    if (assignees.length >= 3) {
+        const fullNames = assignees.map(uid => {
+            const u = ALL_USERS.find(user => user.uid === uid);
+            return u ? u.name : 'Unknown';
+        }).join(', ');
+        return `<span class="${baseClass} shared-pill" title="${escapeHtml(fullNames)}">&#x1F465; Shared</span>`;
     }
 
     if (routine.completionType === 'individual') {
@@ -32,24 +49,29 @@ export function formatRoutineAssignees(routine, compact = false) {
         if (myUids.length > 0) {
             return myUids.map(uid => {
                 const u = ALL_USERS.find(user => user.uid === uid);
-                return u ? `<span style="color: ${u.color}; ${baseStyle}">&#x1F464; ${escapeHtml(u.name)}</span>` : '';
+                return u ? `<span class="${baseClass}" style="color: ${u.color};">&#x1F464; ${escapeHtml(u.name)}</span>` : '';
             }).join(' ');
         }
-        return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F464; Individual</span>`;
+        return `<span class="${baseClass}">&#x1F464; Individual</span>`;
     }
 
     const names = assignees.map(uid => {
         const u = ALL_USERS.find(user => user.uid === uid);
         return u ? escapeHtml(u.name) : 'Unknown';
     });
-    return `<span style="color: var(--text-muted); ${baseStyle}">&#x1F465; ${names.join(' or ')}</span>`;
+    return `<span class="${baseClass}">&#x1F465; ${names.join(' or ')}</span>`;
 }
 
 // ==========================================
-// 7-DAY ROLLING SCHEDULE ENGINE
+// 3-COLUMN ROUTINE BOARD ENGINE
 // ==========================================
 export function setScheduleFilter(filterVal) {
     state.scheduleFilter = filterVal;
+    renderRollingSchedule();
+}
+
+export function toggleHideCompletedRoutines() {
+    state.hideCompletedRoutines = !state.hideCompletedRoutines;
     renderRollingSchedule();
 }
 
@@ -69,22 +91,6 @@ function routineAppliesToDate(routine, targetDate) {
     return true;
 }
 
-// Infers time-of-day bucket ("Morning", "Afternoon", "Evening", "Anytime")
-function getRoutineTimeOfDay(routine) {
-    if (routine.timeOfDay) return routine.timeOfDay;
-    if (routine.schedule?.timeOfDay) return routine.schedule.timeOfDay;
-    if (routine.schedule?.specificTimes && routine.schedule.specificTimes.length > 0) {
-        const first = routine.schedule.specificTimes[0].trim();
-        const hour = parseInt(first.split(':')[0], 10);
-        if (!isNaN(hour)) {
-            if (hour < 12) return 'Morning';
-            if (hour < 17) return 'Afternoon';
-            return 'Evening';
-        }
-    }
-    return 'Anytime';
-}
-
 // Format local YYYY-MM-DD
 function toLocalDateKey(d) {
     const year = d.getFullYear();
@@ -93,166 +99,378 @@ function toLocalDateKey(d) {
     return `${year}-${month}-${day}`;
 }
 
+// Filter matching helper
+function routineMatchesFilter(r, filter, activeUid) {
+    if (!filter || filter === 'all') return true;
+    if (filter === 'me') {
+        if (!r.assignees || r.assignees.length === 0) return true;
+        return r.assignees.includes(activeUid);
+    }
+    if (!r.assignees || r.assignees.length === 0) return true;
+    return r.assignees.includes(filter);
+}
+
 export function renderRollingSchedule() {
     const container = document.getElementById('rollingScheduleContainer');
     if (!container) return;
 
     const routines = state.routines || [];
-    const activeUid = state.activeUsers[0] || '';
-    const filter = state.scheduleFilter || 'all';
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
+    const activeName = activeUserObj ? activeUserObj.name : 'Active';
+
+    // Default to 'me' on load
+    if (!state.scheduleFilter) state.scheduleFilter = 'me';
+    const filter = state.scheduleFilter;
 
     // 1. Build Filter Pills HTML
     let filterHtml = `
-    <div class="filter-pills-row" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center;">
-        <span style="font-size: 12px; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Filter Routines:</span>
+    <div class="routine-filter-bar">
+        <span class="filter-label">Filter Routines:</span>
+        <button class="filter-pill ${filter === 'me' ? 'active' : ''}" onclick="setScheduleFilter('me')">Me (${escapeHtml(activeName)})</button>
         <button class="filter-pill ${filter === 'all' ? 'active' : ''}" onclick="setScheduleFilter('all')">All</button>
-        <button class="filter-pill ${filter === 'me' ? 'active' : ''}" onclick="setScheduleFilter('me')">Me (${ALL_USERS.find(u => u.uid === activeUid)?.name || 'Active'})</button>
     `;
     ALL_USERS.forEach(u => {
         filterHtml += `<button class="filter-pill ${filter === u.uid ? 'active' : ''}" onclick="setScheduleFilter('${u.uid}')">${escapeHtml(u.name)}</button>`;
     });
     filterHtml += `</div>`;
 
-    // 2. Compute 7 rolling days: -3, -2, -1, 0, 1, 2, 3
-    const daysData = [];
+    // 2. Date references
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayKey = toLocalDateKey(today);
+
+    // ------------------------------------------
+    // COLUMN 1: Past (Missed) - Past 3 days (-1, -2, -3)
+    // ------------------------------------------
+    const pastDays = [-1, -2, -3].map(offset => {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        return {
+            offset,
+            dateObj: d,
+            dateKey: toLocalDateKey(d),
+            dayName: d.toLocaleDateString(undefined, { weekday: 'short' }),
+            dateStr: `${d.getMonth() + 1}/${d.getDate()}`
+        };
+    });
+
+    const missedItems = [];
+    pastDays.forEach(day => {
+        routines.forEach(r => {
+            // CRITICAL DAILY RULE: Daily routines must NEVER appear in Past (Missed)
+            if (isDailyRoutine(r)) return;
+            if (!routineMatchesFilter(r, filter, activeUid)) return;
+            if (!routineAppliesToDate(r, day.dateObj)) return;
+
+            const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
+            if (!comp) {
+                missedItems.push({
+                    routine: r,
+                    dateKey: day.dateKey,
+                    dayName: day.dayName,
+                    dateStr: day.dateStr
+                });
+            }
+        });
+    });
+
+    // Sort missed items: most recent missed first
+    missedItems.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+    // ------------------------------------------
+    // COLUMN 2: Current (Today) - Displayed ONCE
+    // ------------------------------------------
+    const todayItems = [];
+    routines.forEach(r => {
+        if (!routineMatchesFilter(r, filter, activeUid)) return;
+        if (!routineAppliesToDate(r, today)) return;
+
+        const comp = r.completionsByDate ? r.completionsByDate[todayKey] : null;
+        const isDone = !!comp;
+        todayItems.push({
+            routine: r,
+            isDone,
+            comp
+        });
+    });
+
+    // Sort today items: incomplete first, then alphabetically
+    todayItems.sort((a, b) => {
+        if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
+        return a.routine.name.localeCompare(b.routine.name);
+    });
+
+    const completedTodayCount = todayItems.filter(item => item.isDone).length;
+
+    // ------------------------------------------
+    // COLUMN 3: Upcoming (Next 3 Days) - (+1, +2, +3)
+    // ------------------------------------------
+    const upcomingDays = [1, 2, 3].map(offset => {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        return {
+            offset,
+            dateObj: d,
+            dateKey: toLocalDateKey(d),
+            dayName: d.toLocaleDateString(undefined, { weekday: 'short' }),
+            dateStr: `${d.getMonth() + 1}/${d.getDate()}`
+        };
+    });
+
+    const upcomingItems = [];
+    upcomingDays.forEach(day => {
+        routines.forEach(r => {
+            // CRITICAL DAILY RULE: Routines that run every day must NEVER appear in Upcoming
+            if (isDailyRoutine(r)) return;
+            if (!routineMatchesFilter(r, filter, activeUid)) return;
+            if (!routineAppliesToDate(r, day.dateObj)) return;
+
+            upcomingItems.push({
+                routine: r,
+                dateKey: day.dateKey,
+                dayName: day.dayName,
+                dateStr: day.dateStr
+            });
+        });
+    });
+
+    // Sort upcoming items by dateKey ascending
+    upcomingItems.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+    // ------------------------------------------
+    // BUILD 3-COLUMN BOARD HTML
+    // ------------------------------------------
+    let boardHtml = `<div class="routine-board-grid">`;
+
+    // ===== COLUMN 1: PAST (MISSED) =====
+    boardHtml += `
+    <div class="routine-board-col routine-col-past">
+        <div class="routine-col-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="routine-col-title">Past (Missed)</span>
+                <span class="routine-count-badge ${missedItems.length > 0 ? 'alert' : ''}">${missedItems.length}</span>
+            </div>
+            ${missedItems.length > 0 ? `
+                <button type="button" class="btn-clear-all-missed" onclick="clearAllMissedRoutines()" title="Dismiss all missed routines without awarding points">
+                    Clear All
+                </button>
+            ` : ''}
+        </div>
+        <div class="routine-col-body">
+    `;
+
+    if (missedItems.length === 0) {
+        boardHtml += `<div class="empty-col-msg">&#x2714; No missed routines in past 3 days</div>`;
+    } else {
+        missedItems.forEach(item => {
+            const r = item.routine;
+            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+            const pts = linkedTask ? linkedTask.value : 0;
+            const assigneesLabel = formatRoutineAssignees(r, true);
+
+            boardHtml += `
+            <div class="routine-board-row">
+                <button type="button" class="item-checkbox" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', true)" title="Mark done for ${item.dayName} (awards points)" aria-label="Mark done for ${item.dayName}"></button>
+                <div class="routine-row-info">
+                    <div class="routine-row-title-line">
+                        <span class="missed-day-badge">${item.dayName}</span>
+                        <span class="routine-row-name">${escapeHtml(r.name)}</span>
+                    </div>
+                    <div class="routine-row-meta">
+                        ${assigneesLabel}
+                        ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                    </div>
+                </div>
+                <button type="button" class="btn-dismiss-missed" onclick="completeRoutineForDate('${r.uid}', '${item.dateKey}', false)" title="Dismiss without points" aria-label="Dismiss">&times;</button>
+            </div>
+            `;
+        });
+    }
+    boardHtml += `</div></div>`;
+
+    // ===== COLUMN 2: CURRENT (TODAY) =====
+    const hideCompleted = !!state.hideCompletedRoutines;
+    const visibleTodayItems = hideCompleted ? todayItems.filter(item => !item.isDone) : todayItems;
+
+    boardHtml += `
+    <div class="routine-board-col routine-col-today">
+        <div class="routine-col-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="routine-col-title">&#x1F4C5; Current (Today)</span>
+                <span class="routine-count-badge highlight">${completedTodayCount}/${todayItems.length}</span>
+            </div>
+            <button type="button" class="filter-pill ${hideCompleted ? 'active' : ''}" onclick="toggleHideCompletedRoutines()" style="font-size: 11px; padding: 2px 8px;">
+                ${hideCompleted ? 'Show All' : 'Hide Done'}
+            </button>
+        </div>
+        <div class="routine-col-body">
+    `;
+
+    if (todayItems.length === 0) {
+        boardHtml += `<div class="empty-col-msg">No routines scheduled for today</div>`;
+    } else if (visibleTodayItems.length === 0 && hideCompleted) {
+        boardHtml += `<div class="empty-col-msg">&#x2714; All ${todayItems.length} routines completed!</div>`;
+    } else {
+        visibleTodayItems.forEach(item => {
+            const r = item.routine;
+            const isDone = item.isDone;
+            const comp = item.comp;
+            const doneByName = isDone ? (comp?.completedByName || 'Someone') : '';
+            const withoutPts = isDone && comp?.withoutPoints;
+
+            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+            const pts = linkedTask ? linkedTask.value : 0;
+            const assigneesLabel = formatRoutineAssignees(r, true);
+
+            boardHtml += `
+            <div class="routine-board-row ${isDone ? 'is-completed' : ''}">
+                <button type="button" class="item-checkbox ${isDone ? 'checked' : ''}" onclick="${isDone ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}" title="${isDone ? 'Completed - click to undo' : 'Mark done today (awards points)'}" aria-label="${isDone ? 'Undo completion' : 'Mark complete'}">
+                    ${isDone ? '&#x2714;' : ''}
+                </button>
+                <div class="routine-row-info">
+                    <div class="routine-row-title-line">
+                        <span class="routine-row-name ${isDone ? 'completed-text' : ''}">${escapeHtml(r.name)}</span>
+                    </div>
+                    <div class="routine-row-meta">
+                        ${assigneesLabel}
+                        ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                        ${isDone ? `<span class="completed-by-tag">&#x2714; ${escapeHtml(doneByName)}${withoutPts ? ' (No pts)' : ''}</span>` : ''}
+                    </div>
+                </div>
+                <button type="button" class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+            </div>
+            `;
+        });
+    }
+    boardHtml += `</div></div>`;
+
+    // ===== COLUMN 3: UPCOMING (NEXT 3 DAYS) =====
+    boardHtml += `
+    <div class="routine-board-col routine-col-upcoming">
+        <div class="routine-col-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="routine-col-title">Upcoming (Next 3 Days)</span>
+                <span class="routine-count-badge">${upcomingItems.length}</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Non-daily only</span>
+        </div>
+        <div class="routine-col-body">
+    `;
+
+    if (upcomingItems.length === 0) {
+        boardHtml += `<div class="empty-col-msg">No upcoming non-daily routines</div>`;
+    } else {
+        upcomingItems.forEach(item => {
+            const r = item.routine;
+            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
+            const pts = linkedTask ? linkedTask.value : 0;
+            const assigneesLabel = formatRoutineAssignees(r, true);
+
+            boardHtml += `
+            <div class="routine-board-row is-upcoming-row">
+                <span class="upcoming-day-badge">${item.dayName}</span>
+                <div class="routine-row-info">
+                    <div class="routine-row-title-line">
+                        <span class="routine-row-name">${escapeHtml(r.name)}</span>
+                    </div>
+                    <div class="routine-row-meta">
+                        ${assigneesLabel}
+                        ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
+                    </div>
+                </div>
+            </div>
+            `;
+        });
+    }
+    boardHtml += `</div></div>`;
+
+    boardHtml += `</div>`; // Close .routine-board-grid
+
+    container.innerHTML = filterHtml + boardHtml;
+}
+
+// Clear all currently displayed missed non-daily routines without awarding points
+export async function clearAllMissedRoutines() {
+    const routines = state.routines || [];
+    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const filter = state.scheduleFilter || 'me';
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    for (let offset = -3; offset <= 3; offset++) {
+    const pastDays = [-1, -2, -3].map(offset => {
         const d = new Date(today);
         d.setDate(today.getDate() + offset);
-        const dateKey = toLocalDateKey(d);
-        
-        let label = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-        let badge = '';
-        if (offset === 0) badge = 'TODAY';
-        else if (offset === -1) badge = 'Yesterday';
-        else if (offset === 1) badge = 'Tomorrow';
-        else if (offset < 0) badge = `${offset} Days`;
-        else badge = `+${offset} Days`;
-
-        daysData.push({
-            offset,
+        return {
             dateObj: d,
-            dateKey,
-            label,
-            badge,
-            isToday: offset === 0,
-            isPast: offset < 0,
-            isFuture: offset > 0
-        });
-    }
-
-    // 3. Render 7-column grid
-    let gridHtml = `<div class="rolling-schedule-grid">`;
-
-    daysData.forEach(day => {
-        const colClass = `schedule-day-col ${day.isToday ? 'is-today' : ''} ${day.isPast ? 'is-past' : ''} ${day.isFuture ? 'is-future' : ''}`;
-        
-        gridHtml += `
-        <div class="${colClass}">
-            <div class="schedule-day-header">
-                <span class="schedule-day-badge">${day.badge}</span>
-                <span class="schedule-day-title">${day.label}</span>
-            </div>
-            <div class="schedule-day-body">
-        `;
-
-        // Filter routines for this day and user filter
-        const dayRoutines = routines.filter(r => {
-            if (!routineAppliesToDate(r, day.dateObj)) return false;
-            if (filter === 'me') {
-                return !r.assignees || !r.assignees.length || r.assignees.includes(activeUid);
-            } else if (filter !== 'all') {
-                return !r.assignees || !r.assignees.length || r.assignees.includes(filter);
-            }
-            return true;
-        });
-
-        if (dayRoutines.length === 0) {
-            gridHtml += `<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 12px 0;">No routines</div>`;
-        } else {
-            // Group by buckets: Morning, Afternoon, Evening, Anytime
-            const buckets = ['Morning', 'Afternoon', 'Evening', 'Anytime'];
-            buckets.forEach(bucket => {
-                const bucketRoutines = dayRoutines.filter(r => getRoutineTimeOfDay(r) === bucket);
-                if (bucketRoutines.length > 0) {
-                    gridHtml += `<div class="bucket-header">${bucket}</div>`;
-                    bucketRoutines.forEach(r => {
-                        const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
-                        const isDone = !!comp;
-                        const withoutPts = isDone && comp.withoutPoints;
-                        const doneByName = isDone ? (comp.completedByName || 'Someone') : '';
-                        
-                        const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-                        const pts = linkedTask ? linkedTask.value : 0;
-                        const assigneesLabel = formatRoutineAssignees(r, true);
-
-                        gridHtml += `
-                        <div class="routine-slot ${isDone ? 'is-completed' : ''}">
-                            <div class="routine-slot-info">
-                                <div class="routine-slot-title" style="${isDone ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
-                                    ${escapeHtml(r.name)}
-                                </div>
-                                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 3px;">
-                                    ${assigneesLabel}
-                                    ${pts > 0 ? `<span class="pts-badge">+${pts} pts</span>` : ''}
-                                </div>
-                                ${isDone ? `
-                                    <div style="font-size: 10px; color: var(--success); font-weight: 700; margin-top: 2px;">
-                                        &#x2714; Done by ${escapeHtml(doneByName)}${withoutPts ? ' (No pts)' : ''}
-                                    </div>
-                                ` : ''}
-                            </div>
-                            <div class="routine-slot-actions">
-                        `;
-
-                        if (day.isFuture) {
-                            // Read-only future preview
-                            gridHtml += `<span style="font-size: 10px; color: var(--text-muted);">Upcoming</span>`;
-                        } else if (isDone) {
-                            // Undo button for this specific day
-                            gridHtml += `
-                                <button type="button" class="btn-undo-routine" onclick="undoRoutineForDate('${r.uid}', '${day.dateKey}')" title="Undo this day's completion">&#x21A9;</button>
-                            `;
-                        } else {
-                            // Check-off button + Admin Clear (No Pts) button
-                            gridHtml += `
-                                <button type="button" class="btn-check-routine" onclick="completeRoutineForDate('${r.uid}', '${day.dateKey}', true)" title="Mark Done (awards points)">
-                                    &#x2714;
-                                </button>
-                                <button type="button" class="btn-clear-routine" onclick="completeRoutineForDate('${r.uid}', '${day.dateKey}', false)" title="Admin: Clear Without Points">
-                                    &#x2716; No Pts
-                                </button>
-                            `;
-                        }
-
-                        gridHtml += `
-                            </div>
-                        </div>
-                        `;
-                    });
-                }
-            });
-        }
-
-        gridHtml += `
-            </div>
-        </div>
-        `;
+            dateKey: toLocalDateKey(d)
+        };
     });
 
-    gridHtml += `</div>`;
+    const missedToClear = [];
+    pastDays.forEach(day => {
+        routines.forEach(r => {
+            if (isDailyRoutine(r)) return;
+            if (!routineMatchesFilter(r, filter, activeUid)) return;
+            if (!routineAppliesToDate(r, day.dateObj)) return;
 
-    container.innerHTML = filterHtml + gridHtml;
+            const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
+            if (!comp) {
+                missedToClear.push({ routineId: r.uid, dateKey: day.dateKey });
+            }
+        });
+    });
+
+    if (missedToClear.length === 0) return;
+    if (!window.confirm(`Dismiss all ${missedToClear.length} missed item(s) without awarding points?`)) return;
+
+    const creditedUid = activeUid || ALL_USERS[0].uid;
+    const creditedName = ALL_USERS.find(u => u.uid === creditedUid)?.name || 'Admin';
+
+    // Group updates by routineId
+    const updatesByRoutine = {};
+    missedToClear.forEach(item => {
+        const r = routines.find(rt => rt.uid === item.routineId);
+        if (!r) return;
+        if (!updatesByRoutine[item.routineId]) {
+            updatesByRoutine[item.routineId] = {
+                routine: r,
+                completions: { ...(r.completionsByDate || {}) }
+            };
+        }
+        updatesByRoutine[item.routineId].completions[item.dateKey] = {
+            completedAt: new Date().toISOString(),
+            completedByUid: creditedUid,
+            completedByName: creditedName,
+            withoutPoints: true
+        };
+    });
+
+    try {
+        const savePromises = Object.keys(updatesByRoutine).map(rId => {
+            const data = updatesByRoutine[rId];
+            data.routine.completionsByDate = data.completions;
+            return api.updateFirestoreDocument('routines', rId, {
+                completionsByDate: data.completions
+            });
+        });
+
+        await Promise.all(savePromises);
+        showToast("admin_clear", `Dismissed ${missedToClear.length} missed item(s) (no points).`, 0, creditedName);
+        renderRollingSchedule();
+        updateLeaderboardUI();
+    } catch (err) {
+        console.error("Error clearing missed routines:", err);
+        alert("Failed to clear missed routines: " + err.message);
+    }
 }
 
-// Retroactive Check-off & Backdated Point Attribution
+// Retroactive Check-off & Point Attribution (or admin dismiss when awardPoints = false)
 export async function completeRoutineForDate(routineId, dateKey, awardPoints = true) {
     const routine = state.routines.find(r => r.uid === routineId);
     if (!routine) return;
 
-    // Determine assignee to credit
     let creditedUid = '';
     let creditedName = 'User';
     if (routine.assignees && routine.assignees.length === 1) {
@@ -277,7 +495,6 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
         });
         routine.completionsByDate = completions;
 
-        // If awarding points and linked Nipto task exists, backdate points to that date noon!
         if (awardPoints && routine.linkedNiptoTask && state.apiToken) {
             const backdatedDateIso = new Date(`${dateKey}T12:00:00`).toISOString();
             await api.logActivityToNipto(routine.linkedNiptoTask, backdatedDateIso, [creditedUid]);
@@ -285,7 +502,7 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
             const pts = taskObj ? taskObj.value : 0;
             showToast(routine.linkedNiptoTask, routine.name, pts, creditedName);
         } else if (!awardPoints) {
-            showToast("admin_clear", `Cleared "${routine.name}" on ${dateKey} (No points)`, 0, creditedName);
+            showToast("admin_clear", `Dismissed "${routine.name}" on ${dateKey} (no points)`, 0, creditedName);
         }
 
         renderRollingSchedule();
@@ -329,8 +546,6 @@ export function openRoutineModal() {
     document.querySelectorAll('.routine-day-cb').forEach(cb => cb.checked = false);
     document.getElementById('routineIntervalValue').value = '1';
     document.getElementById('routineIntervalUnit').value = 'months';
-    document.getElementById('routineOverdueValue').value = '14';
-    document.getElementById('routineOverdueUnit').value = 'hours';
     populateRoutineAssignees([]);
     populateRoutinePointsSelect();
     toggleRoutineFrequencyFields();
@@ -486,12 +701,28 @@ export async function deleteRoutine(routineId) {
     }
 }
 
-// Public unified renderer
+// Public aliases for backward compatibility
 export function renderRoutines() {
     renderRollingSchedule();
 }
 
-// Backward-compatibility export for legacy callers
 export function renderSidebarRoutines() {
     renderRollingSchedule();
+}
+
+// Window bindings for inline HTML onclick handlers
+if (typeof window !== 'undefined') {
+    window.setScheduleFilter = setScheduleFilter;
+    window.toggleHideCompletedRoutines = toggleHideCompletedRoutines;
+    window.clearAllMissedRoutines = clearAllMissedRoutines;
+    window.completeRoutineForDate = completeRoutineForDate;
+    window.undoRoutineForDate = undoRoutineForDate;
+    window.openRoutineModal = openRoutineModal;
+    window.closeRoutineModal = closeRoutineModal;
+    window.editRoutine = editRoutine;
+    window.saveRoutine = saveRoutine;
+    window.deleteRoutine = deleteRoutine;
+    window.toggleRoutineFrequencyFields = toggleRoutineFrequencyFields;
+    window.renderRollingSchedule = renderRollingSchedule;
+    window.renderRoutines = renderRoutines;
 }
