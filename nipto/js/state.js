@@ -83,23 +83,35 @@ export const state = {
     persistedDailyCompletions: [],
     completedToday: [], // Array of { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey }
     
-    // Filter state
+    // Filter & sort state
     scheduleFilter: 'me',           // 'me' (default) | 'all' | uid
     hideCompletedRoutines: false,
     todoView: 'my_actionable',      // 'my_actionable' (default) | 'shared' | 'projects' | 'all'
     todoPersonFilter: 'all',        // 'all' | 'me' | 'unassigned' | uid
     todoBucketFilter: 'all',        // 'all' | 'actionable' | 'project_idea'
-    todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'
+    todoTypeFilter: 'todo',         // 'todo' (default) | 'project' | 'all'
+    todoCategoryFilter: 'all',      // 'all' | specific category
     todoPriorityFilter: 'all',      // 'all' | 'high' | 'medium' | 'low'
+    todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'
+    todoSort: 'priority',           // 'priority' | 'points' | 'category' | 'age'
+    todoGroupBy: 'category',        // 'category' (default accordions) | 'ownership'
     manageSubtab: 'todos',          // 'todos' | 'routines'
     manageSearchQuery: '',
+    bulkTypeFilter: 'all',          // 'all' | 'todo' | 'project' | 'routine'
+    bulkCategoryFilter: 'all',      // 'all' | category name
+    bulkPriorityFilter: 'all',      // 'all' | 'high' | 'medium' | 'low'
+    bulkOwnershipFilter: 'all',     // 'all' | 'me' | 'individual' | 'shared' | 'unassigned'
+    bulkSortBy: 'default',          // 'default' | 'priority' | 'points' | 'category' | 'title'
     
     // Bulk triage selection
     selectedTodoIds: new Set(),
     selectedRoutineIds: new Set(),
     
-    // Gemini Brain Dump staging
-    brainDumpStaging: []
+    // Gemini Brain Dump & Ramble to Manage staging
+    brainDumpMode: 'create',        // 'create' | 'manage'
+    brainDumpStaging: [],
+    rambleStaging: [],
+    staleCurrentIndex: 0
 };
 
 export function saveUserState() {

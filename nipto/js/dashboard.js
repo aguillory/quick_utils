@@ -17,7 +17,11 @@ import {
     renderTodoTasks, openTaskModal, editTask, saveTask,
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
-    setTodoPriorityFilter, toggleSubtasksList, clearTaskFriction
+    setTodoPriorityFilter, setTodoTypeFilter, setTodoCategoryFilter, setTodoSort,
+    setTodoGroupBy, toggleCategoryCollapse, toggleTaskDescription,
+    toggleSubtasksList, clearTaskFriction,
+    openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
+    toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi
 } from './todos.js';
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
@@ -29,8 +33,13 @@ import {
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     clearBrainDumpStaging, commitBrainDumpToFirestore,
+    switchBrainDumpMode, analyzeRambleWithGemini, renderRambleDiffStaging,
+    updateRambleRow, updateRambleProp, toggleAllRambleRows, clearRambleStaging,
+    applyRambleUpdatesToFirestore,
     renderBulkTriageList, toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
-    switchManageSubtab, filterManageList
+    switchManageSubtab, filterManageList, updateInlineTaskField, updateRoutineScheduleInline,
+    setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter,
+    setBulkSortBy
 } from './braindump.js';
 import {
     initUsers, setActiveUser, toggleTogetherMode,
@@ -123,13 +132,20 @@ Object.assign(window, {
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
-    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter, toggleSubtasksList, clearTaskFriction,
+    setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter,
+    setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, toggleCategoryCollapse, toggleTaskDescription,
+    toggleSubtasksList, clearTaskFriction,
+    openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
+    toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi,
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine, deleteRoutineFromModal,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
-    parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
+    switchBrainDumpMode, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
-    toggleBulkItem, toggleBulkSelectAll, executeBulkAction,
+    analyzeRambleWithGemini, renderRambleDiffStaging, updateRambleRow, updateRambleProp,
+    toggleAllRambleRows, clearRambleStaging, applyRambleUpdatesToFirestore,
+    toggleBulkItem, toggleBulkSelectAll, executeBulkAction, updateInlineTaskField, updateRoutineScheduleInline,
     switchManageSubtab, filterManageList,
+    setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter, setBulkSortBy,
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
     setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin, getLocalTodayKey,
     rebuildCompletedToday, renderDoneTodayFeed

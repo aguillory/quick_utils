@@ -1,29 +1,68 @@
 // preferences.js
-// Cloud-synced user preferences (theme, history view, sort orders, collapsed sections).
+// Cloud-synced user preferences (theme, history view, sort orders, filters, collapsed sections).
 import { state } from './state.js';
 
-state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: [], todoSortOrder: [], collapsed: {} };
+state.userPrefs = {
+    theme: 'boring',
+    historyView: 'everyone',
+    niptoSortOrder: [],
+    todoSortOrder: [],
+    todoSort: 'priority',
+    todoGroupBy: 'category',
+    todoTypeFilter: 'todo',
+    todoCategoryFilter: 'all',
+    todoPriorityFilter: 'all',
+    todoPersonFilter: 'all',
+    collapsed: {}
+};
 
-// Loads a user's saved preferences from Firestore into state.
+// Loads a user's saved preferences from Firestore into state with local cache fallback.
 export async function loadCloudPreferences(uid) {
     if (!uid || state.isTogetherMode) return;
+
+    // Fast-path: local storage cache for instant UI rendering
+    try {
+        const cached = localStorage.getItem(`nipto_user_prefs_${uid}`);
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            state.userPrefs = { ...state.userPrefs, ...parsed };
+            applyPrefsToState();
+        }
+    } catch (e) {
+        // non-blocking cache error
+    }
+
     try {
         const doc = await window.getNiptoCollection('user_preferences').doc(uid).get();
         if (doc.exists) {
             state.userPrefs = { ...state.userPrefs, ...doc.data() };
-        } else {
-            state.userPrefs = { theme: 'boring', historyView: 'everyone', niptoSortOrder: [], todoSortOrder: [], collapsed: {} };
+            // Update local cache
+            localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
+            applyPrefsToState();
         }
     } catch (e) {
         console.error("Error loading cloud prefs:", e);
     }
 }
 
-// Saves a single preference key/value to Firestore and local state.
+// Applies stored preferences to the reactive state
+function applyPrefsToState() {
+    if (state.userPrefs.todoSort) state.todoSort = state.userPrefs.todoSort;
+    if (state.userPrefs.todoGroupBy) state.todoGroupBy = state.userPrefs.todoGroupBy;
+    if (state.userPrefs.todoTypeFilter) state.todoTypeFilter = state.userPrefs.todoTypeFilter;
+    if (state.userPrefs.todoCategoryFilter) state.todoCategoryFilter = state.userPrefs.todoCategoryFilter;
+    if (state.userPrefs.todoPriorityFilter) state.todoPriorityFilter = state.userPrefs.todoPriorityFilter;
+    if (state.userPrefs.todoPersonFilter) state.todoPersonFilter = state.userPrefs.todoPersonFilter;
+}
+
+// Saves a single preference key/value to Firestore, local state, and local cache.
 export function saveCloudPreference(key, value) {
     const uid = state.activeUsers[0];
     if (!uid || state.isTogetherMode) return;
     state.userPrefs[key] = value;
+    try {
+        localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
+    } catch (e) {}
     window.getNiptoCollection('user_preferences').doc(uid).set({ [key]: value }, { merge: true });
 }
 
@@ -33,5 +72,8 @@ export function saveCloudCollapsed(catKey, isCollapsed) {
     if (!uid || state.isTogetherMode) return;
     if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
     state.userPrefs.collapsed[catKey] = isCollapsed;
+    try {
+        localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
+    } catch (e) {}
     window.getNiptoCollection('user_preferences').doc(uid).set({ collapsed: state.userPrefs.collapsed }, { merge: true });
 }

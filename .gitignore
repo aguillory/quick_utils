@@ -4,3 +4,4 @@ agentic_coding_resources/google_api_key.txt
 .env*
 secrets.yaml
 .GEMINI.md
+AGENTS.md

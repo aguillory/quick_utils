@@ -1616,3 +1616,116 @@ input[list]:focus {
     color: #ffffff;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
+
+/* ==========================================
+   ANTI-OVERWHELM & SUBTLE PRIORITY BORDERS
+   ========================================== */
+.todo-card.priority-high {
+    border-left: 4px solid #ef4444;
+}
+.todo-card.priority-high:hover {
+    border-color: var(--primary);
+    border-left-color: #ef4444;
+}
+.todo-card.priority-medium {
+    border-left: 4px solid #f59e0b;
+}
+.todo-card.priority-medium:hover {
+    border-color: var(--primary);
+    border-left-color: #f59e0b;
+}
+.todo-card.priority-low {
+    border-left: 4px solid #94a3b8;
+}
+.todo-card.priority-low:hover {
+    border-color: var(--primary);
+    border-left-color: #94a3b8;
+}
+
+.priority-dot {
+    font-size: 10px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.priority-dot.high {
+    color: #ef4444;
+}
+.priority-dot.low {
+    color: #94a3b8;
+}
+
+/* ==========================================
+   PROGRESSIVE DISCLOSURE: DESCRIPTION TOGGLE
+   ========================================== */
+.todo-desc-toggle {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.15s ease;
+}
+.todo-desc-toggle:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.todo-desc-box {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-main);
+    background: var(--bg-color);
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    margin-top: 4px;
+    margin-left: 28px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ==========================================
+   GENTLE TASK BLINDNESS REFRESHER BANNER
+   ========================================== */
+.stale-refresher-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin-bottom: 14px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.stale-refresher-banner:hover {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* ==========================================
+   COLLAPSIBLE CATEGORY ACCORDIONS
+   ========================================== */
+.category-accordion-item {
+    transition: box-shadow 0.15s ease;
+}
+.category-accordion-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.category-accordion-header {
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.15s ease;
+}
+.category-accordion-item.collapsed .category-accordion-header {
+    border-bottom: none;
+}
+.category-accordion-header:hover {
+    background: rgba(0, 0, 0, 0.02) !important;
+}

@@ -1,13 +1,15 @@
 // todos.js
 // Active To-Dos: Single compact toolbar row (My Actionable / Shared / Projects / All),
-// 3-Column Responsive Grid, hollow-square checkboxes, collapsed notes & subtasks,
-// and Direct Assignment Alerts to Home Assistant.
+// Unified data model (type, points, priority, description, lastReviewedAt),
+// Collapsible category accordions, quiet non-overwhelming cards,
+// gentle task blindness refresher, and Direct Assignment Alerts to Home Assistant.
 
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
+import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -22,38 +24,151 @@ function escapeHtml(str) {
 }
 
 // ==========================================
-// FILTER HANDLERS
+// 1. DATA MODEL CONSOLIDATION & NORMALIZATION
+// ==========================================
+export function normalizeTask(t) {
+    if (!t) return {};
+
+    // 1. Unified type: 'todo' (default) | 'project' | 'routine'
+    let type = t.type;
+    if (!type || !['todo', 'project', 'routine'].includes(type)) {
+        const b = (t.bucket || '').toLowerCase();
+        if (b === 'project' || b === 'projects' || b === 'project_idea') {
+            type = 'project';
+        } else {
+            type = 'todo';
+        }
+    }
+
+    // 2. Default points: default to 5
+    const points = (t.points !== undefined && t.points !== null && t.points !== '' && !isNaN(Number(t.points)))
+        ? Number(t.points)
+        : 5;
+
+    // 3. Priority: 'high' | 'medium' (default) | 'low'
+    const pri = (t.priority || '').toLowerCase();
+    const priority = ['high', 'medium', 'low'].includes(pri) ? pri : 'medium';
+
+    // 4. Description: support description, fallback to notes
+    const description = (t.description !== undefined && t.description !== null)
+        ? t.description
+        : (t.notes || '');
+
+    // 5. Stale tracking: lastReviewedAt / updatedAt
+    const nowIso = new Date().toISOString();
+    const lastReviewedAt = t.lastReviewedAt || t.updatedAt || t.createdAt || nowIso;
+    const updatedAt = t.updatedAt || t.createdAt || nowIso;
+
+    return {
+        ...t,
+        type,
+        points,
+        priority,
+        description,
+        lastReviewedAt,
+        updatedAt
+    };
+}
+
+// ==========================================
+// 2. GENTLE STALE DETECTION ("TASK BLINDNESS")
+// ==========================================
+export function isTaskStale(task) {
+    if (!task || task.completed) return false;
+    const norm = normalizeTask(task);
+    // Strict criteria:
+    // 1. type === 'todo' ONLY (never project or routine)
+    if (norm.type !== 'todo') return false;
+    // 2. priority !== 'low' ONLY (never flag low-priority items)
+    if (norm.priority === 'low') return false;
+    // 3. 21+ days since last reviewed or updated
+    const reviewStr = norm.lastReviewedAt || norm.updatedAt || norm.createdAt;
+    if (!reviewStr) return false;
+    const reviewDate = new Date(reviewStr);
+    if (isNaN(reviewDate.getTime())) return false;
+
+    const diffDays = (Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 21;
+}
+
+export function getStaleTasks() {
+    return (state.todoTasksData || []).filter(isTaskStale);
+}
+
+// ==========================================
+// 3. FILTER & SORT HANDLERS (PERSISTED TO FIRESTORE)
 // ==========================================
 export function setTodoView(view) {
     state.todoView = view;
-    // When switching away from All, reset person filter to 'all' so view is intuitive
-    if (view !== 'all') {
-        state.todoPersonFilter = 'all';
+    if (view === 'projects') {
+        state.todoTypeFilter = 'project';
+    } else if (view === 'my_actionable' || view === 'shared') {
+        state.todoTypeFilter = 'todo';
+    } else {
+        state.todoTypeFilter = 'all';
     }
+    saveCloudPreference('todoTypeFilter', state.todoTypeFilter);
+    saveCloudPreference('todoView', view);
+    renderTodoTasks();
+}
+
+export function setTodoTypeFilter(val) {
+    state.todoTypeFilter = val;
+    saveCloudPreference('todoTypeFilter', val);
+    renderTodoTasks();
+}
+
+export function setTodoCategoryFilter(val) {
+    state.todoCategoryFilter = val;
+    saveCloudPreference('todoCategoryFilter', val);
     renderTodoTasks();
 }
 
 export function setTodoPersonFilter(val) {
     state.todoPersonFilter = val;
-    renderTodoTasks();
-}
-
-export function setTodoBucketFilter(val) {
-    state.todoBucketFilter = val;
-    renderTodoTasks();
-}
-
-export function setTodoFrictionFilter(val) {
-    state.todoFrictionFilter = val;
+    saveCloudPreference('todoPersonFilter', val);
     renderTodoTasks();
 }
 
 export function setTodoPriorityFilter(val) {
     state.todoPriorityFilter = val;
+    saveCloudPreference('todoPriorityFilter', val);
     renderTodoTasks();
 }
 
-// Helper to toggle subtask checklist expansion on a card
+export function setTodoSort(val) {
+    state.todoSort = val;
+    saveCloudPreference('todoSort', val);
+    renderTodoTasks();
+}
+
+export function setTodoGroupBy(val) {
+    state.todoGroupBy = val;
+    saveCloudPreference('todoGroupBy', val);
+    renderTodoTasks();
+}
+
+export function toggleCategoryCollapse(catKey) {
+    if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+    const currentlyCollapsed = !!state.userPrefs.collapsed[catKey];
+    const nextState = !currentlyCollapsed;
+    state.userPrefs.collapsed[catKey] = nextState;
+    saveCloudCollapsed(catKey, nextState);
+    renderTodoTasks();
+}
+
+export function toggleTaskDescription(taskId, event) {
+    if (event) event.stopPropagation();
+    const box = document.getElementById(`todo-desc-${taskId}`);
+    const btn = document.getElementById(`todo-desc-btn-${taskId}`);
+    if (!box) return;
+    const isHidden = box.style.display === 'none' || !box.style.display;
+    box.style.display = isHidden ? 'block' : 'none';
+    if (btn) {
+        btn.innerHTML = isHidden ? '&#x1F4DD; Details &#x25B4;' : '&#x1F4DD; Details &#x25BE;';
+    }
+}
+
 export function toggleSubtasksList(taskId) {
     const el = document.getElementById(`subtasks-list-${taskId}`);
     const arrow = document.getElementById(`subtasks-arrow-${taskId}`);
@@ -63,7 +178,6 @@ export function toggleSubtasksList(taskId) {
     if (arrow) arrow.innerHTML = isHidden ? '&#x25B4;' : '&#x25BE;';
 }
 
-// Quick action to clear an auto-defaulted friction tag
 export async function clearTaskFriction(taskId, event) {
     if (event) event.stopPropagation();
     try {
@@ -76,7 +190,7 @@ export async function clearTaskFriction(taskId, event) {
     }
 }
 
-// Format a single compact assignee pill (at most ONE pill, no duplicate list badges)
+// Format compact assignee pill
 function formatTodoAssigneePill(task) {
     const assignees = task.assignees || [];
     if (assignees.length === 0) {
@@ -103,104 +217,136 @@ function formatTodoAssigneePill(task) {
 }
 
 // ==========================================
-// MAIN TO-DOS RENDERER
+// 4. MAIN TO-DOS RENDERER
 // ==========================================
 export function renderTodoTasks() {
     const container = document.getElementById('todoContainer');
     if (!container) return;
 
-    let tasks = state.todoTasksData || [];
+    let tasks = (state.todoTasksData || []).map(normalizeTask);
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
     const activeName = activeUserObj ? activeUserObj.name : 'Active';
 
-    // Default view: 'my_actionable'
-    if (!state.todoView) state.todoView = 'my_actionable';
-    const currentView = state.todoView;
-    const personFilter = state.todoPersonFilter || 'all';
-    const frictionFilter = state.todoFrictionFilter || 'all';
-    const priorityFilter = state.todoPriorityFilter || 'all';
+    // Defaults & stored preferences
+    if (!state.todoTypeFilter) state.todoTypeFilter = 'todo';
+    if (!state.todoSort) state.todoSort = 'priority';
+    if (!state.todoGroupBy) state.todoGroupBy = 'category';
+    if (!state.todoCategoryFilter) state.todoCategoryFilter = 'all';
+    if (!state.todoPersonFilter) state.todoPersonFilter = 'all';
+    if (!state.todoPriorityFilter) state.todoPriorityFilter = 'all';
 
-    // 1. Primary View Filter
-    if (currentView === 'my_actionable') {
-        // Only actionable tasks (bucket !== 'project_idea')
-        // Assigned to active user OR Anyone / unassigned
-        tasks = tasks.filter(t => {
-            const isActionable = (t.bucket || 'actionable') !== 'project_idea';
-            const isForMe = !t.assignees || t.assignees.length === 0 || t.assignees.includes(activeUid);
-            return isActionable && isForMe;
-        });
-    } else if (currentView === 'shared') {
-        // Shared or Anyone
-        tasks = tasks.filter(t => {
-            const isActionable = (t.bucket || 'actionable') !== 'project_idea';
-            const isSharedOrAnyone = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
-            return isActionable && isSharedOrAnyone;
-        });
-    } else if (currentView === 'projects') {
-        // Long-term projects & ideas
-        tasks = tasks.filter(t => t.bucket === 'project_idea');
-    } else if (currentView === 'all') {
-        // All household tasks
+    const currentType = state.todoTypeFilter;
+    const currentSort = state.todoSort;
+    const currentGroupBy = state.todoGroupBy;
+    const personFilter = state.todoPersonFilter;
+    const categoryFilter = state.todoCategoryFilter;
+    const priorityFilter = state.todoPriorityFilter;
+
+    // Gather unique categories for filter dropdown
+    const uniqueCategories = Array.from(new Set(
+        tasks.map(t => t.category || 'General').filter(Boolean)
+    )).sort();
+
+    // 1. Filter by Type: 'todo' | 'project' | 'all'
+    if (currentType === 'todo') {
+        tasks = tasks.filter(t => t.type === 'todo');
+    } else if (currentType === 'project') {
+        tasks = tasks.filter(t => t.type === 'project');
     }
 
-    // 2. Secondary Person Filter
+    // 2. Filter by Ownership / Person
     if (personFilter === 'me') {
         tasks = tasks.filter(t => t.assignees && t.assignees.includes(activeUid));
+    } else if (personFilter === 'shared_anyone') {
+        tasks = tasks.filter(t => !t.assignees || t.assignees.length === 0 || t.assignees.length > 1);
     } else if (personFilter === 'unassigned') {
         tasks = tasks.filter(t => !t.assignees || t.assignees.length === 0);
     } else if (personFilter !== 'all') {
         tasks = tasks.filter(t => t.assignees && t.assignees.includes(personFilter));
     }
 
-    // 3. Secondary Friction Filter (STRICT: no auto-defaulting un-set tasks to quick!)
-    if (frictionFilter !== 'all') {
-        tasks = tasks.filter(t => t.frictionTag === frictionFilter);
+    // 3. Filter by Category
+    if (categoryFilter !== 'all') {
+        tasks = tasks.filter(t => (t.category || 'General').toLowerCase() === categoryFilter.toLowerCase());
     }
 
-    // 4. Secondary Priority Filter
+    // 4. Filter by Priority
     if (priorityFilter !== 'all') {
-        tasks = tasks.filter(t => (t.priority || '').toLowerCase() === priorityFilter);
+        tasks = tasks.filter(t => t.priority === priorityFilter);
     }
 
-    // 5. Render Single Compact Toolbar Row
+    // Check for Stale Tasks for the calm refresher banner
+    const staleTasks = getStaleTasks();
+    let staleBannerHtml = '';
+    if (staleTasks.length > 0) {
+        staleBannerHtml = `
+        <div class="stale-refresher-banner" onclick="openStaleRefresherModal()" title="Click to gently review sitting tasks">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">&#x2728;</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-main);">
+                    <strong>${staleTasks.length} To-Do${staleTasks.length > 1 ? 's have' : ' has'}</strong> been sitting a while &mdash; Review?
+                </span>
+            </div>
+            <button type="button" class="action-btn" onclick="openStaleRefresherModal(); event.stopPropagation();" style="padding: 4px 10px; font-size: 12px; font-weight: 700; background: var(--card-bg); border: 1px solid var(--border-color);">
+                Review List &#x2192;
+            </button>
+        </div>
+        `;
+    }
+
+    // 5. Build Compact Filter / Sort Bar
     let toolbarHtml = `
-    <div class="todo-toolbar-row">
-        <!-- Left: Primary View Pills -->
+    ${staleBannerHtml}
+    <div class="todo-toolbar-row" style="margin-bottom: 16px;">
+        <!-- Left: Quick Type Pills -->
         <div class="todo-view-pills">
-            <button class="filter-pill ${currentView === 'my_actionable' ? 'active' : ''}" onclick="setTodoView('my_actionable')" title="Actionable to-dos for me or anyone">
-                &#x26A1; My Actionable
+            <button class="filter-pill ${currentType === 'todo' ? 'active' : ''}" onclick="setTodoTypeFilter('todo')" title="Actionable daily/immediate to-dos">
+                &#x26A1; To-Dos
             </button>
-            <button class="filter-pill ${currentView === 'shared' ? 'active' : ''}" onclick="setTodoView('shared')" title="Shared tasks and open household to-dos">
-                &#x1F465; Shared / Anyone
+            <button class="filter-pill ${currentType === 'project' ? 'active' : ''}" onclick="setTodoTypeFilter('project')" title="Projects, someday goals, and brainstormed ideas">
+                &#x1F4A1; Projects / Ideas
             </button>
-            <button class="filter-pill ${currentView === 'projects' ? 'active' : ''}" onclick="setTodoView('projects')" title="Projects, someday goals, and brainstormed ideas">
-                &#x1F4A1; Projects &amp; Ideas
-            </button>
-            <button class="filter-pill ${currentView === 'all' ? 'active' : ''}" onclick="setTodoView('all')" title="All household tasks across all members">
-                All Household
+            <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View both To-Dos and Projects together">
+                All Types
             </button>
         </div>
 
-        <!-- Right: Secondary Compact Dropdowns -->
-        <div class="todo-secondary-filters">
-            <select class="todo-compact-select" onchange="setTodoPersonFilter(this.value)" title="Filter by Person">
-                <option value="all" ${personFilter === 'all' ? 'selected' : ''}>Person: All</option>
-                <option value="me" ${personFilter === 'me' ? 'selected' : ''}>Me (${escapeHtml(activeName)})</option>
-                <option value="unassigned" ${personFilter === 'unassigned' ? 'selected' : ''}>Anyone</option>
-                ${ALL_USERS.map(u => `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
+        <!-- Right: Compact Selects & Grouping Toggle -->
+        <div class="todo-secondary-filters" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+            <!-- Group By Toggle -->
+            <button class="filter-pill" onclick="setTodoGroupBy('${currentGroupBy === 'category' ? 'ownership' : 'category'}')" title="Toggle between Collapsible Categories and Ownership layout" style="font-size: 11px; padding: 4px 8px;">
+                ${currentGroupBy === 'category' ? '&#x1F4C1; By Category' : '&#x1F464; By Ownership'}
+            </button>
+
+            <!-- Sort By Select -->
+            <select class="todo-compact-select" onchange="setTodoSort(this.value)" title="Sort tasks">
+                <option value="priority" ${currentSort === 'priority' ? 'selected' : ''}>Sort: Priority (High&rarr;Low)</option>
+                <option value="points" ${currentSort === 'points' ? 'selected' : ''}>Sort: Points</option>
+                <option value="category" ${currentSort === 'category' ? 'selected' : ''}>Sort: Category</option>
+                <option value="age" ${currentSort === 'age' ? 'selected' : ''}>Sort: Newest</option>
             </select>
+
+            <!-- Category Filter -->
+            <select class="todo-compact-select" onchange="setTodoCategoryFilter(this.value)" title="Filter by Category">
+                <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
+                ${uniqueCategories.map(cat => `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
+            </select>
+
+            <!-- Priority Filter -->
             <select class="todo-compact-select" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
                 <option value="all" ${priorityFilter === 'all' ? 'selected' : ''}>Priority: All</option>
                 <option value="high" ${priorityFilter === 'high' ? 'selected' : ''}>&#x1F525; High</option>
                 <option value="medium" ${priorityFilter === 'medium' ? 'selected' : ''}>&#x26A1; Medium</option>
                 <option value="low" ${priorityFilter === 'low' ? 'selected' : ''}>&#x1F53D; Low</option>
             </select>
-            <select class="todo-compact-select" onchange="setTodoFrictionFilter(this.value)" title="Filter by Friction Level">
-                <option value="all" ${frictionFilter === 'all' ? 'selected' : ''}>Friction: All</option>
-                <option value="quick" ${frictionFilter === 'quick' ? 'selected' : ''}>&#x26A1; Quick (&lt;5m)</option>
-                <option value="low_brain" ${frictionFilter === 'low_brain' ? 'selected' : ''}>&#x1F9E0; Low Brain</option>
-                <option value="deep_focus" ${frictionFilter === 'deep_focus' ? 'selected' : ''}>&#x1F3AF; Deep Focus</option>
+
+            <!-- Ownership Filter -->
+            <select class="todo-compact-select" onchange="setTodoPersonFilter(this.value)" title="Filter by Ownership">
+                <option value="all" ${personFilter === 'all' ? 'selected' : ''}>Owner: All</option>
+                <option value="me" ${personFilter === 'me' ? 'selected' : ''}>Me (${escapeHtml(activeName)})</option>
+                <option value="shared_anyone" ${personFilter === 'shared_anyone' ? 'selected' : ''}>Shared / Anyone</option>
+                ${ALL_USERS.map(u => `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
             </select>
         </div>
     </div>
@@ -209,103 +355,94 @@ export function renderTodoTasks() {
     if (tasks.length === 0) {
         container.innerHTML = toolbarHtml + `
         <div class="empty-dashboard-msg" style="padding: 30px;">
-            No to-dos matching this view. Click "+ Add Task" to create one.
+            No tasks matching this view. Click "+ Add Task" to create one.
         </div>`;
         return;
     }
 
     function getPriorityWeight(p) {
-        if (!p) return 0;
+        if (!p) return 2;
         const lp = p.toLowerCase();
         if (lp === 'high') return 3;
         if (lp === 'medium') return 2;
         if (lp === 'low') return 1;
-        return 0;
+        return 2;
     }
 
-    // Sort: incomplete first, then highest priority first, then newest first
-    tasks.sort((a, b) => {
-        if (a.completed !== b.completed) return a.completed ? 1 : -1;
-        const pA = getPriorityWeight(a.priority);
-        const pB = getPriorityWeight(b.priority);
-        if (pA !== pB) return pB - pA;
-        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-    });
+    // Primary Sorting Logic
+    function sortTaskList(list) {
+        return list.slice().sort((a, b) => {
+            // Incomplete first
+            if (a.completed !== b.completed) return a.completed ? 1 : -1;
 
-    // Partition tasks into Individual vs Shared / Anyone
-    const individualTasks = [];
-    const sharedTasks = [];
-
-    tasks.forEach(t => {
-        const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
-        if (isShared) {
-            sharedTasks.push(t);
-        } else {
-            individualTasks.push(t);
-        }
-    });
-
-    let individualSectionTitle = "Assigned to Me (Individual)";
-    if (personFilter !== 'all' && personFilter !== 'unassigned' && personFilter !== 'me') {
-        const u = ALL_USERS.find(user => user.uid === personFilter);
-        individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'} (Individual)`;
-    } else if (currentView === 'all') {
-        individualSectionTitle = "Individual Tasks (Single Assignee)";
+            if (currentSort === 'priority') {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return (b.points || 5) - (a.points || 5);
+            } else if (currentSort === 'points') {
+                const ptA = a.points || 5;
+                const ptB = b.points || 5;
+                if (ptA !== ptB) return ptB - ptA;
+                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+            } else if (currentSort === 'category') {
+                const cA = (a.category || 'General').toLowerCase();
+                const cB = (b.category || 'General').toLowerCase();
+                if (cA !== cB) return cA.localeCompare(cB);
+                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+            } else if (currentSort === 'age') {
+                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+            }
+            return 0;
+        });
     }
 
-    // Helper to render individual To-Do Card HTML
+    // Helper: Render quiet, anti-overwhelm card
     function renderCard(t) {
         const isCompleted = !!t.completed;
         const assigneePill = formatTodoAssigneePill(t);
+        const pri = t.priority || 'medium';
 
-        // Priority badge
-        let priorityBadge = '';
-        if (t.priority === 'high') {
-            priorityBadge = `<span class="todo-priority-badge high">&#x1F525; High</span>`;
-        } else if (t.priority === 'medium') {
-            priorityBadge = `<span class="todo-priority-badge medium">&#x26A1; Med</span>`;
-        } else if (t.priority === 'low') {
-            priorityBadge = `<span class="todo-priority-badge low">&#x1F53D; Low</span>`;
+        // Subtle Left Priority Border Class
+        const priorityClass = `priority-${pri}`;
+
+        // Subtle priority dot indicator
+        let priorityDot = '';
+        if (pri === 'high') {
+            priorityDot = `<span class="priority-dot high" title="High Priority">&#x25CF;</span>`;
+        } else if (pri === 'low') {
+            priorityDot = `<span class="priority-dot low" title="Low Priority">&#x25CF;</span>`;
         }
 
-        // Friction tag
-        let frictionBadge = '';
-        if (t.frictionTag === 'quick') {
-            frictionBadge = `<span class="todo-friction-badge quick" title="Quick (<5m). Click x to clear.">&#x26A1; Quick <button type="button" class="btn-clear-friction" onclick="clearTaskFriction('${t.id}', event)">&times;</button></span>`;
-        } else if (t.frictionTag === 'low_brain') {
-            frictionBadge = `<span class="todo-friction-badge low_brain" title="Low Brain. Click x to clear.">&#x1F9E0; Low Brain <button type="button" class="btn-clear-friction" onclick="clearTaskFriction('${t.id}', event)">&times;</button></span>`;
-        } else if (t.frictionTag === 'deep_focus') {
-            frictionBadge = `<span class="todo-friction-badge deep_focus" title="Deep Focus. Click x to clear.">&#x1F3AF; Deep Focus <button type="button" class="btn-clear-friction" onclick="clearTaskFriction('${t.id}', event)">&times;</button></span>`;
-        }
-
-        // Project idea badge
-        const isProject = t.bucket === 'project_idea';
-        const projectBadge = isProject
+        // Project badge if project
+        const projectBadge = t.type === 'project'
             ? `<span class="todo-pill project-pill">&#x1F4A1; Project</span>`
             : '';
 
-        // Category badge
+        // Category badge (if not redundant)
         let categoryBadge = '';
-        if (t.category && !t.category.toLowerCase().includes('list') && !ALL_USERS.some(u => u.name.toLowerCase() === t.category.toLowerCase())) {
+        if (t.category && currentGroupBy !== 'category') {
             categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
         }
 
-        // Points badge
-        const ptsDisplay = (t.points && t.points > 0)
-            ? `<span class="pts-badge">+${t.points} pts</span>`
-            : '';
+        // Points badge (default 5 pts)
+        const pts = t.points || 5;
+        const ptsDisplay = `<span class="pts-badge">+${pts} pts</span>`;
 
-        // Creator badge
-        const createdBy = t.createdBy || 'Alyssa';
-        const isSingleAssignee = t.assignees && t.assignees.length === 1;
-        const assigneeObj = isSingleAssignee ? ALL_USERS.find(u => u.uid === t.assignees[0]) : null;
-        const isDifferentCreator = isSingleAssignee && assigneeObj && assigneeObj.name.toLowerCase() !== createdBy.toLowerCase();
-
-        let creatorBadge = '';
-        if (isDifferentCreator) {
-            creatorBadge = `<span class="todo-creator-tag different-user" title="Added by ${escapeHtml(createdBy)}">&#x270D; Added by ${escapeHtml(createdBy)}</span>`;
-        } else if (createdBy) {
-            creatorBadge = `<span class="todo-creator-tag" title="Added by ${escapeHtml(createdBy)}">by ${escapeHtml(createdBy)}</span>`;
+        // Description / Notes indicator button
+        let descButton = '';
+        let descBox = '';
+        if (t.description) {
+            descButton = `
+            <button type="button" id="todo-desc-btn-${t.id}" class="todo-desc-toggle" onclick="toggleTaskDescription('${t.id}', event)" title="Toggle details / description">
+                &#x1F4DD; Details &#x25BE;
+            </button>
+            `;
+            descBox = `
+            <div id="todo-desc-${t.id}" class="todo-desc-box" style="display: none;">
+                ${escapeHtml(t.description)}
+            </div>
+            `;
         }
 
         // Subtasks section
@@ -322,7 +459,6 @@ export function renderTodoTasks() {
                         <label class="todo-subtask-item">
                             <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTask('${t.id}', '${st.id}', this.checked)">
                             <span class="${st.completed ? 'completed-subtask' : ''}">${escapeHtml(st.name || st.text)}</span>
-                            ${st.createdBy && st.createdBy !== createdBy ? `<span style="font-size: 10px; color: var(--text-muted);">(${escapeHtml(st.createdBy)})</span>` : ''}
                         </label>
                     `).join('')}
                 </div>
@@ -331,14 +467,14 @@ export function renderTodoTasks() {
         }
 
         return `
-        <div class="todo-card ${isCompleted ? 'completed' : ''}">
+        <div class="todo-card ${priorityClass} ${isCompleted ? 'completed' : ''}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
                     <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}">
                         ${isCompleted ? '&#x2714;' : ''}
                     </button>
                     <span class="todo-title ${isCompleted ? 'completed-text' : ''}">
-                        ${escapeHtml(t.name)}
+                        ${priorityDot} ${escapeHtml(t.name)}
                     </span>
                     <div class="todo-card-actions">
                         <button class="chore-btn" onclick="editTask('${t.id}')" title="Edit Task" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
@@ -348,68 +484,402 @@ export function renderTodoTasks() {
 
                 <div class="todo-badges-row">
                     ${assigneePill}
-                    ${priorityBadge}
-                    ${frictionBadge}
                     ${projectBadge}
                     ${categoryBadge}
                     ${ptsDisplay}
-                    ${creatorBadge}
+                    ${descButton}
                 </div>
 
-                ${t.notes ? `
-                    <div class="todo-notes-preview" onclick="this.classList.toggle('expanded')" title="Click note to expand/collapse">
-                        ${escapeHtml(t.notes)}
-                    </div>
-                ` : ''}
-
+                ${descBox}
                 ${subtasksSection}
             </div>
         </div>
         `;
     }
 
-    // 6. Build Split Visual Sections HTML
-    let bodyHtml = `
-    <!-- SECTION 1: INDIVIDUAL / MINE -->
-    <div class="todo-section-container">
-        <div class="todo-section-header">
-            <h4 class="todo-section-title">
-                <span>&#x1F464; ${individualSectionTitle}</span>
-                <span class="todo-section-count">${individualTasks.length}</span>
-            </h4>
-        </div>
-        ${individualTasks.length > 0
-            ? `<div class="todo-grid">${individualTasks.map(renderCard).join('')}</div>`
-            : `<div class="empty-section-muted">&#x1F464; No individual tasks matching current filters.</div>`
-        }
-    </div>
+    let bodyHtml = '';
 
-    <!-- SECTION 2: SHARED / ANYONE CAN DO -->
-    <div class="todo-section-container">
-        <div class="todo-section-header shared-header">
-            <h4 class="todo-section-title">
-                <span>&#x1F465; Shared / Anyone Can Do</span>
-                <span class="todo-section-count">${sharedTasks.length}</span>
-            </h4>
+    // ==========================================
+    // VIEW 1: COLLAPSIBLE CATEGORY ACCORDIONS
+    // ==========================================
+    if (currentGroupBy === 'category') {
+        const collapsedPrefs = state.userPrefs.collapsed || {};
+
+        // Group sorted tasks by category
+        const groups = {};
+        tasks.forEach(t => {
+            const cat = t.category || 'General';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(t);
+        });
+
+        const categoryKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+
+        bodyHtml = `
+        <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
+            ${categoryKeys.map(catKey => {
+                const catTasks = sortTaskList(groups[catKey]);
+                const isCollapsed = !!collapsedPrefs[catKey];
+                const activeCount = catTasks.filter(t => !t.completed).length;
+                const totalCount = catTasks.length;
+
+                return `
+                <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
+                    <div class="category-accordion-header" onclick="toggleCategoryCollapse('${escapeHtml(catKey)}')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
+                                ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
+                            </span>
+                            <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
+                                &#x1F4C1; ${escapeHtml(catKey)}
+                            </span>
+                            <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
+                                ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
+                            </span>
+                        </div>
+                        <span style="font-size: 11px; color: var(--text-muted);">
+                            ${isCollapsed ? 'Click to show' : 'Click to hide'}
+                        </span>
+                    </div>
+
+                    <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
+                        <div class="todo-grid">
+                            ${catTasks.map(renderCard).join('')}
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('')}
         </div>
-        ${sharedTasks.length > 0
-            ? `<div class="todo-grid">${sharedTasks.map(renderCard).join('')}</div>`
-            : `<div class="empty-section-muted">&#x1F465; No shared or household-wide tasks matching current filters.</div>`
+        `;
+    } else {
+        // ==========================================
+        // VIEW 2: OWNERSHIP HIERARCHY (INDIVIDUAL VS SHARED)
+        // ==========================================
+        const individualTasks = [];
+        const sharedTasks = [];
+
+        tasks.forEach(t => {
+            const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
+            if (isShared) {
+                sharedTasks.push(t);
+            } else {
+                individualTasks.push(t);
+            }
+        });
+
+        const sortedIndividual = sortTaskList(individualTasks);
+        const sortedShared = sortTaskList(sharedTasks);
+
+        let individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
+        if (personFilter !== 'all' && personFilter !== 'me' && personFilter !== 'shared_anyone') {
+            const u = ALL_USERS.find(user => user.uid === personFilter);
+            individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'}`;
         }
-    </div>
-    `;
+
+        bodyHtml = `
+        <!-- SECTION 1: INDIVIDUAL / MINE -->
+        <div class="todo-section-container">
+            <div class="todo-section-header">
+                <h4 class="todo-section-title">
+                    <span>&#x1F464; ${individualSectionTitle}</span>
+                    <span class="todo-section-count">${sortedIndividual.length}</span>
+                </h4>
+            </div>
+            ${sortedIndividual.length > 0
+                ? `<div class="todo-grid">${sortedIndividual.map(renderCard).join('')}</div>`
+                : `<div class="empty-section-muted">&#x1F464; No individual tasks matching current filters.</div>`
+            }
+        </div>
+
+        <!-- SECTION 2: SHARED / ANYONE CAN DO -->
+        <div class="todo-section-container" style="margin-top: 18px;">
+            <div class="todo-section-header shared-header">
+                <h4 class="todo-section-title">
+                    <span>&#x1F465; Shared / Anyone Can Do</span>
+                    <span class="todo-section-count">${sortedShared.length}</span>
+                </h4>
+            </div>
+            ${sortedShared.length > 0
+                ? `<div class="todo-grid">${sortedShared.map(renderCard).join('')}</div>`
+                : `<div class="empty-section-muted">&#x1F465; No shared or household-wide tasks matching current filters.</div>`
+            }
+        </div>
+        `;
+    }
 
     container.innerHTML = toolbarHtml + bodyHtml;
 }
 
-// Completes or uncompletes a task
+// ==========================================
+// 5. STALE TASK REFRESHER MODAL LOGIC
+// ==========================================
+export function openStaleRefresherModal() {
+    const modal = document.getElementById('staleRefresherModal');
+    if (!modal) return;
+    state.staleCurrentIndex = 0;
+    renderStaleRefresherModalContent();
+    modal.style.display = 'flex';
+}
+
+export function closeStaleRefresherModal() {
+    const modal = document.getElementById('staleRefresherModal');
+    if (modal) modal.style.display = 'none';
+    renderTodoTasks();
+}
+
+export function renderStaleRefresherModalContent() {
+    const container = document.getElementById('staleModalContentArea');
+    if (!container) return;
+
+    const staleTasks = getStaleTasks();
+    if (staleTasks.length === 0) {
+        container.innerHTML = `
+        <div style="text-align: center; padding: 30px 10px;">
+            <div style="font-size: 36px; margin-bottom: 10px;">&#x2728;</div>
+            <h3 style="margin: 0 0 8px 0; color: var(--text-main);">All Caught Up!</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 16px 0;">
+                No to-dos have been sitting untouched for 21+ days. Your list is clear and fresh!
+            </p>
+            <button class="action-btn save-mode" onclick="closeStaleRefresherModal()">Done</button>
+        </div>
+        `;
+        return;
+    }
+
+    if (state.staleCurrentIndex >= staleTasks.length) {
+        state.staleCurrentIndex = 0;
+    }
+
+    const currentTask = staleTasks[state.staleCurrentIndex];
+    const norm = normalizeTask(currentTask);
+    const reviewDate = new Date(norm.lastReviewedAt || norm.updatedAt || norm.createdAt);
+    const daysOld = Math.floor((Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    container.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 12px; font-weight: 700; color: var(--text-muted);">
+            Item ${state.staleCurrentIndex + 1} of ${staleTasks.length}
+        </span>
+        <span style="font-size: 11px; background: rgba(245, 158, 11, 0.15); color: #d97706; padding: 2px 8px; border-radius: 10px; font-weight: 700;">
+            Untouched for ${daysOld} days
+        </span>
+    </div>
+
+    <!-- Active Stale Card -->
+    <div style="background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 16px; font-weight: 800; color: var(--text-main); margin-bottom: 6px;">
+            ${escapeHtml(norm.name)}
+        </div>
+        <div style="display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); margin-bottom: 8px; flex-wrap: wrap;">
+            <span>Category: <strong>${escapeHtml(norm.category || 'Home')}</strong></span>
+            <span>Points: <strong>${norm.points} pts</strong></span>
+            <span>Priority: <strong>${escapeHtml(norm.priority)}</strong></span>
+        </div>
+        ${norm.description ? `
+            <div style="font-size: 12px; color: var(--text-main); background: var(--card-bg); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                ${escapeHtml(norm.description)}
+            </div>
+        ` : ''}
+
+        <!-- Inline Reword / Edit Box (Hidden by default, revealed on click) -->
+        <div id="staleInlineEditBox" style="display: none; margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+            <label style="font-size: 11px; font-weight: bold; color: var(--text-muted);">Reword Title:</label>
+            <input type="text" id="staleInputTitle" value="${escapeHtml(norm.name)}" style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border-color); box-sizing: border-box; margin-top: 4px;">
+
+            <label style="font-size: 11px; font-weight: bold; color: var(--text-muted); display: block; margin-top: 8px;">Description / Small Steps:</label>
+            <textarea id="staleInputDesc" rows="2" style="width: 100%; padding: 6px 8px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border-color); box-sizing: border-box; margin-top: 4px;">${escapeHtml(norm.description)}</textarea>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+                <button type="button" class="action-btn" onclick="simplifyTaskWithAi('${norm.id}')" id="btnStaleAi" style="font-size: 11px;">
+                    &#x2728; Ask AI to Simplify
+                </button>
+                <button type="button" class="action-btn save-mode" onclick="saveStaleInlineEdit('${norm.id}')" style="font-size: 11px;">
+                    Save Reworded Task
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <button type="button" class="action-btn" onclick="toggleStaleInlineEdit()" style="padding: 10px; font-size: 12px; font-weight: 700; text-align: center;">
+            &#x270E; Reword / Break Down
+        </button>
+        <button type="button" class="action-btn" onclick="handleStaleAction('${norm.id}', 'snooze')" style="padding: 10px; font-size: 12px; font-weight: 700; text-align: center;">
+            &#x23F0; Still Valid (Snooze 21d)
+        </button>
+        <button type="button" class="action-btn" onclick="handleStaleAction('${norm.id}', 'demote')" style="padding: 10px; font-size: 12px; font-weight: 700; text-align: center;">
+            &#x1F53D; Demote to Low Priority
+        </button>
+        <button type="button" class="action-btn" onclick="handleStaleAction('${norm.id}', 'move_project')" style="padding: 10px; font-size: 12px; font-weight: 700; text-align: center;">
+            &#x1F4A1; Move to Projects / Ideas
+        </button>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+        <button type="button" class="action-btn" onclick="prevStaleCard()" ${state.staleCurrentIndex === 0 ? 'disabled style="opacity: 0.4;"' : ''}>
+            &larr; Previous
+        </button>
+        <button type="button" class="action-btn" onclick="nextStaleCard()" ${state.staleCurrentIndex >= staleTasks.length - 1 ? 'disabled style="opacity: 0.4;"' : ''}>
+            Next &rarr;
+        </button>
+    </div>
+    `;
+}
+
+export function prevStaleCard() {
+    if (state.staleCurrentIndex > 0) {
+        state.staleCurrentIndex--;
+        renderStaleRefresherModalContent();
+    }
+}
+
+export function nextStaleCard() {
+    const staleTasks = getStaleTasks();
+    if (state.staleCurrentIndex < staleTasks.length - 1) {
+        state.staleCurrentIndex++;
+        renderStaleRefresherModalContent();
+    }
+}
+
+export function toggleStaleInlineEdit() {
+    const box = document.getElementById('staleInlineEditBox');
+    if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+export async function saveStaleInlineEdit(taskId) {
+    const newTitle = document.getElementById('staleInputTitle')?.value.trim();
+    const newDesc = document.getElementById('staleInputDesc')?.value.trim();
+    if (!newTitle) { alert("Task title cannot be empty."); return; }
+
+    const nowIso = new Date().toISOString();
+    try {
+        await api.updateFirestoreDocument('custom_tasks', taskId, {
+            name: newTitle,
+            description: newDesc,
+            notes: newDesc,
+            lastReviewedAt: nowIso,
+            updatedAt: nowIso
+        });
+        showToast("stale_ok", `Updated "${newTitle}"!`, 0, "");
+        renderStaleRefresherModalContent();
+        renderTodoTasks();
+    } catch (e) {
+        console.error("Error updating stale task:", e);
+        alert("Failed to update task: " + e.message);
+    }
+}
+
+export async function handleStaleAction(taskId, action) {
+    const nowIso = new Date().toISOString();
+    try {
+        if (action === 'snooze') {
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+            showToast("stale_snooze", "Snoozed task for 21 days.", 0, "");
+        } else if (action === 'demote') {
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                priority: 'low',
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+            showToast("stale_demote", "Demoted to Low Priority.", 0, "");
+        } else if (action === 'move_project') {
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                type: 'project',
+                bucket: 'project_idea',
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+            showToast("stale_proj", "Moved to Projects & Ideas.", 0, "");
+        }
+
+        // Update in-memory record immediately
+        const t = state.todoTasksData?.find(item => item.id === taskId);
+        if (t) {
+            t.lastReviewedAt = nowIso;
+            t.updatedAt = nowIso;
+            if (action === 'demote') t.priority = 'low';
+            if (action === 'move_project') {
+                t.type = 'project';
+                t.bucket = 'project_idea';
+            }
+        }
+
+        renderStaleRefresherModalContent();
+        renderTodoTasks();
+    } catch (e) {
+        console.error("Error executing stale action:", e);
+        alert("Action failed: " + e.message);
+    }
+}
+
+// 1-Click AI Breakdown
+export async function simplifyTaskWithAi(taskId) {
+    const task = state.todoTasksData?.find(t => t.id === taskId);
+    if (!task) return;
+
+    const apiKey = (state.integrationsConfig?.geminiApiKey || '').trim();
+    if (!apiKey) {
+        alert("Please configure Gemini API key in Settings.");
+        return;
+    }
+
+    const btn = document.getElementById('btnStaleAi');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = "Thinking...";
+    }
+
+    try {
+        const model = (state.integrationsConfig?.geminiModel || 'gemini-3.8-flash').replace(/^models\//, '');
+        const prompt = `Simplify or break down this sitting household task into 2-3 small actionable steps or a clearer title:
+Title: "${task.name}"
+Description: "${task.description || task.notes || ''}"
+Output JSON: { "suggestedTitle": "...", "suggestedDescription": "..." }`;
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json" }
+            })
+        });
+
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+            const parsed = JSON.parse(text);
+            const titleInput = document.getElementById('staleInputTitle');
+            const descInput = document.getElementById('staleInputDesc');
+            if (titleInput && parsed.suggestedTitle) titleInput.value = parsed.suggestedTitle;
+            if (descInput && parsed.suggestedDescription) descInput.value = parsed.suggestedDescription;
+            showToast("ai_simp", "AI suggested clearer steps! Review and click Save.", 0, "");
+        }
+    } catch (e) {
+        console.error("AI simplify error:", e);
+        alert("AI simplification failed: " + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = "&#x2728; Ask AI to Simplify";
+        }
+    }
+}
+
+// ==========================================
+// 6. TOGGLE STATUS & SUBTASKS
+// ==========================================
 export async function toggleTaskStatus(taskId, currentCompleted) {
     const todo = state.todoTasksData?.find(t => t.id === taskId);
     if (!todo) return;
 
     const nextCompleted = !currentCompleted;
     const nowIso = new Date().toISOString();
-
     const doerUid = state.activeUsers[0] || ALL_USERS[0].uid;
     const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone';
 
@@ -417,19 +887,24 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
     todo.completed = nextCompleted;
     todo.completedAt = nextCompleted ? nowIso : null;
     todo.completedBy = nextCompleted ? [doerUid] : [];
+    todo.lastReviewedAt = nowIso;
+    todo.updatedAt = nowIso;
 
     try {
         await api.updateFirestoreDocument('custom_tasks', taskId, {
             completed: nextCompleted,
             completedAt: nextCompleted ? nowIso : null,
-            completedBy: nextCompleted ? [doerUid] : []
+            completedBy: nextCompleted ? [doerUid] : [],
+            lastReviewedAt: nowIso,
+            updatedAt: nowIso
         });
 
         if (nextCompleted) {
-            showToast("todo_done", `Completed "${todo.name}"!`, todo.points || 0, doerName);
+            const pts = todo.points || 5;
+            showToast("todo_done", `Completed "${todo.name}"!`, pts, doerName);
             // Award allowance if Ayden or DJ
-            if (todo.points && todo.points > 0) {
-                api.awardAllowancePoints(doerUid, todo.points);
+            if (pts > 0) {
+                api.awardAllowancePoints(doerUid, pts);
             }
             await api.recordDailyCompletion({
                 id: `todo_${taskId}`,
@@ -438,7 +913,7 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 title: todo.name,
                 user: doerName,
                 userUid: doerUid,
-                points: todo.points || 0,
+                points: pts,
                 completedAt: nowIso,
                 dateKey: getLocalTodayKey()
             });
@@ -456,7 +931,6 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
     }
 }
 
-// Toggles subtask completion
 export async function toggleSubTask(taskId, subTaskId, isChecked) {
     const todo = state.todoTasksData?.find(t => t.id === taskId);
     if (!todo || !todo.subTasks) return;
@@ -476,9 +950,15 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
     });
 
     todo.subTasks = updated;
+    todo.lastReviewedAt = nowIso;
+    todo.updatedAt = nowIso;
 
     try {
-        await api.updateFirestoreDocument('custom_tasks', taskId, { subTasks: updated });
+        await api.updateFirestoreDocument('custom_tasks', taskId, {
+            subTasks: updated,
+            lastReviewedAt: nowIso,
+            updatedAt: nowIso
+        });
 
         const subObj = todo.subTasks?.find(s => s.id === subTaskId);
         const subName = subObj?.name || subObj?.text || 'Subtask';
@@ -507,22 +987,36 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
     }
 }
 
-// Opens modal to add new task
+// ==========================================
+// 7. TASK MODAL (ADD / EDIT TO-DO)
+// ==========================================
 export function openTaskModal() {
-    document.getElementById('taskModalTitle').innerText = "Add To-Do Task";
+    document.getElementById('taskModalTitle').innerText = "Add Task";
     document.getElementById('taskId').value = '';
     document.getElementById('taskName').value = '';
     document.getElementById('taskCategory').value = 'Home';
     document.getElementById('taskLocation').value = 'Inside';
-    document.getElementById('taskBucket').value = 'actionable';
+
+    const typeEl = document.getElementById('taskType');
+    if (typeEl) typeEl.value = 'todo';
+
+    const pointsEl = document.getElementById('taskPoints');
+    if (pointsEl) pointsEl.value = '5';
+
     const priorityEl = document.getElementById('taskPriority');
-    if (priorityEl) priorityEl.value = '';
-    document.getElementById('taskFriction').value = ''; // Default without friction tag
+    if (priorityEl) priorityEl.value = 'medium';
+
+    const frictionEl = document.getElementById('taskFriction');
+    if (frictionEl) frictionEl.value = '';
+
+    const descEl = document.getElementById('taskDescription');
+    if (descEl) descEl.value = '';
+
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
     const createdByEl = document.getElementById('taskCreatedBy');
     if (createdByEl) createdByEl.value = activeName;
-    document.getElementById('taskNotes').value = '';
+
     populateTodoAssignees([]);
     populateSubTaskFields([]);
     document.getElementById('taskModal').style.display = 'flex';
@@ -536,20 +1030,34 @@ export function editTask(id) {
     const task = state.todoTasksData?.find(t => t.id === id);
     if (!task) return;
 
-    document.getElementById('taskModalTitle').innerText = "Edit To-Do Task";
-    document.getElementById('taskId').value = task.id;
-    document.getElementById('taskName').value = task.name || '';
-    document.getElementById('taskCategory').value = task.category || 'Home';
-    document.getElementById('taskLocation').value = task.location || 'Inside';
-    document.getElementById('taskBucket').value = task.bucket || 'actionable';
+    const norm = normalizeTask(task);
+
+    document.getElementById('taskModalTitle').innerText = "Edit Task";
+    document.getElementById('taskId').value = norm.id;
+    document.getElementById('taskName').value = norm.name || '';
+    document.getElementById('taskCategory').value = norm.category || 'Home';
+    document.getElementById('taskLocation').value = norm.location || 'Inside';
+
+    const typeEl = document.getElementById('taskType');
+    if (typeEl) typeEl.value = norm.type || 'todo';
+
+    const pointsEl = document.getElementById('taskPoints');
+    if (pointsEl) pointsEl.value = norm.points || 5;
+
     const priorityEl = document.getElementById('taskPriority');
-    if (priorityEl) priorityEl.value = task.priority || '';
-    document.getElementById('taskFriction').value = task.frictionTag || '';
+    if (priorityEl) priorityEl.value = norm.priority || 'medium';
+
+    const frictionEl = document.getElementById('taskFriction');
+    if (frictionEl) frictionEl.value = norm.frictionTag || '';
+
+    const descEl = document.getElementById('taskDescription');
+    if (descEl) descEl.value = norm.description || '';
+
     const createdByEl = document.getElementById('taskCreatedBy');
-    if (createdByEl) createdByEl.value = task.createdBy || 'Alyssa';
-    document.getElementById('taskNotes').value = task.notes || '';
-    populateTodoAssignees(task.assignees || []);
-    populateSubTaskFields(task.subTasks || []);
+    if (createdByEl) createdByEl.value = norm.createdBy || 'Alyssa';
+
+    populateTodoAssignees(norm.assignees || []);
+    populateSubTaskFields(norm.subTasks || []);
     document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -603,17 +1111,18 @@ function populateSubTaskFields(subtasks = []) {
 
 // Saves a task to Firestore and triggers Direct Assignment Alerts
 export async function saveTask() {
-    const id = document.getElementById('taskId').value;
-    const name = document.getElementById('taskName').value.trim();
+    const id = document.getElementById('taskId')?.value;
+    const name = document.getElementById('taskName')?.value.trim();
     if (!name) { alert("Task name is required!"); return; }
 
     const assignees = Array.from(document.querySelectorAll('.todo-assignee-cb:checked')).map(cb => cb.value);
-    const bucket = document.getElementById('taskBucket')?.value || 'actionable';
-    const priority = document.getElementById('taskPriority')?.value || '';
+    const type = document.getElementById('taskType')?.value || 'todo';
+    const points = parseInt(document.getElementById('taskPoints')?.value, 10) || 5;
+    const priority = document.getElementById('taskPriority')?.value || 'medium';
     const frictionTag = document.getElementById('taskFriction')?.value || '';
     const category = document.getElementById('taskCategory')?.value || 'Home';
     const location = document.getElementById('taskLocation')?.value || 'Inside';
-    const notes = document.getElementById('taskNotes')?.value.trim() || '';
+    const description = document.getElementById('taskDescription')?.value.trim() || '';
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
@@ -627,17 +1136,24 @@ export async function saveTask() {
         if (subName) subTasks.push({ id: subId, name: subName, completed: false, createdBy: subCreator, createdAt: new Date().toISOString() });
     });
 
+    const nowIso = new Date().toISOString();
+
     const taskData = {
         name,
+        type,
+        bucket: (type === 'project') ? 'project_idea' : 'actionable',
+        points,
+        priority,
         category,
         location,
-        bucket,
-        priority,
         frictionTag,
         createdBy,
-        notes,
+        description,
+        notes: description, // Backward compatibility
         assignees,
-        subTasks
+        subTasks,
+        updatedAt: nowIso,
+        lastReviewedAt: nowIso
     };
 
     try {
@@ -646,7 +1162,7 @@ export async function saveTask() {
             await api.updateFirestoreDocument('custom_tasks', id, taskData);
         } else {
             taskData.completed = false;
-            taskData.createdAt = new Date().toISOString();
+            taskData.createdAt = nowIso;
             const docRef = await window.getNiptoCollection('custom_tasks').add(taskData);
             createdId = docRef.id;
 
@@ -655,6 +1171,7 @@ export async function saveTask() {
         }
 
         closeTaskModal();
+        renderTodoTasks();
     } catch (e) {
         console.error("Error saving task:", e);
         alert("Failed to save task: " + e.message);
@@ -701,10 +1218,14 @@ export async function deleteTask(id) {
 // Bind to window for HTML onclicks
 if (typeof window !== 'undefined') {
     window.setTodoView = setTodoView;
+    window.setTodoTypeFilter = setTodoTypeFilter;
+    window.setTodoCategoryFilter = setTodoCategoryFilter;
     window.setTodoPersonFilter = setTodoPersonFilter;
-    window.setTodoBucketFilter = setTodoBucketFilter;
-    window.setTodoFrictionFilter = setTodoFrictionFilter;
     window.setTodoPriorityFilter = setTodoPriorityFilter;
+    window.setTodoSort = setTodoSort;
+    window.setTodoGroupBy = setTodoGroupBy;
+    window.toggleCategoryCollapse = toggleCategoryCollapse;
+    window.toggleTaskDescription = toggleTaskDescription;
     window.toggleSubtasksList = toggleSubtasksList;
     window.clearTaskFriction = clearTaskFriction;
     window.toggleTaskStatus = toggleTaskStatus;
@@ -716,4 +1237,12 @@ if (typeof window !== 'undefined') {
     window.deleteTask = deleteTask;
     window.addSubTaskField = addSubTaskField;
     window.renderTodoTasks = renderTodoTasks;
+    window.openStaleRefresherModal = openStaleRefresherModal;
+    window.closeStaleRefresherModal = closeStaleRefresherModal;
+    window.prevStaleCard = prevStaleCard;
+    window.nextStaleCard = nextStaleCard;
+    window.toggleStaleInlineEdit = toggleStaleInlineEdit;
+    window.saveStaleInlineEdit = saveStaleInlineEdit;
+    window.handleStaleAction = handleStaleAction;
+    window.simplifyTaskWithAi = simplifyTaskWithAi;
 }
