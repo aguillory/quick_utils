@@ -959,11 +959,6 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     color: #fff;
 }
 
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    height: fit-content;
-    box-sizing: border-box;
-}
-
 .sidebar h3 { 
     font-size: 18px; 
     margin-top: 0; 

@@ -136,6 +136,26 @@ export function setTodoPriorityFilter(val) {
     renderTodoTasks();
 }
 
+export function setTodoFrictionFilter(val) {
+    state.todoFrictionFilter = val;
+    saveCloudPreference('todoFrictionFilter', val);
+    renderTodoTasks();
+}
+
+export function setTodoBucketFilter(val) {
+    state.todoBucketFilter = val;
+    if (val === 'project_idea' || val === 'project' || val === 'projects') {
+        state.todoTypeFilter = 'project';
+    } else if (val === 'actionable') {
+        state.todoTypeFilter = 'todo';
+    } else {
+        state.todoTypeFilter = 'all';
+    }
+    saveCloudPreference('todoTypeFilter', state.todoTypeFilter);
+    saveCloudPreference('todoBucketFilter', val);
+    renderTodoTasks();
+}
+
 export function setTodoSort(val) {
     state.todoSort = val;
     saveCloudPreference('todoSort', val);
@@ -274,6 +294,11 @@ export function renderTodoTasks() {
     // 4. Filter by Priority
     if (priorityFilter !== 'all') {
         tasks = tasks.filter(t => t.priority === priorityFilter);
+    }
+
+    // 5. Filter by Friction Level (if active)
+    if (state.todoFrictionFilter && state.todoFrictionFilter !== 'all') {
+        tasks = tasks.filter(t => t.frictionTag === state.todoFrictionFilter);
     }
 
     // Check for Stale Tasks for the calm refresher banner
@@ -1222,6 +1247,8 @@ if (typeof window !== 'undefined') {
     window.setTodoCategoryFilter = setTodoCategoryFilter;
     window.setTodoPersonFilter = setTodoPersonFilter;
     window.setTodoPriorityFilter = setTodoPriorityFilter;
+    window.setTodoFrictionFilter = setTodoFrictionFilter;
+    window.setTodoBucketFilter = setTodoBucketFilter;
     window.setTodoSort = setTodoSort;
     window.setTodoGroupBy = setTodoGroupBy;
     window.toggleCategoryCollapse = toggleCategoryCollapse;
