@@ -149,71 +149,36 @@
             <!-- TAB 2: BRAIN DUMP & MANAGE (THE PLANNING & BULK-EDIT VIEW) -->
             <section id="pane-braindump" style="display: none;">
                 
-                <!-- Gemini AI Brain Dump Card -->
+                <!-- Gemini AI Unified Brain Dump Omnibox Card -->
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-                        <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-                            &#x2728; Gemini AI Studio Task Assistant
-                        </h3>
-                        <div class="braindump-mode-toggle" style="display: flex; gap: 8px;">
-                            <button type="button" id="btnBrainDumpModeCreate" class="filter-pill active" onclick="switchBrainDumpMode('create')">&#x2728; Create New Tasks</button>
-                            <button type="button" id="btnBrainDumpModeManage" class="filter-pill" onclick="switchBrainDumpMode('manage')">&#x1F4AC; Ramble to Manage</button>
-                        </div>
-                    </div>
+                    <h3 style="margin: 0 0 6px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                        &#x2728; Gemini AI Brain Dump &amp; Task Omnibox
+                    </h3>
+                    <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted);">
+                        Type or dictate anything in plain English: add new chores or routines, brainstorm projects, update existing task details, change points, or cross off completed items.
+                    </p>
 
-                    <!-- MODE 1: CREATE NEW TASKS -->
-                    <div id="brainDumpSectionCreate">
-                        <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted);">
-                            Paste or type an unstructured brain dump in plain English (chores, project ideas, or recurring routines like "feed goats daily" or "trash out Mon and Thu").
-                        </p>
-
-                        <textarea id="brainDumpInput" rows="5" placeholder="e.g.
+                    <textarea id="brainDumpInput" rows="5" placeholder="e.g.
 - Wash truck on Saturday
-- Alyssa: fix barn door hinges
 - Put trash cans by road Mondays and Thursdays
-- Devyn: research replacement well pump (someday project)
-- Clean kitchen counters every morning" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+- Move greenhouse shelves to projects
+- Feeding goats should be 10 points
+- Finished buying bran
+- Devyn: research replacement well pump (someday project)" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
 
-                        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center;">
-                            <button id="btnParseGemini" class="action-btn save-mode" onclick="parseWithGemini()" style="padding: 8px 16px; font-weight: 800;">
-                                &#x2728; Parse with Gemini AI
-                            </button>
-                            <button class="action-btn" onclick="rawLineByLineAdd()" style="padding: 8px 16px;">
-                                &#x1F4DD; Raw Line-by-Line Add
-                            </button>
-                            <span id="brainDumpStatus" style="font-size: 13px; font-weight: 600; margin-left: auto;"></span>
-                        </div>
-
-                        <!-- Staging Preview Area -->
-                        <div id="brainDumpStaging" style="margin-top: 20px;">
-                            <!-- Populated by braindump.js -->
-                        </div>
+                    <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center;">
+                        <button id="btnParseGemini" class="action-btn save-mode" onclick="parseWithGemini()" style="padding: 8px 16px; font-weight: 800;">
+                            &#x2728; Process with Gemini AI
+                        </button>
+                        <button class="action-btn" onclick="rawLineByLineAdd()" style="padding: 8px 16px;">
+                            &#x1F4DD; Raw Line-by-Line Add
+                        </button>
+                        <span id="brainDumpStatus" style="font-size: 13px; font-weight: 600; margin-left: auto;"></span>
                     </div>
 
-                    <!-- MODE 2: RAMBLE TO MANAGE (EXISTING TASK TRIAGE) -->
-                    <div id="brainDumpSectionManage" style="display: none;">
-                        <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted);">
-                            Dictate or type messy natural-language changes to your current list (e.g. <em>"Move all the greenhouse stuff to projects, change feeding goats to 10 points, mark rock tumbler as low priority, reword car task to 'check alternator bolt', and cross off buying bran"</em>).
-                        </p>
-
-                        <textarea id="rambleInput" rows="5" placeholder="e.g.
-- Move greenhouse shelves to projects
-- Change feeding goats to 10 points
-- Mark rock tumbler as low priority
-- Reword car task to 'check alternator bolt'
-- Cross off buying bran" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
-
-                        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center;">
-                            <button id="btnAnalyzeRamble" class="action-btn save-mode" onclick="analyzeRambleWithGemini()" style="padding: 8px 16px; font-weight: 800;">
-                                &#x2728; Analyze Changes with Gemini
-                            </button>
-                            <span id="rambleStatus" style="font-size: 13px; font-weight: 600; margin-left: auto;"></span>
-                        </div>
-
-                        <!-- Diff / Staging Preview Area -->
-                        <div id="rambleDiffStaging" style="margin-top: 20px;">
-                            <!-- Populated by braindump.js -->
-                        </div>
+                    <!-- Unified Staging Preview Area -->
+                    <div id="brainDumpStaging" style="margin-top: 20px;">
+                        <!-- Populated by braindump.js -->
                     </div>
                 </div>
 

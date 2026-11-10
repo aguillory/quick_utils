@@ -1,12 +1,12 @@
 // braindump.js
-// Gemini AI Studio Brain Dump Parser, AI Ramble to Manage Triage,
-// Diff Staging View, and Full-Power Bulk Triage Management.
+// Unified Gemini AI Studio Brain Dump & Task Omnibox,
+// Unified Staging Review, and Full-Power Bulk Triage Management.
 
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { renderTodoTasks, normalizeTask } from './todos.js';
-import { renderRoutines } from './routines.js';
+import { renderRollingSchedule } from './routines.js';
 import { rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
 
@@ -26,40 +26,34 @@ function escapeHtml(str) {
 // ==========================================
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
-const BRAINDUMP_CREATE_INSTRUCTION = `Convert family brain dump into JSON array for new tasks:
-[{"type":"todo"|"project"|"routine","title":"string","description":"string (steps or notes mentioned)","assignee":"Alyssa"|"Devyn"|"Carrina"|"Kenny"|"Ayden"|"DJ"|"Anyone","category":"Home"|"Farm"|"Errands"|"Tech"|"Kids"|"Project","points":5,"priority":"high"|"medium"|"low","frictionTag":"quick"|"low_brain"|"deep_focus","schedule":{"type":"daily"|"weekly","daysOfWeek":[0..6],"timeOfDay":"Morning"|"Afternoon"|"Evening"|"Anytime","points":15}}]
-Rules:
-- type: "routine" for recurring chores (e.g. daily, weekly), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
-- description: extract context, steps, or notes if mentioned, else empty string.
-- points: suggest or assign points, default to 5 if not mentioned.
-- priority: "high" (urgent/pressing), "medium" (normal default), or "low" (someday/low friction).
-- schedule: only if type is "routine" (0=Sun..6=Sat).
-- Output pure JSON array only.`;
-
-const BRAINDUMP_MANAGE_INSTRUCTION = `You are an AI assistant managing an existing household chore and to-do list.
-You are given a JSON array of CURRENT_TASKS and a natural language RAMBLE describing changes the user wants to make.
-Analyze the ramble, identify which existing tasks are being referenced by title/keywords/topic, and output a JSON array of proposed actions:
+const BRAINDUMP_UNIFIED_INSTRUCTION = `You are an expert AI task manager for a household chore system.
+You are given a JSON array of CURRENT_TASKS and an unstructured natural language BRAIN DUMP / RAMBLE from the user.
+Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JSON array of operations:
 [
   {
-    "id": "exact_id_from_CURRENT_TASKS",
-    "title": "Current or updated title",
-    "action": "update" | "complete" | "delete",
-    "changes": {
-      "title": "optional updated title",
-      "description": "optional updated description",
-      "type": "todo" | "project" | "routine",
-      "category": "Home" | "Farm" | "Errands" | "Tech" | "Kids" | "Project",
-      "points": 5,
-      "priority": "high" | "medium" | "low",
-      "schedule": "daily" | "weekly"
-    },
-    "reason": "Short explanation of proposed change (e.g. Changed to project, increased to 10 points)"
+    "action": "create" | "update" | "complete" | "delete",
+    "id": "matched_task_id_if_updating_completing_or_deleting (null for create)",
+    "type": "todo" | "routine" | "project",
+    "title": "Task title",
+    "description": "Any extra notes, context, or steps mentioned (empty string if none)",
+    "assignee": "Alyssa" | "Devyn" | "Carrina" | "Kenny" | "Ayden" | "DJ" | "Anyone",
+    "category": "Home" | "Farm" | "Errands" | "Tech" | "Kids" | "Project",
+    "points": 5,
+    "priority": "high" | "medium" | "low",
+    "schedule": {"type": "daily"|"weekly", "daysOfWeek": [0,1,2,3,4,5,6], "timeOfDay": "Morning"|"Afternoon"|"Evening"|"Anytime", "points": 15},
+    "reason": "Short summary of why this action was proposed (e.g. 'New To-Do', 'Increased points to 10', 'Marked completed', 'Moved to projects')"
   }
 ]
-Rules:
-- Only output items that the user explicitly wants to modify, complete, or delete.
-- Match task id accurately from CURRENT_TASKS.
-- Output pure JSON array only.`;
+
+Action Rules:
+- "create": Brand new items not matching any existing task.
+  - type: "routine" for recurring/scheduled chores (e.g. daily, weekly), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
+  - points: Default to 5 if not specified (or 15 for routines).
+  - priority: Default to "medium".
+- "update": The user wants to modify fields on an existing task (e.g. change points, move to projects, edit title, set priority). Match its exact id in CURRENT_TASKS.
+- "complete": The user mentioned crossing off, finishing, or completing an existing task. Match its exact id.
+- "delete": The user explicitly asked to delete or remove an existing task. Match its exact id.
+Output pure JSON array only.`;
 
 export async function discoverActiveGeminiFlashModel(apiKey) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
@@ -108,7 +102,7 @@ async function callGeminiGenerate(apiKey, model, text, customInstruction) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
     const body = {
         systemInstruction: {
-            parts: [{ text: customInstruction || BRAINDUMP_CREATE_INSTRUCTION }]
+            parts: [{ text: customInstruction || BRAINDUMP_UNIFIED_INSTRUCTION }]
         },
         contents: [
             {
@@ -139,36 +133,7 @@ async function callGeminiGenerate(apiKey, model, text, customInstruction) {
 }
 
 // ==========================================
-// 2. BRAIN DUMP MODE SWITCHER (CREATE VS MANAGE)
-// ==========================================
-export function switchBrainDumpMode(mode) {
-    state.brainDumpMode = mode;
-    const btnCreate = document.getElementById('btnBrainDumpModeCreate');
-    const btnManage = document.getElementById('btnBrainDumpModeManage');
-    const secCreate = document.getElementById('brainDumpSectionCreate');
-    const secManage = document.getElementById('brainDumpSectionManage');
-
-    if (btnCreate) {
-        if (mode === 'create') btnCreate.classList.add('active');
-        else btnCreate.classList.remove('active');
-    }
-    if (btnManage) {
-        if (mode === 'manage') btnManage.classList.add('active');
-        else btnManage.classList.remove('active');
-    }
-
-    if (secCreate) secCreate.style.display = (mode === 'create') ? 'block' : 'none';
-    if (secManage) secManage.style.display = (mode === 'manage') ? 'block' : 'none';
-
-    if (mode === 'create') {
-        renderBrainDumpStaging();
-    } else {
-        renderRambleDiffStaging();
-    }
-}
-
-// ==========================================
-// 3. AI BRAIN DUMP: CREATE MODE
+// 2. UNIFIED BRAIN DUMP OMNIBOX PARSER
 // ==========================================
 export async function parseWithGemini() {
     const inputEl = document.getElementById('brainDumpInput');
@@ -188,6 +153,34 @@ export async function parseWithGemini() {
         return;
     }
 
+    // Snapshot of current active tasks & routines for context injection
+    const activeTodos = (state.todoTasksData || []).filter(t => !t.completed).map(t => {
+        const norm = normalizeTask(t);
+        return {
+            id: norm.id,
+            title: norm.name,
+            type: norm.type,
+            category: norm.category || 'Home',
+            points: norm.points || 5,
+            priority: norm.priority || 'medium',
+            schedule: '',
+            description: norm.description || ''
+        };
+    });
+
+    const activeRoutines = (state.routines || []).map(r => ({
+        id: r.uid,
+        title: r.name,
+        type: 'routine',
+        category: r.category || 'Home',
+        points: r.points || 15,
+        priority: r.priority || 'medium',
+        schedule: r.schedule?.type === 'weekly' ? 'weekly' : 'daily',
+        description: ''
+    }));
+
+    const tasksContext = [...activeTodos, ...activeRoutines];
+
     let configuredModel = (state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
     if (configuredModel === 'gemini-2.5-flash') {
         configuredModel = DEFAULT_GEMINI_MODEL;
@@ -198,16 +191,22 @@ export async function parseWithGemini() {
         parseBtn.innerHTML = "Thinking (Gemini)...";
     }
     if (statusEl) {
-        statusEl.textContent = `Connecting to ${configuredModel}...`;
+        statusEl.textContent = `Analyzing with ${configuredModel}...`;
         statusEl.style.color = "var(--primary)";
     }
+
+    const payloadText = `CURRENT_TASKS:
+${JSON.stringify(tasksContext, null, 2)}
+
+USER BRAIN DUMP / RAMBLE:
+"${text}"`;
 
     try {
         let data;
         let activeModel = configuredModel;
 
         try {
-            data = await callGeminiGenerate(apiKey, activeModel, text, BRAINDUMP_CREATE_INSTRUCTION);
+            data = await callGeminiGenerate(apiKey, activeModel, payloadText, BRAINDUMP_UNIFIED_INSTRUCTION);
         } catch (firstErr) {
             const isDeprecationOr404 = firstErr.status === 404 ||
                 firstErr.code === 404 ||
@@ -222,7 +221,7 @@ export async function parseWithGemini() {
 
                 const discovered = await discoverActiveGeminiFlashModel(apiKey);
                 activeModel = discovered;
-                data = await callGeminiGenerate(apiKey, activeModel, text, BRAINDUMP_CREATE_INSTRUCTION);
+                data = await callGeminiGenerate(apiKey, activeModel, payloadText, BRAINDUMP_UNIFIED_INSTRUCTION);
 
                 try {
                     await api.saveIntegrationsConfigToFirestore({ geminiModel: activeModel });
@@ -244,28 +243,43 @@ export async function parseWithGemini() {
         if (!Array.isArray(parsedItems)) {
             if (parsedItems.items && Array.isArray(parsedItems.items)) parsedItems = parsedItems.items;
             else if (parsedItems.tasks && Array.isArray(parsedItems.tasks)) parsedItems = parsedItems.tasks;
+            else if (parsedItems.operations && Array.isArray(parsedItems.operations)) parsedItems = parsedItems.operations;
             else parsedItems = [parsedItems];
         }
 
-        state.brainDumpStaging = parsedItems.map((item, idx) => ({
-            id: 'staging_' + Date.now() + '_' + idx,
-            selected: true,
-            type: ['todo', 'project', 'routine'].includes(item.type)
+        state.brainDumpStaging = parsedItems.map((item, idx) => {
+            const current = item.id ? tasksContext.find(t => t.id === item.id) : null;
+            const action = ['create', 'update', 'complete', 'delete'].includes(item.action)
+                ? item.action
+                : (current ? 'update' : 'create');
+
+            const itemType = ['todo', 'project', 'routine'].includes(item.type)
                 ? item.type
-                : (item.targetType === 'routine' ? 'routine' : (item.bucket === 'project_idea' ? 'project' : 'todo')),
-            title: item.title || 'Untitled Task',
-            description: item.description || '',
-            assignee: item.assignee || 'Anyone',
-            category: item.category || 'Home',
-            points: parseInt(item.points, 10) || 5,
-            priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : 'medium',
-            frictionTag: item.frictionTag || 'quick',
-            schedule: item.schedule || { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning', points: 15 }
-        }));
+                : (current ? current.type : (item.targetType === 'routine' ? 'routine' : 'todo'));
+
+            return {
+                stagingId: 'stage_' + Date.now() + '_' + idx,
+                selected: true,
+                action,
+                id: item.id || (current ? current.id : null),
+                type: itemType,
+                title: item.title || (current ? current.title : 'Untitled Task'),
+                description: item.description !== undefined ? item.description : (current ? current.description : ''),
+                assignee: item.assignee || 'Anyone',
+                category: item.category || (current ? current.category : 'Home'),
+                points: item.points !== undefined ? (parseInt(item.points, 10) || 5) : (current ? current.points : 5),
+                priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : (current ? current.priority : 'medium'),
+                schedule: item.schedule || (current ? current.schedule : (itemType === 'routine' ? { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning', points: 15 } : null)),
+                reason: item.reason || (action === 'create' ? 'New item' : (action === 'complete' ? 'Marked complete' : 'Updated')),
+                current: current || null
+            };
+        });
 
         renderBrainDumpStaging();
         if (statusEl) {
-            statusEl.textContent = `Parsed ${state.brainDumpStaging.length} items successfully. Review and edit before committing.`;
+            const newCount = state.brainDumpStaging.filter(i => i.action === 'create').length;
+            const updateCount = state.brainDumpStaging.length - newCount;
+            statusEl.textContent = `Analyzed ${state.brainDumpStaging.length} operations (${newCount} new, ${updateCount} updates). Review and apply below.`;
             statusEl.style.color = "var(--success)";
         }
     } catch (err) {
@@ -278,7 +292,7 @@ export async function parseWithGemini() {
     } finally {
         if (parseBtn) {
             parseBtn.disabled = false;
-            parseBtn.innerHTML = "&#x2728; Parse with Gemini AI";
+            parseBtn.innerHTML = "&#x2728; Process with Gemini AI";
         }
     }
 }
@@ -300,8 +314,10 @@ export function rawLineByLineAdd() {
     if (lines.length === 0) return;
 
     state.brainDumpStaging = lines.map((line, idx) => ({
-        id: 'staging_' + Date.now() + '_' + idx,
+        stagingId: 'stage_' + Date.now() + '_' + idx,
         selected: true,
+        action: 'create',
+        id: null,
         type: 'todo',
         title: line,
         description: '',
@@ -309,107 +325,237 @@ export function rawLineByLineAdd() {
         category: 'Home',
         points: 5,
         priority: 'medium',
-        frictionTag: 'quick',
-        schedule: { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning', points: 15 }
+        schedule: null,
+        reason: 'Raw line item',
+        current: null
     }));
 
     renderBrainDumpStaging();
     if (statusEl) {
-        statusEl.textContent = `Loaded ${state.brainDumpStaging.length} raw line items. Adjust and commit below.`;
+        statusEl.textContent = `Loaded ${state.brainDumpStaging.length} raw items. Adjust and commit below.`;
         statusEl.style.color = "var(--success)";
     }
 }
 
-// Renders the editable staging preview table with Description, Points, Priority, and Type
+// ==========================================
+// 3. CALM, UNIFIED STAGING REVIEW UI
+// ==========================================
 export function renderBrainDumpStaging() {
     const container = document.getElementById('brainDumpStaging');
     if (!container) return;
 
     if (!state.brainDumpStaging || state.brainDumpStaging.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No staged items. Use Gemini AI Parse or Raw Add above to preview items.</div>';
+        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No staged items. Dictate or paste a ramble in the Omnibox above to add, update, or complete tasks.</div>';
         return;
     }
+
+    const newItems = state.brainDumpStaging.filter(item => item.action === 'create');
+    const existingItems = state.brainDumpStaging.filter(item => item.action !== 'create');
 
     const userOptionsHtml = `<option value="Anyone">Anyone</option>` +
         ALL_USERS.map(u => `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join('');
 
     let html = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-        <h4 style="margin: 0; font-size: 16px;">Staging Preview (${state.brainDumpStaging.length} items)</h4>
+    <!-- Top Action Bar -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; background: var(--bg-color); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 14px; font-weight: 800;">
+            Staging Review <span style="font-weight: normal; font-size: 12px; color: var(--text-muted);">(${newItems.length} new, ${existingItems.length} updates/completions)</span>
+        </div>
         <div style="display: flex; gap: 8px;">
             <button class="action-btn" onclick="clearBrainDumpStaging()" style="padding: 6px 12px; font-size: 13px;">Clear Staging</button>
-            <button class="action-btn save-mode" onclick="commitBrainDumpToFirestore()" style="padding: 6px 14px; font-size: 13px; font-weight: 800;">
-                &#x2714; Commit All to Firestore
+            <button class="action-btn save-mode" onclick="applyUnifiedStagingToFirestore()" style="padding: 6px 14px; font-size: 13px; font-weight: 800;">
+                &#x2714; Apply Selected Changes (${state.brainDumpStaging.filter(i => i.selected).length})
             </button>
         </div>
     </div>
-    <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-            <thead>
-                <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
-                    <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleAllStagingRows(this.checked)"></th>
-                    <th style="padding: 8px 10px; width: 95px;">Type</th>
-                    <th style="padding: 8px 10px; min-width: 150px;">Title</th>
-                    <th style="padding: 8px 10px; min-width: 140px;">Description</th>
-                    <th style="padding: 8px 10px; width: 65px;">Points</th>
-                    <th style="padding: 8px 10px; width: 85px;">Priority</th>
-                    <th style="padding: 8px 10px; width: 100px;">Assignee</th>
-                    <th style="padding: 8px 10px; width: 95px;">Category</th>
-                    <th style="padding: 8px 10px; width: 40px;"></th>
-                </tr>
-            </thead>
-            <tbody>
     `;
 
-    state.brainDumpStaging.forEach((item, idx) => {
+    // SECTION 1: NEW ITEMS TO ADD
+    if (newItems.length > 0) {
         html += `
-        <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
-            <td style="padding: 8px 10px;">
-                <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
-            </td>
-            <td style="padding: 8px 10px;">
-                <select onchange="updateStagingItem(${idx}, 'type', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                    <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
-                    <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project</option>
-                    <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
-                </select>
-            </td>
-            <td style="padding: 8px 10px;">
-                <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 13px; width: 100%; box-sizing: border-box;">
-            </td>
-            <td style="padding: 8px 10px;">
-                <input type="text" value="${escapeHtml(item.description || '')}" placeholder="Notes/steps..." onchange="updateStagingItem(${idx}, 'description', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
-            </td>
-            <td style="padding: 8px 10px;">
-                <input type="number" value="${item.points || 5}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 55px; box-sizing: border-box; text-align: center;">
-            </td>
-            <td style="padding: 8px 10px;">
-                <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                    <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
-                    <option value="medium" ${item.priority === 'medium' || !item.priority ? 'selected' : ''}>Med</option>
-                    <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
-                </select>
-            </td>
-            <td style="padding: 8px 10px;">
-                <select onchange="updateStagingItem(${idx}, 'assignee', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                    ${userOptionsHtml.replace(`value="${escapeHtml(item.assignee)}"`, `value="${escapeHtml(item.assignee)}" selected`)}
-                </select>
-            </td>
-            <td style="padding: 8px 10px;">
-                <input type="text" value="${escapeHtml(item.category || 'Home')}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
-            </td>
-            <td style="padding: 8px 10px; text-align: center;">
-                <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove row">&times;</button>
-            </td>
-        </tr>
+        <div style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    &#x2728; New Items to Add (${newItems.length})
+                </h4>
+            </div>
+            <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                    <thead>
+                        <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleSectionStagingRows('create', this.checked)"></th>
+                            <th style="padding: 8px 10px; width: 95px;">Type</th>
+                            <th style="padding: 8px 10px; min-width: 150px;">Title</th>
+                            <th style="padding: 8px 10px; min-width: 130px;">Description</th>
+                            <th style="padding: 8px 10px; width: 60px;">Points</th>
+                            <th style="padding: 8px 10px; width: 85px;">Priority</th>
+                            <th style="padding: 8px 10px; width: 95px;">Assignee</th>
+                            <th style="padding: 8px 10px; width: 90px;">Category</th>
+                            <th style="padding: 8px 10px; width: 40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
         `;
-    });
 
-    html += `
-            </tbody>
-        </table>
-    </div>
-    `;
+        state.brainDumpStaging.forEach((item, idx) => {
+            if (item.action !== 'create') return;
+            html += `
+            <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
+                <td style="padding: 8px 10px;">
+                    <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
+                </td>
+                <td style="padding: 8px 10px;">
+                    <select onchange="updateStagingItem(${idx}, 'type', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
+                        <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
+                        <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project</option>
+                        <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
+                    </select>
+                </td>
+                <td style="padding: 8px 10px;">
+                    <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 13px; width: 100%; box-sizing: border-box;">
+                </td>
+                <td style="padding: 8px 10px;">
+                    <input type="text" value="${escapeHtml(item.description || '')}" placeholder="Notes..." onchange="updateStagingItem(${idx}, 'description', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
+                </td>
+                <td style="padding: 8px 10px;">
+                    <input type="number" value="${item.points || 5}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 50px; text-align: center;">
+                </td>
+                <td style="padding: 8px 10px;">
+                    <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
+                        <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
+                        <option value="medium" ${item.priority === 'medium' || !item.priority ? 'selected' : ''}>Med</option>
+                        <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </td>
+                <td style="padding: 8px 10px;">
+                    <select onchange="updateStagingItem(${idx}, 'assignee', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
+                        ${userOptionsHtml.replace(`value="${escapeHtml(item.assignee)}"`, `value="${escapeHtml(item.assignee)}" selected`)}
+                    </select>
+                </td>
+                <td style="padding: 8px 10px;">
+                    <input type="text" value="${escapeHtml(item.category || 'Home')}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
+                </td>
+                <td style="padding: 8px 10px; text-align: center;">
+                    <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove row">&times;</button>
+                </td>
+            </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        `;
+    }
+
+    // SECTION 2: UPDATES & COMPLETIONS FOR EXISTING ITEMS
+    if (existingItems.length > 0) {
+        html += `
+        <div style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    &#x21BB; Updates &amp; Completions for Existing Items (${existingItems.length})
+                </h4>
+            </div>
+            <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                    <thead>
+                        <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleSectionStagingRows('existing', this.checked)"></th>
+                            <th style="padding: 8px 10px; width: 85px;">Action</th>
+                            <th style="padding: 8px 10px; min-width: 160px;">Current State</th>
+                            <th style="padding: 8px 10px; min-width: 220px;">Proposed State</th>
+                            <th style="padding: 8px 10px; min-width: 130px;">Reason</th>
+                            <th style="padding: 8px 10px; width: 40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        state.brainDumpStaging.forEach((item, idx) => {
+            if (item.action === 'create') return;
+
+            const cur = item.current || {
+                title: item.title,
+                type: item.type,
+                points: item.points,
+                priority: item.priority,
+                category: item.category
+            };
+
+            let actionBadge = '';
+            if (item.action === 'complete') actionBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">COMPLETE</span>';
+            else if (item.action === 'delete') actionBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">DELETE</span>';
+            else actionBadge = '<span style="background: rgba(37, 99, 235, 0.15); color: #2563eb; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">UPDATE</span>';
+
+            const titleChanged = item.title && item.title !== cur.title;
+            const typeChanged = item.type && item.type !== cur.type;
+            const pointsChanged = item.points !== undefined && item.points !== cur.points;
+            const priorityChanged = item.priority && item.priority !== cur.priority;
+            const categoryChanged = item.category && item.category !== cur.category;
+
+            html += `
+            <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
+                <td style="padding: 8px 10px;">
+                    <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
+                </td>
+                <td style="padding: 8px 10px;">
+                    ${actionBadge}
+                </td>
+                <td style="padding: 8px 10px; color: var(--text-muted);">
+                    <div style="font-weight: 700; color: var(--text-main); font-size: 13px;">${escapeHtml(cur.title)}</div>
+                    <div style="font-size: 11px; margin-top: 2px;">
+                        Type: ${escapeHtml(cur.type)} &bull; ${cur.points || 5} pts &bull; ${escapeHtml(cur.priority || 'med')} &bull; ${escapeHtml(cur.category || 'Home')}
+                    </div>
+                </td>
+                <td style="padding: 8px 10px;">
+                    ${item.action === 'complete' ? `
+                        <span style="color: var(--success); font-weight: 700;">Mark task complete &amp; award points</span>
+                    ` : item.action === 'delete' ? `
+                        <span style="color: var(--danger); font-weight: 700;">Delete task from database</span>
+                    ` : `
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="padding: 3px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); ${titleChanged ? 'background: rgba(34, 197, 94, 0.1); font-weight: bold;' : ''}">
+                            
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <select onchange="updateStagingItem(${idx}, 'type', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${typeChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
+                                    <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
+                                    <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project</option>
+                                    <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
+                                </select>
+
+                                <input type="number" value="${item.points}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; ${pointsChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Points">
+
+                                <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${priorityChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
+                                    <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
+                                    <option value="medium" ${item.priority === 'medium' ? 'selected' : ''}>Med</option>
+                                    <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
+                                </select>
+
+                                <input type="text" value="${escapeHtml(item.category)}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="width: 70px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${categoryChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Category">
+                            </div>
+                        </div>
+                    `}
+                </td>
+                <td style="padding: 8px 10px; font-size: 12px; color: var(--text-muted);">
+                    ${escapeHtml(item.reason)}
+                </td>
+                <td style="padding: 8px 10px; text-align: center;">
+                    <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove row">&times;</button>
+                </td>
+            </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        `;
+    }
 
     container.innerHTML = html;
 }
@@ -431,6 +577,14 @@ export function toggleAllStagingRows(checked) {
     renderBrainDumpStaging();
 }
 
+export function toggleSectionStagingRows(section, checked) {
+    state.brainDumpStaging.forEach(item => {
+        if (section === 'create' && item.action === 'create') item.selected = checked;
+        else if (section === 'existing' && item.action !== 'create') item.selected = checked;
+    });
+    renderBrainDumpStaging();
+}
+
 export function clearBrainDumpStaging() {
     state.brainDumpStaging = [];
     renderBrainDumpStaging();
@@ -438,379 +592,13 @@ export function clearBrainDumpStaging() {
     if (statusEl) statusEl.textContent = "";
 }
 
-// Commits all selected staging items into Firestore
-export async function commitBrainDumpToFirestore() {
-    const selectedItems = state.brainDumpStaging.filter(item => item.selected);
-    if (selectedItems.length === 0) {
-        alert("Please select at least one item to commit.");
-        return;
-    }
-
-    const batch = window.db.batch();
-    const nowIso = new Date().toISOString();
-    let todosCount = 0;
-    let routinesCount = 0;
-
-    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
-
-    selectedItems.forEach(item => {
-        let assigneeUids = [];
-        if (item.assignee && item.assignee !== 'Anyone') {
-            const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
-            if (userObj) assigneeUids.push(userObj.uid);
-        }
-
-        const pts = parseInt(item.points, 10) || 5;
-
-        if (item.type === 'routine') {
-            const routineRef = window.getNiptoCollection('routines').doc();
-            const days = item.schedule?.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-            const scheduleData = {
-                type: days.length === 7 ? 'daily' : 'weekly',
-                resetType: 'midnight',
-                daysOfWeek: days,
-                timeOfDay: item.schedule?.timeOfDay || 'Anytime'
-            };
-            batch.set(routineRef, {
-                name: item.title,
-                type: 'routine',
-                completionType: 'shared',
-                assignees: assigneeUids.length ? assigneeUids : ALL_USERS.map(u => u.uid),
-                schedule: scheduleData,
-                timeOfDay: item.schedule?.timeOfDay || 'Anytime',
-                linkedNiptoTask: null,
-                points: pts,
-                overdueAfterHours: 14,
-                frictionTag: item.frictionTag || 'quick',
-                category: item.category || 'Home',
-                createdBy: activeName,
-                createdAt: nowIso,
-                updatedAt: nowIso,
-                lastReviewedAt: nowIso,
-                lastCompleted: {},
-                lastCompletedBy: {},
-                completionsByDate: {}
-            });
-            routinesCount++;
-        } else {
-            const todoRef = window.getNiptoCollection('custom_tasks').doc();
-            batch.set(todoRef, {
-                name: item.title,
-                type: item.type || 'todo',
-                bucket: item.type === 'project' ? 'project_idea' : 'actionable',
-                category: item.category || 'Home',
-                location: 'N/A',
-                assignees: assigneeUids,
-                frictionTag: item.frictionTag || 'quick',
-                priority: item.priority || 'medium',
-                points: pts,
-                description: item.description || '',
-                notes: item.description || '',
-                createdBy: activeName,
-                subTasks: [],
-                completed: false,
-                createdAt: nowIso,
-                updatedAt: nowIso,
-                lastReviewedAt: nowIso
-            });
-            todosCount++;
-        }
-    });
-
-    try {
-        await batch.commit();
-        showToast("commit_all", `Committed ${todosCount} Tasks & ${routinesCount} Routines!`, 0, "");
-        clearBrainDumpStaging();
-        const inputEl = document.getElementById('brainDumpInput');
-        if (inputEl) inputEl.value = "";
-        
-        await Promise.all([
-            api.loadRoutinesFromFirestore()
-        ]);
-        renderRoutines();
-        renderTodoTasks();
-        
-        if (window.switchNavTab) window.switchNavTab('schedule-todos');
-    } catch (err) {
-        console.error("Batch commit failed:", err);
-        alert("Failed to commit items: " + err.message);
-    }
-}
-
 // ==========================================
-// 4. NEW FEATURE: AI "RAMBLE TO MANAGE" (EXISTING TASKS)
+// 4. APPLY ALL STAGED CHANGES TO FIRESTORE
 // ==========================================
-export async function analyzeRambleWithGemini() {
-    const inputEl = document.getElementById('rambleInput');
-    const btn = document.getElementById('btnAnalyzeRamble');
-    const statusEl = document.getElementById('rambleStatus');
-
-    const text = inputEl ? inputEl.value.trim() : '';
-    if (!text) {
-        alert("Please enter your ramble describing changes to your tasks.");
-        return;
-    }
-
-    const apiKey = (state.integrationsConfig?.geminiApiKey || '').trim();
-    if (!apiKey) {
-        alert("Gemini API Key is not configured. Please open Settings.");
-        return;
-    }
-
-    // Prepare lightweight context of current active tasks
-    const activeTodos = (state.todoTasksData || []).filter(t => !t.completed).map(t => {
-        const norm = normalizeTask(t);
-        return {
-            id: norm.id,
-            title: norm.name,
-            type: norm.type,
-            category: norm.category || 'Home',
-            points: norm.points,
-            priority: norm.priority,
-            description: norm.description || ''
-        };
-    });
-
-    const activeRoutines = (state.routines || []).map(r => ({
-        id: r.uid,
-        title: r.name,
-        type: 'routine',
-        category: r.category || 'Home',
-        points: r.points || 15,
-        priority: r.priority || 'medium',
-        schedule: r.schedule?.type === 'weekly' ? 'weekly' : 'daily'
-    }));
-
-    const tasksContext = [...activeTodos, ...activeRoutines];
-
-    if (tasksContext.length === 0) {
-        alert("No active tasks to manage!");
-        return;
-    }
-
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = "Analyzing Changes...";
-    }
-    if (statusEl) {
-        statusEl.textContent = "Comparing ramble with your active tasks...";
-        statusEl.style.color = "var(--primary)";
-    }
-
-    const payloadText = `CURRENT_TASKS:
-${JSON.stringify(tasksContext, null, 2)}
-
-USER RAMBLE:
-"${text}"`;
-
-    let activeModel = (state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-
-    try {
-        const data = await callGeminiGenerate(apiKey, activeModel, payloadText, BRAINDUMP_MANAGE_INSTRUCTION);
-        const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!candidateText) throw new Error("Gemini returned empty response.");
-
-        let cleaned = candidateText.trim();
-        if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-        }
-
-        let proposedUpdates = JSON.parse(cleaned);
-        if (!Array.isArray(proposedUpdates)) {
-            if (proposedUpdates.updates) proposedUpdates = proposedUpdates.updates;
-            else if (proposedUpdates.items) proposedUpdates = proposedUpdates.items;
-            else proposedUpdates = [proposedUpdates];
-        }
-
-        // Build diff staging
-        state.rambleStaging = proposedUpdates.map((prop, idx) => {
-            const current = tasksContext.find(t => t.id === prop.id) || {
-                id: prop.id,
-                title: prop.title,
-                type: 'todo',
-                category: 'Home',
-                points: 5,
-                priority: 'medium'
-            };
-
-            return {
-                id: prop.id,
-                stagingId: 'ramble_' + Date.now() + '_' + idx,
-                selected: true,
-                action: prop.action || 'update',
-                reason: prop.reason || 'Requested change',
-                current,
-                proposed: {
-                    title: prop.changes?.title || current.title,
-                    description: prop.changes?.description !== undefined ? prop.changes.description : (current.description || ''),
-                    type: prop.changes?.type || current.type,
-                    category: prop.changes?.category || current.category,
-                    points: prop.changes?.points !== undefined ? prop.changes.points : current.points,
-                    priority: prop.changes?.priority || current.priority,
-                    schedule: prop.changes?.schedule || current.schedule
-                }
-            };
-        });
-
-        renderRambleDiffStaging();
-        if (statusEl) {
-            statusEl.textContent = `Identified ${state.rambleStaging.length} proposed changes! Review the diff below.`;
-            statusEl.style.color = "var(--success)";
-        }
-    } catch (err) {
-        console.error("Ramble analysis error:", err);
-        if (statusEl) {
-            statusEl.textContent = `Analysis failed: ${err.message}`;
-            statusEl.style.color = "var(--danger)";
-        }
-        alert("Failed to analyze ramble: " + err.message);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = "&#x2728; Analyze Changes with Gemini";
-        }
-    }
-}
-
-// Renders the Diff / Staging Table: Current State -> Proposed Changes
-export function renderRambleDiffStaging() {
-    const container = document.getElementById('rambleDiffStaging');
-    if (!container) return;
-
-    if (!state.rambleStaging || state.rambleStaging.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No staged updates. Dictate or paste a ramble above and click "Analyze Changes".</div>';
-        return;
-    }
-
-    let html = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-        <h4 style="margin: 0; font-size: 16px;">Proposed Changes (${state.rambleStaging.length} updates)</h4>
-        <div style="display: flex; gap: 8px;">
-            <button class="action-btn" onclick="clearRambleStaging()" style="padding: 6px 12px; font-size: 13px;">Discard All</button>
-            <button class="action-btn save-mode" onclick="applyRambleUpdatesToFirestore()" style="padding: 6px 14px; font-size: 13px; font-weight: 800;">
-                &#x2714; Apply Selected Updates
-            </button>
-        </div>
-    </div>
-    <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-            <thead>
-                <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
-                    <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleAllRambleRows(this.checked)"></th>
-                    <th style="padding: 8px 10px; width: 85px;">Action</th>
-                    <th style="padding: 8px 10px; min-width: 160px;">Current State</th>
-                    <th style="padding: 8px 10px; min-width: 220px;">Proposed Changes</th>
-                    <th style="padding: 8px 10px; min-width: 140px;">Reason</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    state.rambleStaging.forEach((item, idx) => {
-        const cur = item.current;
-        const prop = item.proposed;
-
-        let actionBadge = '';
-        if (item.action === 'complete') actionBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-weight: 800;">COMPLETE</span>';
-        else if (item.action === 'delete') actionBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 800;">DELETE</span>';
-        else actionBadge = '<span style="background: rgba(37, 99, 235, 0.15); color: #2563eb; padding: 2px 8px; border-radius: 4px; font-weight: 800;">UPDATE</span>';
-
-        const titleChanged = prop.title && prop.title !== cur.title;
-        const typeChanged = prop.type && prop.type !== cur.type;
-        const pointsChanged = prop.points !== undefined && prop.points !== cur.points;
-        const priorityChanged = prop.priority && prop.priority !== cur.priority;
-        const categoryChanged = prop.category && prop.category !== cur.category;
-
-        html += `
-        <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
-            <td style="padding: 8px 10px;">
-                <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateRambleRow(${idx}, 'selected', this.checked)">
-            </td>
-            <td style="padding: 8px 10px;">
-                ${actionBadge}
-            </td>
-            <td style="padding: 8px 10px; color: var(--text-muted);">
-                <div style="font-weight: 700; color: var(--text-main);">${escapeHtml(cur.title)}</div>
-                <div style="font-size: 11px; margin-top: 2px;">
-                    Type: ${escapeHtml(cur.type)} &bull; ${cur.points || 5} pts &bull; ${escapeHtml(cur.priority || 'med')} &bull; ${escapeHtml(cur.category || 'Home')}
-                </div>
-            </td>
-            <td style="padding: 8px 10px;">
-                ${item.action === 'complete' ? `
-                    <span style="color: var(--success); font-weight: 700;">Mark task complete &amp; award points</span>
-                ` : item.action === 'delete' ? `
-                    <span style="color: var(--danger); font-weight: 700;">Delete task from database</span>
-                ` : `
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <input type="text" value="${escapeHtml(prop.title)}" onchange="updateRambleProp(${idx}, 'title', this.value)" style="padding: 3px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); ${titleChanged ? 'background: rgba(34, 197, 94, 0.1); font-weight: bold;' : ''}">
-                        
-                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                            <select onchange="updateRambleProp(${idx}, 'type', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${typeChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
-                                <option value="todo" ${prop.type === 'todo' ? 'selected' : ''}>To-Do</option>
-                                <option value="project" ${prop.type === 'project' ? 'selected' : ''}>Project</option>
-                                <option value="routine" ${prop.type === 'routine' ? 'selected' : ''}>Routine</option>
-                            </select>
-
-                            <input type="number" value="${prop.points}" min="0" onchange="updateRambleProp(${idx}, 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; ${pointsChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Points">
-
-                            <select onchange="updateRambleProp(${idx}, 'priority', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${priorityChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
-                                <option value="high" ${prop.priority === 'high' ? 'selected' : ''}>High</option>
-                                <option value="medium" ${prop.priority === 'medium' ? 'selected' : ''}>Med</option>
-                                <option value="low" ${prop.priority === 'low' ? 'selected' : ''}>Low</option>
-                            </select>
-
-                            <input type="text" value="${escapeHtml(prop.category)}" onchange="updateRambleProp(${idx}, 'category', this.value)" style="width: 70px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${categoryChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Category">
-                        </div>
-                    </div>
-                `}
-            </td>
-            <td style="padding: 8px 10px; font-size: 12px; color: var(--text-muted);">
-                ${escapeHtml(item.reason)}
-            </td>
-        </tr>
-        `;
-    });
-
-    html += `
-            </tbody>
-        </table>
-    </div>
-    `;
-
-    container.innerHTML = html;
-}
-
-export function updateRambleRow(index, field, value) {
-    if (state.rambleStaging[index]) {
-        state.rambleStaging[index][field] = value;
-        if (field === 'selected') renderRambleDiffStaging();
-    }
-}
-
-export function updateRambleProp(index, propKey, value) {
-    if (state.rambleStaging[index] && state.rambleStaging[index].proposed) {
-        state.rambleStaging[index].proposed[propKey] = value;
-    }
-}
-
-export function toggleAllRambleRows(checked) {
-    state.rambleStaging.forEach(item => { item.selected = checked; });
-    renderRambleDiffStaging();
-}
-
-export function clearRambleStaging() {
-    state.rambleStaging = [];
-    renderRambleDiffStaging();
-    const statusEl = document.getElementById('rambleStatus');
-    if (statusEl) statusEl.textContent = "";
-}
-
-// Applies selected ramble updates to Firestore via batch write
-export async function applyRambleUpdatesToFirestore() {
-    const selected = state.rambleStaging.filter(item => item.selected);
+export async function applyUnifiedStagingToFirestore() {
+    const selected = state.brainDumpStaging.filter(item => item.selected);
     if (selected.length === 0) {
-        alert("Please select at least one proposed change to apply.");
+        alert("Please select at least one staged item to apply.");
         return;
     }
 
@@ -820,25 +608,85 @@ export async function applyRambleUpdatesToFirestore() {
     const doerUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
 
-    let appliedCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let completedCount = 0;
+    let deletedCount = 0;
 
     for (const item of selected) {
         const id = item.id;
-        const cur = item.current;
-        const prop = item.proposed;
+        const isRoutineDoc = id && state.routines?.some(r => r.uid === id);
 
-        // Check whether task lives in custom_tasks or routines
-        const isRoutineDoc = state.routines?.some(r => r.uid === id);
+        if (item.action === 'create') {
+            let assigneeUids = [];
+            if (item.assignee && item.assignee !== 'Anyone') {
+                const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
+                if (userObj) assigneeUids.push(userObj.uid);
+            }
 
-        if (item.action === 'delete') {
+            const pts = parseInt(item.points, 10) || 5;
+
+            if (item.type === 'routine') {
+                const routineRef = window.getNiptoCollection('routines').doc();
+                const days = item.schedule?.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+                const scheduleData = {
+                    type: days.length === 7 ? 'daily' : 'weekly',
+                    resetType: 'midnight',
+                    daysOfWeek: days,
+                    timeOfDay: item.schedule?.timeOfDay || 'Anytime'
+                };
+                batch.set(routineRef, {
+                    name: item.title,
+                    type: 'routine',
+                    completionType: 'shared',
+                    assignees: assigneeUids.length ? assigneeUids : ALL_USERS.map(u => u.uid),
+                    schedule: scheduleData,
+                    timeOfDay: item.schedule?.timeOfDay || 'Anytime',
+                    linkedNiptoTask: null,
+                    points: pts,
+                    overdueAfterHours: 14,
+                    frictionTag: 'quick',
+                    category: item.category || 'Home',
+                    createdBy: doerName,
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                    lastReviewedAt: nowIso,
+                    lastCompleted: {},
+                    lastCompletedBy: {},
+                    completionsByDate: {}
+                });
+            } else {
+                const todoRef = window.getNiptoCollection('custom_tasks').doc();
+                batch.set(todoRef, {
+                    name: item.title,
+                    type: item.type || 'todo',
+                    bucket: item.type === 'project' ? 'project_idea' : 'actionable',
+                    category: item.category || 'Home',
+                    location: 'N/A',
+                    assignees: assigneeUids,
+                    frictionTag: 'quick',
+                    priority: item.priority || 'medium',
+                    points: pts,
+                    description: item.description || '',
+                    notes: item.description || '',
+                    createdBy: doerName,
+                    subTasks: [],
+                    completed: false,
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                    lastReviewedAt: nowIso
+                });
+            }
+            createdCount++;
+        } else if (item.action === 'delete') {
             if (isRoutineDoc) {
                 batch.delete(window.getNiptoCollection('routines').doc(id));
-            } else {
+            } else if (id) {
                 batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
             }
-            appliedCount++;
+            deletedCount++;
         } else if (item.action === 'complete') {
-            if (!isRoutineDoc) {
+            if (!isRoutineDoc && id) {
                 batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                     completed: true,
                     completedAt: nowIso,
@@ -846,13 +694,13 @@ export async function applyRambleUpdatesToFirestore() {
                     lastReviewedAt: nowIso,
                     updatedAt: nowIso
                 });
-                const pts = cur.points || 5;
+                const pts = item.points || 5;
                 if (pts > 0) api.awardAllowancePoints(doerUid, pts);
                 await api.recordDailyCompletion({
                     id: `todo_${id}`,
                     itemId: id,
                     sourceType: 'todo',
-                    title: cur.title,
+                    title: item.title,
                     user: doerName,
                     userUid: doerUid,
                     points: pts,
@@ -860,31 +708,31 @@ export async function applyRambleUpdatesToFirestore() {
                     dateKey: todayKey
                 });
             }
-            appliedCount++;
+            completedCount++;
         } else {
-            // Update action
+            // action === 'update'
             if (isRoutineDoc) {
                 batch.update(window.getNiptoCollection('routines').doc(id), {
-                    name: prop.title,
-                    category: prop.category,
-                    points: prop.points || 15,
-                    priority: prop.priority,
+                    name: item.title,
+                    category: item.category,
+                    points: item.points || 15,
+                    priority: item.priority,
                     updatedAt: nowIso,
                     lastReviewedAt: nowIso
                 });
-            } else {
-                // If type converted to routine, migrate doc
-                if (prop.type === 'routine' && cur.type !== 'routine') {
+            } else if (id) {
+                // If converted to routine, migrate doc
+                if (item.type === 'routine') {
                     const newRoutineRef = window.getNiptoCollection('routines').doc();
                     batch.set(newRoutineRef, {
-                        name: prop.title,
+                        name: item.title,
                         type: 'routine',
                         completionType: 'shared',
                         assignees: ALL_USERS.map(u => u.uid),
                         schedule: { type: 'daily', resetType: 'midnight', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning' },
-                        points: prop.points || 15,
-                        category: prop.category || 'Home',
-                        priority: prop.priority || 'medium',
+                        points: item.points || 15,
+                        category: item.category || 'Home',
+                        priority: item.priority || 'medium',
                         createdAt: nowIso,
                         updatedAt: nowIso,
                         lastReviewedAt: nowIso
@@ -892,28 +740,28 @@ export async function applyRambleUpdatesToFirestore() {
                     batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
                 } else {
                     batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
-                        name: prop.title,
-                        type: prop.type,
-                        bucket: prop.type === 'project' ? 'project_idea' : 'actionable',
-                        category: prop.category,
-                        points: prop.points || 5,
-                        priority: prop.priority,
-                        description: prop.description !== undefined ? prop.description : (cur.description || ''),
-                        notes: prop.description !== undefined ? prop.description : (cur.description || ''),
+                        name: item.title,
+                        type: item.type,
+                        bucket: item.type === 'project' ? 'project_idea' : 'actionable',
+                        category: item.category,
+                        points: item.points || 5,
+                        priority: item.priority,
+                        description: item.description !== undefined ? item.description : '',
+                        notes: item.description !== undefined ? item.description : '',
                         updatedAt: nowIso,
                         lastReviewedAt: nowIso
                     });
                 }
             }
-            appliedCount++;
+            updatedCount++;
         }
     }
 
     try {
         await batch.commit();
-        showToast("ramble_ok", `Applied ${appliedCount} updates successfully!`, 0, "");
-        clearRambleStaging();
-        const inputEl = document.getElementById('rambleInput');
+        showToast("unified_ok", `Applied ${selected.length} changes (${createdCount} added, ${updatedCount} updated, ${completedCount} completed)!`, 0, "");
+        clearBrainDumpStaging();
+        const inputEl = document.getElementById('brainDumpInput');
         if (inputEl) inputEl.value = "";
 
         await Promise.all([
@@ -922,13 +770,24 @@ export async function applyRambleUpdatesToFirestore() {
         rebuildCompletedToday();
         renderDoneTodayFeed();
         renderTodoTasks();
-        renderRoutines();
+        renderRollingSchedule();
         renderBulkTriageList();
     } catch (err) {
         console.error("Batch update error:", err);
-        alert("Failed to apply updates: " + err.message);
+        alert("Failed to apply changes: " + err.message);
     }
 }
+
+// Backward-compatible aliases
+export const commitBrainDumpToFirestore = applyUnifiedStagingToFirestore;
+export const applyRambleUpdatesToFirestore = applyUnifiedStagingToFirestore;
+export function switchBrainDumpMode() {}
+export const analyzeRambleWithGemini = parseWithGemini;
+export const renderRambleDiffStaging = renderBrainDumpStaging;
+export function updateRambleRow(idx, field, val) { updateStagingItem(idx, field, val); }
+export function updateRambleProp(idx, prop, val) { updateStagingItem(idx, prop, val); }
+export const toggleAllRambleRows = toggleAllStagingRows;
+export const clearRambleStaging = clearBrainDumpStaging;
 
 // ==========================================
 // 5. BULK TRIAGE & MANAGEMENT OVERHAUL
@@ -1161,7 +1020,6 @@ export function renderBulkTriageList() {
             } else if (sortBy === 'title') {
                 return (a.name || '').localeCompare(b.name || '');
             } else {
-                // Default: Priority then newest
                 const pA = getPriorityWeight(a.priority);
                 const pB = getPriorityWeight(b.priority);
                 if (pA !== pB) return pB - pA;
@@ -1271,7 +1129,6 @@ export function renderBulkTriageList() {
             });
         }
 
-        // Sort routines
         filtered.sort((a, b) => {
             if (sortBy === 'points') return (b.points || 15) - (a.points || 15);
             if (sortBy === 'category') return (a.category || 'Home').localeCompare(b.category || 'Home');
@@ -1440,7 +1297,7 @@ export async function executeBulkAction(actionType) {
         await api.loadRoutinesFromFirestore();
         renderBulkTriageList();
         renderTodoTasks();
-        renderRoutines();
+        renderRollingSchedule();
     } else if (actionType === 'complete') {
         const batch = window.db.batch();
         const todayKey = getLocalTodayKey();
@@ -1500,7 +1357,7 @@ export async function executeBulkAction(actionType) {
         await api.loadRoutinesFromFirestore();
         renderBulkTriageList();
         renderTodoTasks();
-        renderRoutines();
+        renderRollingSchedule();
     } else if (actionType === 'type') {
         const typePrompt = prompt("Set Type for selected tasks ('todo', 'project', or 'routine'):", "todo");
         if (!typePrompt) return;
@@ -1536,7 +1393,7 @@ export async function executeBulkAction(actionType) {
         await api.loadRoutinesFromFirestore();
         renderBulkTriageList();
         renderTodoTasks();
-        renderRoutines();
+        renderRollingSchedule();
     } else if (actionType === 'priority') {
         const priPrompt = prompt("Set priority ('high', 'medium', 'low'):", "medium");
         if (!priPrompt) return;
@@ -1567,7 +1424,7 @@ export async function executeBulkAction(actionType) {
         await api.loadRoutinesFromFirestore();
         renderBulkTriageList();
         renderTodoTasks();
-        renderRoutines();
+        renderRollingSchedule();
     } else if (actionType === 'schedule') {
         const freqPrompt = prompt("Set Routine Frequency ('daily' or 'weekly'):", "daily");
         if (!freqPrompt) return;
@@ -1583,11 +1440,11 @@ export async function executeBulkAction(actionType) {
         showToast("bulk_sched", `Updated schedule for ${routineIds.length} routines.`, 0, "");
         await api.loadRoutinesFromFirestore();
         renderBulkTriageList();
-        renderRoutines();
+        renderRollingSchedule();
     }
 }
 
-// Window bindings
+// Window bindings for inline HTML onclicks and external callers
 if (typeof window !== 'undefined') {
     window.parseWithGemini = parseWithGemini;
     window.rawLineByLineAdd = rawLineByLineAdd;
@@ -1595,17 +1452,20 @@ if (typeof window !== 'undefined') {
     window.updateStagingItem = updateStagingItem;
     window.deleteStagingItem = deleteStagingItem;
     window.toggleAllStagingRows = toggleAllStagingRows;
+    window.toggleSectionStagingRows = toggleSectionStagingRows;
     window.clearBrainDumpStaging = clearBrainDumpStaging;
-    window.commitBrainDumpToFirestore = commitBrainDumpToFirestore;
+    window.applyUnifiedStagingToFirestore = applyUnifiedStagingToFirestore;
+    window.commitBrainDumpToFirestore = applyUnifiedStagingToFirestore;
 
+    // Backward-compatible aliases
     window.switchBrainDumpMode = switchBrainDumpMode;
-    window.analyzeRambleWithGemini = analyzeRambleWithGemini;
-    window.renderRambleDiffStaging = renderRambleDiffStaging;
+    window.analyzeRambleWithGemini = parseWithGemini;
+    window.renderRambleDiffStaging = renderBrainDumpStaging;
     window.updateRambleRow = updateRambleRow;
     window.updateRambleProp = updateRambleProp;
-    window.toggleAllRambleRows = toggleAllRambleRows;
-    window.clearRambleStaging = clearRambleStaging;
-    window.applyRambleUpdatesToFirestore = applyRambleUpdatesToFirestore;
+    window.toggleAllRambleRows = toggleAllStagingRows;
+    window.clearRambleStaging = clearBrainDumpStaging;
+    window.applyRambleUpdatesToFirestore = applyUnifiedStagingToFirestore;
 
     window.switchManageSubtab = switchManageSubtab;
     window.filterManageList = filterManageList;

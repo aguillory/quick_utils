@@ -20,13 +20,59 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-// Determines if routine runs every single day (daily frequency or 7 days/week)
-export function isDailyRoutine(routine) {
-    if (!routine) return false;
-    const sched = routine.schedule || { type: 'daily' };
-    if (sched.type === 'daily') return true;
-    if (sched.type === 'weekly' && Array.isArray(sched.daysOfWeek) && sched.daysOfWeek.length >= 7) return true;
-    if (sched.type === 'interval' && Number(sched.value) === 1 && sched.unit === 'days') return true;
+// Determines if routine runs every single day (daily frequency, interval of 1, 7 days/week, or default routine)
+export function isDailyRoutine(task) {
+    if (!task) return false;
+
+    // Check if it is a routine
+    const isRoutine = task.type === 'routine' || task.isRoutine === true || !!task.schedule || !!task.uid || !!task.linkedNiptoTask;
+    if (!isRoutine) return false;
+
+    // String normalization helper
+    const isDailyStr = (val) => {
+        if (!val || typeof val !== 'string') return false;
+        const s = val.trim().toLowerCase();
+        return s === 'daily' || s === 'every day' || s === 'everyday' || s === '1d' || s === '1 day' || s === 'day';
+    };
+
+    // 1. Direct string checks on schedule or frequency
+    if (isDailyStr(task.schedule)) return true;
+    if (isDailyStr(task.frequency)) return true;
+
+    // Direct interval/repeat checks on task root
+    const rootInterval = Number(task.interval || task.repeatEvery || task.every);
+    if (rootInterval === 1) return true;
+
+    const sched = (task.schedule && typeof task.schedule === 'object') ? task.schedule : null;
+    if (sched) {
+        // String checks inside schedule object
+        if (isDailyStr(sched.type)) return true;
+        if (isDailyStr(sched.frequency)) return true;
+
+        // 2. Numeric interval / repeat days === 1
+        const intervalVal = Number(sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue ?? sched.value);
+        const unitVal = String(sched.unit || sched.intervalUnit || 'days').trim().toLowerCase();
+        if (intervalVal === 1 && (unitVal === 'days' || unitVal === 'day')) return true;
+
+        // 3. Day-of-week routine that has all 7 days selected
+        const days = sched.daysOfWeek || sched.days || task.daysOfWeek || task.days;
+        if (Array.isArray(days)) {
+            if (days.length >= 7) return true;
+            const allDaysPresent = [0, 1, 2, 3, 4, 5, 6].every(d => days.includes(d) || days.includes(String(d)));
+            if (allDaysPresent) return true;
+        }
+
+        // If schedule object has no specific schedule type or rules set, default to daily
+        if (!sched.type && !sched.daysOfWeek && !sched.interval && !sched.value && !sched.days) {
+            return true;
+        }
+    } else {
+        // 4. Marked type === 'routine' (or in routines list) and has no specific schedule set (defaulting to daily)
+        if (!task.frequency && !task.schedule) {
+            return true;
+        }
+    }
+
     return false;
 }
 

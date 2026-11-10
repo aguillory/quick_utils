@@ -31,8 +31,8 @@ import {
 } from './routines.js';
 import {
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
-    updateStagingItem, deleteStagingItem, toggleAllStagingRows,
-    clearBrainDumpStaging, commitBrainDumpToFirestore,
+    updateStagingItem, deleteStagingItem, toggleAllStagingRows, toggleSectionStagingRows,
+    clearBrainDumpStaging, commitBrainDumpToFirestore, applyUnifiedStagingToFirestore,
     switchBrainDumpMode, analyzeRambleWithGemini, renderRambleDiffStaging,
     updateRambleRow, updateRambleProp, toggleAllRambleRows, clearRambleStaging,
     applyRambleUpdatesToFirestore,
@@ -140,6 +140,7 @@ Object.assign(window, {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine, deleteRoutineFromModal,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
     switchBrainDumpMode, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
+    applyUnifiedStagingToFirestore, toggleSectionStagingRows,
     updateStagingItem, deleteStagingItem, toggleAllStagingRows,
     analyzeRambleWithGemini, renderRambleDiffStaging, updateRambleRow, updateRambleProp,
     toggleAllRambleRows, clearRambleStaging, applyRambleUpdatesToFirestore,
