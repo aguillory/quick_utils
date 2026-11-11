@@ -10,6 +10,7 @@ import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey } from './utils.js';
 import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
+import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees } from './routines.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -214,14 +215,14 @@ export async function clearTaskFriction(taskId, event) {
 function formatTodoAssigneePill(task) {
     const assignees = task.assignees || [];
     if (assignees.length === 0) {
-        return `<span class="todo-pill">&#x1F465; Anyone</span>`;
+        return `<span class="todo-pill shared-pill" title="Anyone can do">&#x1F465;</span>`;
     }
     if (assignees.length >= 3) {
         const fullNames = assignees.map(uid => {
             const u = ALL_USERS.find(user => user.uid === uid);
             return u ? u.name : 'Unknown';
         }).join(', ');
-        return `<span class="todo-pill shared-pill" title="${escapeHtml(fullNames)}">&#x1F465; Shared</span>`;
+        return `<span class="todo-pill shared-pill" title="${escapeHtml(fullNames)}">&#x1F465;</span>`;
     }
     if (assignees.length === 2) {
         const names = assignees.map(uid => {
@@ -232,8 +233,17 @@ function formatTodoAssigneePill(task) {
     }
     const singleUid = assignees[0];
     const u = ALL_USERS.find(user => user.uid === singleUid);
-    if (!u) return `<span class="todo-pill">&#x1F465; Anyone</span>`;
+    if (!u) return `<span class="todo-pill shared-pill" title="Anyone can do">&#x1F465;</span>`;
     return `<span class="todo-pill" style="color: ${u.color}; font-weight: 700;">&#x1F464; ${escapeHtml(u.name)}</span>`;
+}
+
+// Collapsible section toggle for 3-section stacked view
+export function toggleMainSectionCollapse(sectionKey) {
+    if (!state.userPrefs.collapsedSections) state.userPrefs.collapsedSections = {};
+    const curr = !!state.userPrefs.collapsedSections[sectionKey];
+    state.userPrefs.collapsedSections[sectionKey] = !curr;
+    saveCloudPreference('collapsedSections', state.userPrefs.collapsedSections);
+    renderTodoTasks();
 }
 
 // ==========================================
@@ -244,12 +254,13 @@ export function renderTodoTasks() {
     if (!container) return;
 
     let tasks = (state.todoTasksData || []).map(normalizeTask);
+    const routines = state.routines || [];
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
     const activeName = activeUserObj ? activeUserObj.name : 'Active';
 
-    // Defaults & stored preferences
-    if (!state.todoTypeFilter) state.todoTypeFilter = 'todo';
+    // Defaults & stored preferences (Default to 'all' for 3 stacked sections)
+    if (!state.todoTypeFilter) state.todoTypeFilter = 'all';
     if (!state.todoSort) state.todoSort = 'priority';
     if (!state.todoGroupBy) state.todoGroupBy = 'category';
     if (!state.todoCategoryFilter) state.todoCategoryFilter = 'all';
@@ -262,43 +273,106 @@ export function renderTodoTasks() {
     const personFilter = state.todoPersonFilter;
     const categoryFilter = state.todoCategoryFilter;
     const priorityFilter = state.todoPriorityFilter;
+    const collapsedSections = state.userPrefs.collapsedSections || {};
 
-    // Gather unique categories for filter dropdown
-    const uniqueCategories = Array.from(new Set(
-        tasks.map(t => t.category || 'General').filter(Boolean)
-    )).sort();
+    // Gather unique categories for filter dropdown across tasks & routines
+    const uniqueCategories = Array.from(new Set([
+        ...tasks.map(t => t.category || 'General').filter(Boolean),
+        ...routines.map(r => r.category || 'Home').filter(Boolean)
+    ])).sort();
 
-    // 1. Filter by Type: 'todo' | 'project' | 'all'
-    if (currentType === 'todo') {
-        tasks = tasks.filter(t => t.type === 'todo');
-    } else if (currentType === 'project') {
-        tasks = tasks.filter(t => t.type === 'project');
+    // Helper: matches ownership
+    function matchesOwnership(item) {
+        if (personFilter === 'all') return true;
+        const assignees = item.assignees || [];
+        if (personFilter === 'me') {
+            return assignees.includes(activeUid);
+        } else if (personFilter === 'shared_anyone') {
+            return assignees.length === 0 || assignees.length > 1;
+        } else if (personFilter === 'unassigned') {
+            return assignees.length === 0;
+        } else {
+            return assignees.includes(personFilter);
+        }
     }
 
-    // 2. Filter by Ownership / Person
-    if (personFilter === 'me') {
-        tasks = tasks.filter(t => t.assignees && t.assignees.includes(activeUid));
-    } else if (personFilter === 'shared_anyone') {
-        tasks = tasks.filter(t => !t.assignees || t.assignees.length === 0 || t.assignees.length > 1);
-    } else if (personFilter === 'unassigned') {
-        tasks = tasks.filter(t => !t.assignees || t.assignees.length === 0);
-    } else if (personFilter !== 'all') {
-        tasks = tasks.filter(t => t.assignees && t.assignees.includes(personFilter));
+    // Helper: matches category
+    function matchesCategory(item) {
+        if (categoryFilter === 'all') return true;
+        const cat = (item.category || 'General').toLowerCase();
+        return cat === categoryFilter.toLowerCase();
     }
 
-    // 3. Filter by Category
-    if (categoryFilter !== 'all') {
-        tasks = tasks.filter(t => (t.category || 'General').toLowerCase() === categoryFilter.toLowerCase());
+    // Helper: matches priority
+    function matchesPriority(item) {
+        if (priorityFilter === 'all') return true;
+        const p = (item.priority || 'medium').toLowerCase();
+        return p === priorityFilter.toLowerCase();
     }
 
-    // 4. Filter by Priority
-    if (priorityFilter !== 'all') {
-        tasks = tasks.filter(t => t.priority === priorityFilter);
+    // Helper: matches friction
+    function matchesFriction(item) {
+        if (!state.todoFrictionFilter || state.todoFrictionFilter === 'all') return true;
+        return item.frictionTag === state.todoFrictionFilter;
     }
 
-    // 5. Filter by Friction Level (if active)
-    if (state.todoFrictionFilter && state.todoFrictionFilter !== 'all') {
-        tasks = tasks.filter(t => t.frictionTag === state.todoFrictionFilter);
+    function getPriorityWeight(p) {
+        if (!p) return 2;
+        const lp = p.toLowerCase();
+        if (lp === 'high') return 3;
+        if (lp === 'medium') return 2;
+        if (lp === 'low') return 1;
+        return 2;
+    }
+
+    // Sort helper for tasks
+    function sortTaskList(list) {
+        return list.slice().sort((a, b) => {
+            if (a.completed !== b.completed) return a.completed ? 1 : -1;
+
+            if (currentSort === 'priority') {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return (b.points || 5) - (a.points || 5);
+            } else if (currentSort === 'points') {
+                const ptA = a.points || 5;
+                const ptB = b.points || 5;
+                if (ptA !== ptB) return ptB - ptA;
+                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+            } else if (currentSort === 'category') {
+                const cA = (a.category || 'General').toLowerCase();
+                const cB = (b.category || 'General').toLowerCase();
+                if (cA !== cB) return cA.localeCompare(cB);
+                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+            } else if (currentSort === 'age') {
+                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+            }
+            return 0;
+        });
+    }
+
+    // Sort helper for routines
+    function sortRoutineList(list) {
+        const todayKey = getLocalTodayKey();
+        return list.slice().sort((a, b) => {
+            const aDone = !!(a.completionsByDate && a.completionsByDate[todayKey]);
+            const bDone = !!(b.completionsByDate && b.completionsByDate[todayKey]);
+            if (aDone !== bDone) return aDone ? 1 : -1;
+
+            if (currentSort === 'priority') {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return (b.points || 15) - (a.points || 15);
+            } else if (currentSort === 'points') {
+                return (b.points || 15) - (a.points || 15);
+            } else if (currentSort === 'category') {
+                return (a.category || 'Home').localeCompare(b.category || 'Home');
+            } else {
+                return (a.name || '').localeCompare(b.name || '');
+            }
+        });
     }
 
     // Check for Stale Tasks for the calm refresher banner
@@ -320,29 +394,33 @@ export function renderTodoTasks() {
         `;
     }
 
-    // 5. Build Compact Filter / Sort Bar
+    // Build Compact Filter / Sort Bar
     let toolbarHtml = `
     ${staleBannerHtml}
     <div class="todo-toolbar-row" style="margin-bottom: 16px;">
         <!-- Left: Quick Type Pills -->
         <div class="todo-view-pills">
+            <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View To-Dos, Projects, and Routines in 3 stacked sections">
+                All Types
+            </button>
             <button class="filter-pill ${currentType === 'todo' ? 'active' : ''}" onclick="setTodoTypeFilter('todo')" title="Actionable daily/immediate to-dos">
                 &#x26A1; To-Dos
             </button>
             <button class="filter-pill ${currentType === 'project' ? 'active' : ''}" onclick="setTodoTypeFilter('project')" title="Projects, someday goals, and brainstormed ideas">
                 &#x1F4A1; Projects / Ideas
             </button>
-            <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View both To-Dos and Projects together">
-                All Types
+            <button class="filter-pill ${currentType === 'routine' ? 'active' : ''}" onclick="setTodoTypeFilter('routine')" title="Recurring routines">
+                &#x21BB; Routines
             </button>
         </div>
 
         <!-- Right: Compact Selects & Grouping Toggle -->
         <div class="todo-secondary-filters" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-            <!-- Group By Toggle -->
+            ${currentType === 'todo' ? `
             <button class="filter-pill" onclick="setTodoGroupBy('${currentGroupBy === 'category' ? 'ownership' : 'category'}')" title="Toggle between Collapsible Categories and Ownership layout" style="font-size: 11px; padding: 4px 8px;">
                 ${currentGroupBy === 'category' ? '&#x1F4C1; By Category' : '&#x1F464; By Ownership'}
             </button>
+            ` : ''}
 
             <!-- Sort By Select -->
             <select class="todo-compact-select" onchange="setTodoSort(this.value)" title="Sort tasks">
@@ -377,80 +455,61 @@ export function renderTodoTasks() {
     </div>
     `;
 
-    if (tasks.length === 0) {
-        container.innerHTML = toolbarHtml + `
-        <div class="empty-dashboard-msg" style="padding: 30px;">
-            No tasks matching this view. Click "+ Add Task" to create one.
-        </div>`;
-        return;
-    }
+    // Filter To-Dos & Projects
+    const filteredTasks = tasks.filter(t => matchesOwnership(t) && matchesCategory(t) && matchesPriority(t) && matchesFriction(t));
+    const todosList = sortTaskList(filteredTasks.filter(t => t.type === 'todo'));
+    const projectsList = sortTaskList(filteredTasks.filter(t => t.type === 'project'));
 
-    function getPriorityWeight(p) {
-        if (!p) return 2;
-        const lp = p.toLowerCase();
-        if (lp === 'high') return 3;
-        if (lp === 'medium') return 2;
-        if (lp === 'low') return 1;
-        return 2;
-    }
+    // Filter Routines
+    const filteredRoutines = routines.filter(r => matchesOwnership(r) && matchesCategory(r) && matchesPriority(r) && matchesFriction(r));
+    const routinesList = sortRoutineList(filteredRoutines);
 
-    // Primary Sorting Logic
-    function sortTaskList(list) {
-        return list.slice().sort((a, b) => {
-            // Incomplete first
-            if (a.completed !== b.completed) return a.completed ? 1 : -1;
-
-            if (currentSort === 'priority') {
-                const pA = getPriorityWeight(a.priority);
-                const pB = getPriorityWeight(b.priority);
-                if (pA !== pB) return pB - pA;
-                return (b.points || 5) - (a.points || 5);
-            } else if (currentSort === 'points') {
-                const ptA = a.points || 5;
-                const ptB = b.points || 5;
-                if (ptA !== ptB) return ptB - ptA;
-                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-            } else if (currentSort === 'category') {
-                const cA = (a.category || 'General').toLowerCase();
-                const cB = (b.category || 'General').toLowerCase();
-                if (cA !== cB) return cA.localeCompare(cB);
-                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-            } else if (currentSort === 'age') {
-                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-            }
-            return 0;
-        });
-    }
-
-    // Helper: Render quiet, anti-overwhelm card
+    // Helper: Render quiet card with tiny metadata icons & active user highlight
     function renderCard(t) {
         const isCompleted = !!t.completed;
         const assigneePill = formatTodoAssigneePill(t);
         const pri = t.priority || 'medium';
-
-        // Subtle Left Priority Border Class
         const priorityClass = `priority-${pri}`;
+        const isAssignedToMe = (t.assignees && t.assignees.length === 1 && t.assignees[0] === activeUid);
 
-        // Subtle priority dot indicator
-        let priorityDot = '';
+        // Tiny Priority Pill
+        let priorityPill = '';
         if (pri === 'high') {
-            priorityDot = `<span class="priority-dot high" title="High Priority">&#x25CF;</span>`;
+            priorityPill = `<span class="todo-pill priority-pill high" title="High Priority">&#x1F525; High</span>`;
         } else if (pri === 'low') {
-            priorityDot = `<span class="priority-dot low" title="Low Priority">&#x25CF;</span>`;
+            priorityPill = `<span class="todo-pill priority-pill low" title="Low Priority">&#x1F53D; Low</span>`;
+        } else {
+            priorityPill = `<span class="todo-pill priority-pill medium" title="Medium Priority">&#x26A1; Med</span>`;
         }
 
-        // Project badge if project
+        // Tiny Friction Pill
+        let frictionPill = '';
+        if (t.frictionTag === 'quick') {
+            frictionPill = `<span class="todo-pill friction-pill" title="Quick (<5m)">&#x26A1; &lt;5m</span>`;
+        } else if (t.frictionTag === 'low_brain') {
+            frictionPill = `<span class="todo-pill friction-pill" title="Low Brain">&#x1F9E0; Low Brain</span>`;
+        } else if (t.frictionTag === 'deep_focus') {
+            frictionPill = `<span class="todo-pill friction-pill" title="Deep Focus">&#x1F3AF; Deep Focus</span>`;
+        }
+
+        // Tiny Creator Pill
+        let creatorPill = '';
+        if (t.createdBy) {
+            creatorPill = `<span class="todo-pill creator-pill" title="Created by ${escapeHtml(t.createdBy)}">&#x270D;&#xFE0F; ${escapeHtml(t.createdBy)}</span>`;
+        }
+
+        // Project badge
         const projectBadge = t.type === 'project'
             ? `<span class="todo-pill project-pill">&#x1F4A1; Project</span>`
             : '';
 
-        // Category badge (if not redundant)
+        // Category badge
         let categoryBadge = '';
         if (t.category && currentGroupBy !== 'category') {
             categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
         }
 
-        // Points badge (default 5 pts)
+        // Points badge
         const pts = t.points || 5;
         const ptsDisplay = `<span class="pts-badge">+${pts} pts</span>`;
 
@@ -492,14 +551,14 @@ export function renderTodoTasks() {
         }
 
         return `
-        <div class="todo-card ${priorityClass} ${isCompleted ? 'completed' : ''}">
+        <div class="todo-card ${priorityClass} ${isCompleted ? 'completed' : ''} ${isAssignedToMe ? 'is-assigned-to-me' : ''}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
                     <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}">
                         ${isCompleted ? '&#x2714;' : ''}
                     </button>
                     <span class="todo-title ${isCompleted ? 'completed-text' : ''}">
-                        ${priorityDot} ${escapeHtml(t.name)}
+                        ${pri === 'high' ? '<span class="priority-dot high">&#x25CF;</span> ' : (pri === 'low' ? '<span class="priority-dot low">&#x25CF;</span> ' : '')}${escapeHtml(t.name)}
                     </span>
                     <div class="todo-card-actions">
                         <button class="chore-btn" onclick="editTask('${t.id}')" title="Edit Task" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
@@ -512,6 +571,9 @@ export function renderTodoTasks() {
                     ${projectBadge}
                     ${categoryBadge}
                     ${ptsDisplay}
+                    ${priorityPill}
+                    ${frictionPill}
+                    ${creatorPill}
                     ${descButton}
                 </div>
 
@@ -522,115 +584,250 @@ export function renderTodoTasks() {
         `;
     }
 
+    // Helper: Render routine card for the routines section
+    function renderRoutineCard(r) {
+        const todayKey = getLocalTodayKey();
+        const isCompletedToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
+        const pri = r.priority || 'medium';
+        const priorityClass = `priority-${pri}`;
+        const assignees = r.assignees || [];
+        const isAssignedToMe = (assignees.length === 1 && assignees[0] === activeUid);
+        const pts = r.points !== undefined && r.points !== null ? r.points : 15;
+        const sched = r.schedule || {};
+        const freqLabel = sched.type === 'weekly' ? 'Weekly' : 'Daily';
+        const comp = isCompletedToday ? r.completionsByDate[todayKey] : null;
+        const doneByName = comp?.completedByName || '';
+
+        let priorityPill = '';
+        if (pri === 'high') priorityPill = `<span class="todo-pill priority-pill high" title="High Priority">&#x1F525; High</span>`;
+        else if (pri === 'low') priorityPill = `<span class="todo-pill priority-pill low" title="Low Priority">&#x1F53D; Low</span>`;
+        else priorityPill = `<span class="todo-pill priority-pill medium" title="Medium Priority">&#x26A1; Med</span>`;
+
+        let creatorPill = '';
+        if (r.createdBy) creatorPill = `<span class="todo-pill creator-pill" title="Created by ${escapeHtml(r.createdBy)}">&#x270D;&#xFE0F; ${escapeHtml(r.createdBy)}</span>`;
+
+        return `
+        <div class="todo-card ${priorityClass} ${isCompletedToday ? 'completed' : ''} ${isAssignedToMe ? 'is-assigned-to-me' : ''}">
+            <div class="todo-card-top">
+                <div class="todo-card-main-line">
+                    <button type="button" class="item-checkbox ${isCompletedToday ? 'checked' : ''}" 
+                        onclick="${isCompletedToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}" 
+                        title="${isCompletedToday ? 'Completed today - click to undo' : 'Mark routine done today (awards points)'}"
+                        aria-label="${isCompletedToday ? 'Undo completion' : 'Mark complete'}">
+                        ${isCompletedToday ? '&#x2714;' : ''}
+                    </button>
+                    <span class="todo-title ${isCompletedToday ? 'completed-text' : ''}">
+                        ${pri === 'high' ? '<span class="priority-dot high">&#x25CF;</span> ' : (pri === 'low' ? '<span class="priority-dot low">&#x25CF;</span> ' : '')}${escapeHtml(r.name)}
+                    </span>
+                    <div class="todo-card-actions">
+                        <button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
+                        <button class="chore-btn delete-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x1F5D1;</button>
+                    </div>
+                </div>
+
+                <div class="todo-badges-row">
+                    ${formatRoutineAssignees(r, true)}
+                    <span class="todo-pill" style="color: var(--primary);">&#x21BB; ${freqLabel}</span>
+                    ${r.category ? `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(r.category)}</span>` : ''}
+                    <span class="pts-badge">+${pts} pts</span>
+                    ${priorityPill}
+                    ${creatorPill}
+                    ${isCompletedToday ? `<span class="completed-by-tag">&#x2714; ${escapeHtml(doneByName)}</span>` : ''}
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
     let bodyHtml = '';
 
     // ==========================================
-    // VIEW 1: COLLAPSIBLE CATEGORY ACCORDIONS
+    // 3-SECTION STACKED VIEW (DEFAULT: ALL TYPES)
     // ==========================================
-    if (currentGroupBy === 'category') {
-        const collapsedPrefs = state.userPrefs.collapsed || {};
-
-        // Group sorted tasks by category
-        const groups = {};
-        tasks.forEach(t => {
-            const cat = t.category || 'General';
-            if (!groups[cat]) groups[cat] = [];
-            groups[cat].push(t);
-        });
-
-        const categoryKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    if (currentType === 'all') {
+        const isTodosCollapsed = !!collapsedSections['todos'];
+        const isProjectsCollapsed = !!collapsedSections['projects'];
+        const isRoutinesCollapsed = !!collapsedSections['routines'];
 
         bodyHtml = `
-        <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
-            ${categoryKeys.map(catKey => {
-                const catTasks = sortTaskList(groups[catKey]);
-                const isCollapsed = !!collapsedPrefs[catKey];
-                const activeCount = catTasks.filter(t => !t.completed).length;
-                const totalCount = catTasks.length;
-
-                return `
-                <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
-                    <div class="category-accordion-header" onclick="toggleCategoryCollapse('${escapeHtml(catKey)}')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
-                                ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
-                            </span>
-                            <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
-                                &#x1F4C1; ${escapeHtml(catKey)}
-                            </span>
-                            <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
-                                ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
-                            </span>
-                        </div>
-                        <span style="font-size: 11px; color: var(--text-muted);">
-                            ${isCollapsed ? 'Click to show' : 'Click to hide'}
-                        </span>
-                    </div>
-
-                    <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
-                        <div class="todo-grid">
-                            ${catTasks.map(renderCard).join('')}
-                        </div>
-                    </div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- 1. TO-DOS (TOP SECTION) -->
+            <div class="todo-section-container">
+                <div class="todo-section-header" onclick="toggleMainSectionCollapse('todos')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x26A1; To-Dos</span>
+                        <span class="todo-section-count">${todosList.length}</span>
+                    </h4>
+                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isTodosCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
-                `;
-            }).join('')}
+                <div style="display: ${isTodosCollapsed ? 'none' : 'block'}; margin-top: 10px;">
+                    ${todosList.length > 0 
+                        ? `<div class="todo-grid">${todosList.map(renderCard).join('')}</div>`
+                        : `<div class="empty-section-muted">No to-dos matching current filters.</div>`
+                    }
+                </div>
+            </div>
+
+            <!-- 2. PROJECTS / IDEAS (MIDDLE SECTION) -->
+            <div class="todo-section-container">
+                <div class="todo-section-header" onclick="toggleMainSectionCollapse('projects')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x1F4A1; Projects / Ideas</span>
+                        <span class="todo-section-count">${projectsList.length}</span>
+                    </h4>
+                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isProjectsCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
+                </div>
+                <div style="display: ${isProjectsCollapsed ? 'none' : 'block'}; margin-top: 10px;">
+                    ${projectsList.length > 0 
+                        ? `<div class="todo-grid">${projectsList.map(renderCard).join('')}</div>`
+                        : `<div class="empty-section-muted">No projects matching current filters.</div>`
+                    }
+                </div>
+            </div>
+
+            <!-- 3. ROUTINES (BOTTOM SECTION) -->
+            <div class="todo-section-container">
+                <div class="todo-section-header" onclick="toggleMainSectionCollapse('routines')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x21BB; Routines</span>
+                        <span class="todo-section-count">${routinesList.length}</span>
+                    </h4>
+                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isRoutinesCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
+                </div>
+                <div style="display: ${isRoutinesCollapsed ? 'none' : 'block'}; margin-top: 10px;">
+                    ${routinesList.length > 0 
+                        ? `<div class="todo-grid">${routinesList.map(renderRoutineCard).join('')}</div>`
+                        : `<div class="empty-section-muted">No routines matching current filters.</div>`
+                    }
+                </div>
+            </div>
         </div>
         `;
-    } else {
-        // ==========================================
-        // VIEW 2: OWNERSHIP HIERARCHY (INDIVIDUAL VS SHARED)
-        // ==========================================
-        const individualTasks = [];
-        const sharedTasks = [];
-
-        tasks.forEach(t => {
-            const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
-            if (isShared) {
-                sharedTasks.push(t);
-            } else {
-                individualTasks.push(t);
-            }
-        });
-
-        const sortedIndividual = sortTaskList(individualTasks);
-        const sortedShared = sortTaskList(sharedTasks);
-
-        let individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
-        if (personFilter !== 'all' && personFilter !== 'me' && personFilter !== 'shared_anyone') {
-            const u = ALL_USERS.find(user => user.uid === personFilter);
-            individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'}`;
-        }
-
+    } else if (currentType === 'project') {
         bodyHtml = `
-        <!-- SECTION 1: INDIVIDUAL / MINE -->
         <div class="todo-section-container">
             <div class="todo-section-header">
                 <h4 class="todo-section-title">
-                    <span>&#x1F464; ${individualSectionTitle}</span>
-                    <span class="todo-section-count">${sortedIndividual.length}</span>
+                    <span>&#x1F4A1; Projects / Ideas</span>
+                    <span class="todo-section-count">${projectsList.length}</span>
                 </h4>
             </div>
-            ${sortedIndividual.length > 0
-                ? `<div class="todo-grid">${sortedIndividual.map(renderCard).join('')}</div>`
-                : `<div class="empty-section-muted">&#x1F464; No individual tasks matching current filters.</div>`
-            }
-        </div>
-
-        <!-- SECTION 2: SHARED / ANYONE CAN DO -->
-        <div class="todo-section-container" style="margin-top: 18px;">
-            <div class="todo-section-header shared-header">
-                <h4 class="todo-section-title">
-                    <span>&#x1F465; Shared / Anyone Can Do</span>
-                    <span class="todo-section-count">${sortedShared.length}</span>
-                </h4>
-            </div>
-            ${sortedShared.length > 0
-                ? `<div class="todo-grid">${sortedShared.map(renderCard).join('')}</div>`
-                : `<div class="empty-section-muted">&#x1F465; No shared or household-wide tasks matching current filters.</div>`
+            ${projectsList.length > 0
+                ? `<div class="todo-grid" style="margin-top: 10px;">${projectsList.map(renderCard).join('')}</div>`
+                : `<div class="empty-section-muted" style="margin-top: 10px;">No projects matching current filters.</div>`
             }
         </div>
         `;
+    } else if (currentType === 'routine') {
+        bodyHtml = `
+        <div class="todo-section-container">
+            <div class="todo-section-header">
+                <h4 class="todo-section-title">
+                    <span>&#x21BB; Routines</span>
+                    <span class="todo-section-count">${routinesList.length}</span>
+                </h4>
+            </div>
+            ${routinesList.length > 0
+                ? `<div class="todo-grid" style="margin-top: 10px;">${routinesList.map(renderRoutineCard).join('')}</div>`
+                : `<div class="empty-section-muted" style="margin-top: 10px;">No routines matching current filters.</div>`
+            }
+        </div>
+        `;
+    } else {
+        // currentType === 'todo'
+        if (currentGroupBy === 'category') {
+            const collapsedPrefs = state.userPrefs.collapsed || {};
+            const groups = {};
+            todosList.forEach(t => {
+                const cat = t.category || 'General';
+                if (!groups[cat]) groups[cat] = [];
+                groups[cat].push(t);
+            });
+
+            const categoryKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+
+            bodyHtml = `
+            <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
+                ${categoryKeys.map(catKey => {
+                    const catTasks = sortTaskList(groups[catKey]);
+                    const isCollapsed = !!collapsedPrefs[catKey];
+                    const activeCount = catTasks.filter(t => !t.completed).length;
+                    const totalCount = catTasks.length;
+
+                    return `
+                    <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
+                        <div class="category-accordion-header" onclick="toggleCategoryCollapse('${escapeHtml(catKey)}')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
+                                    ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
+                                </span>
+                                <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
+                                    &#x1F4C1; ${escapeHtml(catKey)}
+                                </span>
+                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
+                                    ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
+                                </span>
+                            </div>
+                            <span style="font-size: 11px; color: var(--text-muted);">
+                                ${isCollapsed ? 'Click to show' : 'Click to hide'}
+                            </span>
+                        </div>
+
+                        <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
+                            <div class="todo-grid">
+                                ${catTasks.map(renderCard).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
+            `;
+        } else {
+            // By Ownership
+            const individualTasks = [];
+            const sharedTasks = [];
+
+            todosList.forEach(t => {
+                const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
+                if (isShared) individualTasks.push(t);
+                else sharedTasks.push(t);
+            });
+
+            let individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
+            if (personFilter !== 'all' && personFilter !== 'me' && personFilter !== 'shared_anyone') {
+                const u = ALL_USERS.find(user => user.uid === personFilter);
+                individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'}`;
+            }
+
+            bodyHtml = `
+            <div class="todo-section-container">
+                <div class="todo-section-header">
+                    <h4 class="todo-section-title">
+                        <span>&#x1F464; ${individualSectionTitle}</span>
+                        <span class="todo-section-count">${individualTasks.length}</span>
+                    </h4>
+                </div>
+                ${individualTasks.length > 0
+                    ? `<div class="todo-grid" style="margin-top: 10px;">${individualTasks.map(renderCard).join('')}</div>`
+                    : `<div class="empty-section-muted" style="margin-top: 10px;">&#x1F464; No individual to-dos matching current filters.</div>`
+                }
+            </div>
+
+            <div class="todo-section-container" style="margin-top: 18px;">
+                <div class="todo-section-header shared-header">
+                    <h4 class="todo-section-title">
+                        <span>&#x1F465; Shared / Anyone Can Do</span>
+                        <span class="todo-section-count">${sharedTasks.length}</span>
+                    </h4>
+                </div>
+                ${sharedTasks.length > 0
+                    ? `<div class="todo-grid" style="margin-top: 10px;">${sharedTasks.map(renderCard).join('')}</div>`
+                    : `<div class="empty-section-muted" style="margin-top: 10px;">&#x1F465; No shared to-dos matching current filters.</div>`
+                }
+            </div>
+            `;
+        }
     }
 
     container.innerHTML = toolbarHtml + bodyHtml;
@@ -1252,6 +1449,7 @@ if (typeof window !== 'undefined') {
     window.setTodoSort = setTodoSort;
     window.setTodoGroupBy = setTodoGroupBy;
     window.toggleCategoryCollapse = toggleCategoryCollapse;
+    window.toggleMainSectionCollapse = toggleMainSectionCollapse;
     window.toggleTaskDescription = toggleTaskDescription;
     window.toggleSubtasksList = toggleSubtasksList;
     window.clearTaskFriction = clearTaskFriction;

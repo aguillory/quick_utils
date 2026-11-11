@@ -190,22 +190,14 @@
                                 &#x2699; Bulk Triage &amp; Management
                             </h3>
                             <div style="font-size: 12px; color: var(--text-muted);">
-                                View, search, individually edit, or batch triage household To-Dos and Routines.
+                                View, search, individually edit, or batch triage household To-Dos, Projects, and Routines.
                             </div>
                         </div>
-                        <button type="button" class="action-btn save-mode" onclick="if(state.manageSubtab === 'routines') openRoutineModal(); else openTaskModal();" style="font-size: 12px; padding: 6px 12px;">
-                            + Add New
-                        </button>
-                    </div>
-
-                    <!-- Manage Sub-Tabs & Search Row -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-                        <div class="manage-subtabs" style="display: flex; gap: 8px;">
-                            <button type="button" id="btnSubtabTodos" class="filter-pill active" onclick="switchManageSubtab('todos')">&#x1F4CB; Manage To-Dos</button>
-                            <button type="button" id="btnSubtabRoutines" class="filter-pill" onclick="switchManageSubtab('routines')">&#x1F4C5; Manage Routines</button>
-                        </div>
-                        <div style="flex: 1; max-width: 260px; min-width: 180px;">
-                            <input type="text" id="manageSearchInput" placeholder="Filter / search..." oninput="filterManageList(this.value)" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; box-sizing: border-box;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="manageSearchInput" placeholder="Filter / search..." oninput="filterManageList(this.value)" style="width: 200px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; box-sizing: border-box;">
+                            <button type="button" class="action-btn save-mode" onclick="openTaskModal();" style="font-size: 12px; padding: 6px 12px;">
+                                + Add New
+                            </button>
                         </div>
                     </div>
 

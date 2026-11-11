@@ -24,53 +24,86 @@ function escapeHtml(str) {
 export function isDailyRoutine(task) {
     if (!task) return false;
 
-    // Check if it is a routine
-    const isRoutine = task.type === 'routine' || task.isRoutine === true || !!task.schedule || !!task.uid || !!task.linkedNiptoTask;
-    if (!isRoutine) return false;
-
-    // String normalization helper
-    const isDailyStr = (val) => {
+    // Helper: Normalize string check for daily keywords
+    const checkStringForDaily = (val) => {
         if (!val || typeof val !== 'string') return false;
         const s = val.trim().toLowerCase();
-        return s === 'daily' || s === 'every day' || s === 'everyday' || s === '1d' || s === '1 day' || s === 'day';
+        const dailyKeywords = [
+            'daily', 'every day', 'everyday', '1d', '1 day', 'day',
+            '2x daily', 'twice daily', 'morning', 'evening', 'am', 'pm', 'night', 'anytime'
+        ];
+        return dailyKeywords.some(kw => s.includes(kw));
     };
 
-    // 1. Direct string checks on schedule or frequency
-    if (isDailyStr(task.schedule)) return true;
-    if (isDailyStr(task.frequency)) return true;
-
-    // Direct interval/repeat checks on task root
-    const rootInterval = Number(task.interval || task.repeatEvery || task.every);
-    if (rootInterval === 1) return true;
-
     const sched = (task.schedule && typeof task.schedule === 'object') ? task.schedule : null;
-    if (sched) {
-        // String checks inside schedule object
-        if (isDailyStr(sched.type)) return true;
-        if (isDailyStr(sched.frequency)) return true;
 
-        // 2. Numeric interval / repeat days === 1
-        const intervalVal = Number(sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue ?? sched.value);
-        const unitVal = String(sched.unit || sched.intervalUnit || 'days').trim().toLowerCase();
-        if (intervalVal === 1 && (unitVal === 'days' || unitVal === 'day')) return true;
-
-        // 3. Day-of-week routine that has all 7 days selected
-        const days = sched.daysOfWeek || sched.days || task.daysOfWeek || task.days;
-        if (Array.isArray(days)) {
-            if (days.length >= 7) return true;
-            const allDaysPresent = [0, 1, 2, 3, 4, 5, 6].every(d => days.includes(d) || days.includes(String(d)));
-            if (allDaysPresent) return true;
+    // 1. Weekly routine with specific days: if 1-6 days specified, NOT daily. If 7 days, IS daily.
+    const days = (sched && (sched.daysOfWeek || sched.days)) || task.daysOfWeek || task.days;
+    if (Array.isArray(days)) {
+        if (days.length > 0 && days.length < 7) {
+            return false;
         }
-
-        // If schedule object has no specific schedule type or rules set, default to daily
-        if (!sched.type && !sched.daysOfWeek && !sched.interval && !sched.value && !sched.days) {
+        if (days.length >= 7) {
             return true;
         }
-    } else {
-        // 4. Marked type === 'routine' (or in routines list) and has no specific schedule set (defaulting to daily)
-        if (!task.frequency && !task.schedule) {
+    }
+
+    // 2. Explicit numeric interval / unit check
+    const intervalVal = Number(
+        (sched && (sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue ?? sched.value)) ??
+        (task.interval ?? task.repeatEvery ?? task.every ?? task.value)
+    );
+    const unitVal = String(
+        (sched && (sched.unit || sched.intervalUnit)) || task.unit || task.intervalUnit || 'days'
+    ).trim().toLowerCase();
+
+    if (!isNaN(intervalVal) && intervalVal > 1) {
+        return false;
+    }
+    if (['weeks', 'week', 'months', 'month', 'years', 'year'].includes(unitVal)) {
+        return false;
+    }
+
+    // 3. Check direct recurrence/schedule strings across root and schedule object
+    const stringProps = [
+        task.schedule, task.frequency, task.recurrence, task.interval,
+        task.timeOfDay, task.repeat, task.times, task.resetType,
+        sched ? sched.type : null,
+        sched ? sched.frequency : null,
+        sched ? sched.recurrence : null,
+        sched ? sched.timeOfDay : null,
+        sched ? sched.resetType : null,
+        sched ? sched.unit : null
+    ];
+    for (const prop of stringProps) {
+        if (checkStringForDaily(prop)) {
             return true;
         }
+    }
+
+    // Check title/name for daily keyword (e.g. "Feed Orion daily", "Feed Orion - morning")
+    const title = (task.name || task.title || '').toLowerCase();
+    if (/\b(daily|every day|everyday|morning|evening|night|am|pm|twice daily|2x daily)\b/i.test(title)) {
+        return true;
+    }
+
+    // 4. If numeric interval is exactly 1 day
+    if (intervalVal === 1 && (unitVal === 'days' || unitVal === 'day')) {
+        return true;
+    }
+
+    // 5. If it's a routine (in state.routines or has routine-like metadata) with no explicit weekly/interval restriction,
+    // it defaults to standard daily routine!
+    const isRoutineItem = task.uid || task.linkedNiptoTask || task.type === 'routine' || task.isRoutine || !!task.schedule;
+    if (isRoutineItem) {
+        const typeStr = (sched?.type || task.type || '').toLowerCase();
+        if (typeStr === 'weekly' && Array.isArray(days) && days.length > 0 && days.length < 7) {
+            return false;
+        }
+        if (typeStr === 'interval' && !isNaN(intervalVal) && intervalVal > 1) {
+            return false;
+        }
+        return true;
     }
 
     return false;
@@ -82,7 +115,7 @@ export function formatRoutineAssignees(routine, compact = true) {
     const baseClass = "routine-assignee-pill";
 
     if (!assignees.length || assignees.length >= ALL_USERS.length) {
-        return `<span class="${baseClass}">&#x1F465; Anyone</span>`;
+        return `<span class="${baseClass} shared-pill" title="Anyone can do">&#x1F465;</span>`;
     }
 
     if (assignees.length >= 3) {
@@ -90,7 +123,7 @@ export function formatRoutineAssignees(routine, compact = true) {
             const u = ALL_USERS.find(user => user.uid === uid);
             return u ? u.name : 'Unknown';
         }).join(', ');
-        return `<span class="${baseClass} shared-pill" title="${escapeHtml(fullNames)}">&#x1F465; Shared</span>`;
+        return `<span class="${baseClass} shared-pill" title="${escapeHtml(fullNames)}">&#x1F465;</span>`;
     }
 
     if (routine.completionType === 'individual') {

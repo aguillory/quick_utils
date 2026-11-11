@@ -35,22 +35,27 @@ Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JS
     "id": "matched_task_id_if_updating_completing_or_deleting (null for create)",
     "type": "todo" | "routine" | "project",
     "title": "Task title",
-    "description": "Any extra notes, context, or steps mentioned (empty string if none)",
+    "description": "Any extra notes, context, or instructions mentioned (empty string if none)",
+    "subtasks": ["Subtask step 1", "Subtask step 2"],
     "assignee": "Alyssa" | "Devyn" | "Carrina" | "Kenny" | "Ayden" | "DJ" | "Anyone",
     "category": "Home" | "Farm" | "Errands" | "Tech" | "Kids" | "Project",
     "points": 5,
     "priority": "high" | "medium" | "low",
+    "frictionTag": "" | "quick" | "low_brain" | "deep_focus",
     "schedule": {"type": "daily"|"weekly", "daysOfWeek": [0,1,2,3,4,5,6], "timeOfDay": "Morning"|"Afternoon"|"Evening"|"Anytime", "points": 15},
-    "reason": "Short summary of why this action was proposed (e.g. 'New To-Do', 'Increased points to 10', 'Marked completed', 'Moved to projects')"
+    "reason": "Short summary of why this action was proposed (e.g. 'New To-Do with 3 steps', 'Increased points to 10', 'Marked completed')"
   }
 ]
 
 Action Rules:
 - "create": Brand new items not matching any existing task.
+  - subtasks: If the task/project has multiple steps, components, or instructions, output an array of concise actionable step strings.
   - type: "routine" for recurring/scheduled chores (e.g. daily, weekly), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
   - points: Default to 5 if not specified (or 15 for routines).
   - priority: Default to "medium".
-- "update": The user wants to modify fields on an existing task (e.g. change points, move to projects, edit title, set priority). Match its exact id in CURRENT_TASKS.
+  - frictionTag: "" (standard), "quick" (<5m), "low_brain", or "deep_focus".
+- "update": The user wants to modify fields on an existing task (e.g. change points, add subtasks, move to projects, edit title, set priority). Match its exact id in CURRENT_TASKS.
+  - If the user asks to break down or add steps to an existing task, include the "subtasks" array.
 - "complete": The user mentioned crossing off, finishing, or completing an existing task. Match its exact id.
 - "delete": The user explicitly asked to delete or remove an existing task. Match its exact id.
 Output pure JSON array only.`;
@@ -257,6 +262,13 @@ USER BRAIN DUMP / RAMBLE:
                 ? item.type
                 : (current ? current.type : (item.targetType === 'routine' ? 'routine' : 'todo'));
 
+            let subtasks = [];
+            if (Array.isArray(item.subtasks)) {
+                subtasks = item.subtasks.map(s => typeof s === 'string' ? s : (s.name || s.text || '')).filter(Boolean);
+            } else if (current && Array.isArray(current.subTasks)) {
+                subtasks = current.subTasks.map(s => s.name || s.text || '').filter(Boolean);
+            }
+
             return {
                 stagingId: 'stage_' + Date.now() + '_' + idx,
                 selected: true,
@@ -265,11 +277,13 @@ USER BRAIN DUMP / RAMBLE:
                 type: itemType,
                 title: item.title || (current ? current.title : 'Untitled Task'),
                 description: item.description !== undefined ? item.description : (current ? current.description : ''),
+                subtasks,
                 assignee: item.assignee || 'Anyone',
                 category: item.category || (current ? current.category : 'Home'),
                 points: item.points !== undefined ? (parseInt(item.points, 10) || 5) : (current ? current.points : 5),
                 priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : (current ? current.priority : 'medium'),
-                schedule: item.schedule || (current ? current.schedule : (itemType === 'routine' ? { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning', points: 15 } : null)),
+                frictionTag: item.frictionTag || '',
+                schedule: item.schedule || (current ? current.schedule : (itemType === 'routine' ? { type: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Morning', points: 15 } : null)),
                 reason: item.reason || (action === 'create' ? 'New item' : (action === 'complete' ? 'Marked complete' : 'Updated')),
                 current: current || null
             };
@@ -338,8 +352,32 @@ export function rawLineByLineAdd() {
 }
 
 // ==========================================
-// 3. CALM, UNIFIED STAGING REVIEW UI
+// 3. FULL-DETAIL STAGING REVIEW UI (LIKE BULK TRIAGE)
 // ==========================================
+export function addSubtaskToStaging(stagingIdx, text = '') {
+    if (!state.brainDumpStaging[stagingIdx]) return;
+    if (!Array.isArray(state.brainDumpStaging[stagingIdx].subtasks)) {
+        state.brainDumpStaging[stagingIdx].subtasks = [];
+    }
+    state.brainDumpStaging[stagingIdx].subtasks.push(text);
+    renderBrainDumpStaging();
+}
+
+export function updateStagingSubtask(stagingIdx, subtaskIdx, text) {
+    if (!state.brainDumpStaging[stagingIdx]) return;
+    if (state.brainDumpStaging[stagingIdx].subtasks && state.brainDumpStaging[stagingIdx].subtasks[subtaskIdx] !== undefined) {
+        state.brainDumpStaging[stagingIdx].subtasks[subtaskIdx] = text;
+    }
+}
+
+export function removeStagingSubtask(stagingIdx, subtaskIdx) {
+    if (!state.brainDumpStaging[stagingIdx]) return;
+    if (state.brainDumpStaging[stagingIdx].subtasks) {
+        state.brainDumpStaging[stagingIdx].subtasks.splice(subtaskIdx, 1);
+        renderBrainDumpStaging();
+    }
+}
+
 export function renderBrainDumpStaging() {
     const container = document.getElementById('brainDumpStaging');
     if (!container) return;
@@ -370,6 +408,123 @@ export function renderBrainDumpStaging() {
     </div>
     `;
 
+    // Helper: render single staged item card with all details exposed
+    function renderStagingCard(item, idx) {
+        let actionBadge = '';
+        if (item.action === 'complete') actionBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">COMPLETE</span>';
+        else if (item.action === 'delete') actionBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">DELETE</span>';
+        else if (item.action === 'update') actionBadge = '<span style="background: rgba(37, 99, 235, 0.15); color: #2563eb; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">UPDATE</span>';
+        else actionBadge = '<span style="background: rgba(16, 185, 129, 0.15); color: #059669; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">NEW</span>';
+
+        const cur = item.current;
+
+        return `
+        <div class="staging-card ${!item.selected ? 'is-unselected' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px; opacity: ${item.selected ? '1' : '0.6'}; display: flex; flex-direction: column; gap: 8px;">
+            <!-- Line 1: Checkbox, Badge, Title, Reason, Delete -->
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
+                ${actionBadge}
+                <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="flex: 1; min-width: 180px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);" placeholder="Task title...">
+                ${item.reason ? `<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${escapeHtml(item.reason)}</span>` : ''}
+                <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px; margin-left: auto;" title="Remove row">&times;</button>
+            </div>
+
+            ${cur ? `
+            <div style="font-size: 11px; color: var(--text-muted); padding: 4px 8px; background: var(--bg-color); border-radius: 4px;">
+                Current state: <strong>${escapeHtml(cur.title)}</strong> &bull; Type: ${cur.type} &bull; ${cur.points || 5} pts &bull; Pri: ${cur.priority || 'med'} &bull; Cat: ${cur.category || 'Home'}
+            </div>
+            ` : ''}
+
+            <!-- Line 2: Full Editable Metadata Grid (Type, Category, Points, Priority, Friction, Assignee, Schedule) -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 11px;">
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Type:
+                    <select onchange="updateStagingItem(${idx}, 'type', this.value); renderBrainDumpStaging();" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
+                        <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project / Idea</option>
+                        <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Cat:
+                    <input type="text" value="${escapeHtml(item.category || 'Home')}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="width: 75px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Points:
+                    <input type="number" value="${item.points || 5}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Priority:
+                    <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
+                        <option value="medium" ${item.priority === 'medium' || !item.priority ? 'selected' : ''}>Med</option>
+                        <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Friction:
+                    <select onchange="updateStagingItem(${idx}, 'frictionTag', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="" ${!item.frictionTag ? 'selected' : ''}>None</option>
+                        <option value="quick" ${item.frictionTag === 'quick' ? 'selected' : ''}>&#x26A1; Quick (&lt;5m)</option>
+                        <option value="low_brain" ${item.frictionTag === 'low_brain' ? 'selected' : ''}>&#x1F9E0; Low Brain</option>
+                        <option value="deep_focus" ${item.frictionTag === 'deep_focus' ? 'selected' : ''}>&#x1F3AF; Deep Focus</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Assignee:
+                    <select onchange="updateStagingItem(${idx}, 'assignee', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        ${userOptionsHtml.replace(`value="${escapeHtml(item.assignee)}"`, `value="${escapeHtml(item.assignee)}" selected`)}
+                    </select>
+                </label>
+
+                ${item.type === 'routine' ? `
+                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
+                    Schedule:
+                    <select onchange="const s = item.schedule || {}; s.type = this.value; updateStagingItem(${idx}, 'schedule', s);" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="daily" ${item.schedule?.type !== 'weekly' ? 'selected' : ''}>Daily</option>
+                        <option value="weekly" ${item.schedule?.type === 'weekly' ? 'selected' : ''}>Weekly</option>
+                    </select>
+                </label>
+                ` : ''}
+            </div>
+
+            <!-- Line 3: Description (Always visible & editable) -->
+            <div>
+                <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 2px;">Description / Notes:</label>
+                <textarea rows="2" placeholder="Optional details, instructions, or steps..." onchange="updateStagingItem(${idx}, 'description', this.value)" style="width: 100%; padding: 6px 8px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; font-family: inherit; background: var(--bg-color); color: var(--text-main);">${escapeHtml(item.description || '')}</textarea>
+            </div>
+
+            <!-- Line 4: Subtasks List (Always visible with add/remove/edit) -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted);">
+                        Subtasks / Steps (${item.subtasks?.length || 0})
+                    </span>
+                    <button type="button" onclick="addSubtaskToStaging(${idx}, '')" class="action-btn" style="padding: 2px 6px; font-size: 10px;">
+                        + Add Step
+                    </button>
+                </div>
+                ${(item.subtasks && item.subtasks.length > 0) ? `
+                <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 6px;">
+                    ${item.subtasks.map((step, sIdx) => `
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <span style="font-size: 11px; color: var(--text-muted);">&#x2022;</span>
+                            <input type="text" value="${escapeHtml(step)}" onchange="updateStagingSubtask(${idx}, ${sIdx}, this.value)" placeholder="Step description..." style="flex: 1; padding: 3px 6px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
+                            <button type="button" onclick="removeStagingSubtask(${idx}, ${sIdx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove step">&times;</button>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        `;
+    }
+
     // SECTION 1: NEW ITEMS TO ADD
     if (newItems.length > 0) {
         html += `
@@ -378,74 +533,11 @@ export function renderBrainDumpStaging() {
                 <h4 style="margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px;">
                     &#x2728; New Items to Add (${newItems.length})
                 </h4>
+                <label style="font-size: 12px; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" checked onchange="toggleSectionStagingRows('create', this.checked)"> Select All New
+                </label>
             </div>
-            <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-                    <thead>
-                        <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
-                            <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleSectionStagingRows('create', this.checked)"></th>
-                            <th style="padding: 8px 10px; width: 95px;">Type</th>
-                            <th style="padding: 8px 10px; min-width: 150px;">Title</th>
-                            <th style="padding: 8px 10px; min-width: 130px;">Description</th>
-                            <th style="padding: 8px 10px; width: 60px;">Points</th>
-                            <th style="padding: 8px 10px; width: 85px;">Priority</th>
-                            <th style="padding: 8px 10px; width: 95px;">Assignee</th>
-                            <th style="padding: 8px 10px; width: 90px;">Category</th>
-                            <th style="padding: 8px 10px; width: 40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        state.brainDumpStaging.forEach((item, idx) => {
-            if (item.action !== 'create') return;
-            html += `
-            <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
-                <td style="padding: 8px 10px;">
-                    <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
-                </td>
-                <td style="padding: 8px 10px;">
-                    <select onchange="updateStagingItem(${idx}, 'type', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                        <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
-                        <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project</option>
-                        <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
-                    </select>
-                </td>
-                <td style="padding: 8px 10px;">
-                    <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 13px; width: 100%; box-sizing: border-box;">
-                </td>
-                <td style="padding: 8px 10px;">
-                    <input type="text" value="${escapeHtml(item.description || '')}" placeholder="Notes..." onchange="updateStagingItem(${idx}, 'description', this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
-                </td>
-                <td style="padding: 8px 10px;">
-                    <input type="number" value="${item.points || 5}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 50px; text-align: center;">
-                </td>
-                <td style="padding: 8px 10px;">
-                    <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                        <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
-                        <option value="medium" ${item.priority === 'medium' || !item.priority ? 'selected' : ''}>Med</option>
-                        <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
-                    </select>
-                </td>
-                <td style="padding: 8px 10px;">
-                    <select onchange="updateStagingItem(${idx}, 'assignee', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%;">
-                        ${userOptionsHtml.replace(`value="${escapeHtml(item.assignee)}"`, `value="${escapeHtml(item.assignee)}" selected`)}
-                    </select>
-                </td>
-                <td style="padding: 8px 10px;">
-                    <input type="text" value="${escapeHtml(item.category || 'Home')}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 12px; width: 100%; box-sizing: border-box;">
-                </td>
-                <td style="padding: 8px 10px; text-align: center;">
-                    <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove row">&times;</button>
-                </td>
-            </tr>
-            `;
-        });
-
-        html += `
-                    </tbody>
-                </table>
-            </div>
+            ${state.brainDumpStaging.map((item, idx) => item.action === 'create' ? renderStagingCard(item, idx) : '').join('')}
         </div>
         `;
     }
@@ -458,101 +550,11 @@ export function renderBrainDumpStaging() {
                 <h4 style="margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px;">
                     &#x21BB; Updates &amp; Completions for Existing Items (${existingItems.length})
                 </h4>
+                <label style="font-size: 12px; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" checked onchange="toggleSectionStagingRows('existing', this.checked)"> Select All Updates
+                </label>
             </div>
-            <div style="overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-                    <thead>
-                        <tr style="background: var(--bg-color); border-bottom: 2px solid var(--border-color);">
-                            <th style="padding: 8px 10px; width: 30px;"><input type="checkbox" checked onchange="toggleSectionStagingRows('existing', this.checked)"></th>
-                            <th style="padding: 8px 10px; width: 85px;">Action</th>
-                            <th style="padding: 8px 10px; min-width: 160px;">Current State</th>
-                            <th style="padding: 8px 10px; min-width: 220px;">Proposed State</th>
-                            <th style="padding: 8px 10px; min-width: 130px;">Reason</th>
-                            <th style="padding: 8px 10px; width: 40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        state.brainDumpStaging.forEach((item, idx) => {
-            if (item.action === 'create') return;
-
-            const cur = item.current || {
-                title: item.title,
-                type: item.type,
-                points: item.points,
-                priority: item.priority,
-                category: item.category
-            };
-
-            let actionBadge = '';
-            if (item.action === 'complete') actionBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">COMPLETE</span>';
-            else if (item.action === 'delete') actionBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">DELETE</span>';
-            else actionBadge = '<span style="background: rgba(37, 99, 235, 0.15); color: #2563eb; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">UPDATE</span>';
-
-            const titleChanged = item.title && item.title !== cur.title;
-            const typeChanged = item.type && item.type !== cur.type;
-            const pointsChanged = item.points !== undefined && item.points !== cur.points;
-            const priorityChanged = item.priority && item.priority !== cur.priority;
-            const categoryChanged = item.category && item.category !== cur.category;
-
-            html += `
-            <tr style="border-bottom: 1px solid var(--border-color); ${!item.selected ? 'opacity: 0.5;' : ''}">
-                <td style="padding: 8px 10px;">
-                    <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
-                </td>
-                <td style="padding: 8px 10px;">
-                    ${actionBadge}
-                </td>
-                <td style="padding: 8px 10px; color: var(--text-muted);">
-                    <div style="font-weight: 700; color: var(--text-main); font-size: 13px;">${escapeHtml(cur.title)}</div>
-                    <div style="font-size: 11px; margin-top: 2px;">
-                        Type: ${escapeHtml(cur.type)} &bull; ${cur.points || 5} pts &bull; ${escapeHtml(cur.priority || 'med')} &bull; ${escapeHtml(cur.category || 'Home')}
-                    </div>
-                </td>
-                <td style="padding: 8px 10px;">
-                    ${item.action === 'complete' ? `
-                        <span style="color: var(--success); font-weight: 700;">Mark task complete &amp; award points</span>
-                    ` : item.action === 'delete' ? `
-                        <span style="color: var(--danger); font-weight: 700;">Delete task from database</span>
-                    ` : `
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="padding: 3px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); ${titleChanged ? 'background: rgba(34, 197, 94, 0.1); font-weight: bold;' : ''}">
-                            
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                <select onchange="updateStagingItem(${idx}, 'type', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${typeChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
-                                    <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>To-Do</option>
-                                    <option value="project" ${item.type === 'project' ? 'selected' : ''}>Project</option>
-                                    <option value="routine" ${item.type === 'routine' ? 'selected' : ''}>Routine</option>
-                                </select>
-
-                                <input type="number" value="${item.points}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; ${pointsChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Points">
-
-                                <select onchange="updateStagingItem(${idx}, 'priority', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${priorityChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}">
-                                    <option value="high" ${item.priority === 'high' ? 'selected' : ''}>High</option>
-                                    <option value="medium" ${item.priority === 'medium' ? 'selected' : ''}>Med</option>
-                                    <option value="low" ${item.priority === 'low' ? 'selected' : ''}>Low</option>
-                                </select>
-
-                                <input type="text" value="${escapeHtml(item.category)}" onchange="updateStagingItem(${idx}, 'category', this.value)" style="width: 70px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); ${categoryChanged ? 'background: rgba(34, 197, 94, 0.15); font-weight: bold;' : ''}" title="Category">
-                            </div>
-                        </div>
-                    `}
-                </td>
-                <td style="padding: 8px 10px; font-size: 12px; color: var(--text-muted);">
-                    ${escapeHtml(item.reason)}
-                </td>
-                <td style="padding: 8px 10px; text-align: center;">
-                    <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove row">&times;</button>
-                </td>
-            </tr>
-            `;
-        });
-
-        html += `
-                    </tbody>
-                </table>
-            </div>
+            ${state.brainDumpStaging.map((item, idx) => item.action !== 'create' ? renderStagingCard(item, idx) : '').join('')}
         </div>
         `;
     }
@@ -645,7 +647,7 @@ export async function applyUnifiedStagingToFirestore() {
                     linkedNiptoTask: null,
                     points: pts,
                     overdueAfterHours: 14,
-                    frictionTag: 'quick',
+                    frictionTag: item.frictionTag || '',
                     category: item.category || 'Home',
                     createdBy: doerName,
                     createdAt: nowIso,
@@ -657,6 +659,14 @@ export async function applyUnifiedStagingToFirestore() {
                 });
             } else {
                 const todoRef = window.getNiptoCollection('custom_tasks').doc();
+                const subTasks = (item.subtasks || []).map((s, i) => ({
+                    id: 'st_' + Date.now() + '_' + i,
+                    name: typeof s === 'string' ? s : (s.name || s.text || ''),
+                    completed: false,
+                    createdBy: doerName,
+                    createdAt: nowIso
+                }));
+
                 batch.set(todoRef, {
                     name: item.title,
                     type: item.type || 'todo',
@@ -664,13 +674,13 @@ export async function applyUnifiedStagingToFirestore() {
                     category: item.category || 'Home',
                     location: 'N/A',
                     assignees: assigneeUids,
-                    frictionTag: 'quick',
+                    frictionTag: item.frictionTag || '',
                     priority: item.priority || 'medium',
                     points: pts,
                     description: item.description || '',
                     notes: item.description || '',
                     createdBy: doerName,
-                    subTasks: [],
+                    subTasks: subTasks,
                     completed: false,
                     createdAt: nowIso,
                     updatedAt: nowIso,
@@ -716,7 +726,9 @@ export async function applyUnifiedStagingToFirestore() {
                     name: item.title,
                     category: item.category,
                     points: item.points || 15,
-                    priority: item.priority,
+                    priority: item.priority || 'medium',
+                    frictionTag: item.frictionTag || '',
+                    timeOfDay: item.schedule?.timeOfDay || 'Anytime',
                     updatedAt: nowIso,
                     lastReviewedAt: nowIso
                 });
@@ -733,24 +745,36 @@ export async function applyUnifiedStagingToFirestore() {
                         points: item.points || 15,
                         category: item.category || 'Home',
                         priority: item.priority || 'medium',
+                        frictionTag: item.frictionTag || '',
                         createdAt: nowIso,
                         updatedAt: nowIso,
                         lastReviewedAt: nowIso
                     });
                     batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
                 } else {
-                    batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
+                    const updates = {
                         name: item.title,
                         type: item.type,
                         bucket: item.type === 'project' ? 'project_idea' : 'actionable',
                         category: item.category,
                         points: item.points || 5,
                         priority: item.priority,
+                        frictionTag: item.frictionTag || '',
                         description: item.description !== undefined ? item.description : '',
                         notes: item.description !== undefined ? item.description : '',
                         updatedAt: nowIso,
                         lastReviewedAt: nowIso
-                    });
+                    };
+                    if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
+                        updates.subTasks = item.subtasks.map((s, i) => ({
+                            id: 'st_' + Date.now() + '_' + i,
+                            name: typeof s === 'string' ? s : (s.name || s.text || ''),
+                            completed: false,
+                            createdBy: doerName,
+                            createdAt: nowIso
+                        }));
+                    }
+                    batch.update(window.getNiptoCollection('custom_tasks').doc(id), updates);
                 }
             }
             updatedCount++;
@@ -794,6 +818,9 @@ export const clearRambleStaging = clearBrainDumpStaging;
 // ==========================================
 export function switchManageSubtab(subtab) {
     state.manageSubtab = subtab;
+    if (subtab === 'todos') state.bulkTypeFilter = 'todo';
+    else if (subtab === 'routines') state.bulkTypeFilter = 'routine';
+    else state.bulkTypeFilter = subtab || 'all';
     renderBulkTriageList();
 }
 
@@ -873,31 +900,28 @@ export async function updateInlineTaskField(sourceType, id, field, value) {
     }
 }
 
+export function toggleBulkSectionCollapse(sectionKey) {
+    if (!state.userPrefs.bulkCollapsedSections) state.userPrefs.bulkCollapsedSections = {};
+    const curr = !!state.userPrefs.bulkCollapsedSections[sectionKey];
+    state.userPrefs.bulkCollapsedSections[sectionKey] = !curr;
+    saveCloudPreference('bulkCollapsedSections', state.userPrefs.bulkCollapsedSections);
+    renderBulkTriageList();
+}
+
 export function renderBulkTriageList() {
     const container = document.getElementById('bulkTriageContainer');
     if (!container) return;
 
-    const subtab = state.manageSubtab || 'todos';
     const query = state.manageSearchQuery || '';
-    const typeFilter = state.bulkTypeFilter || 'all';
+    if (!state.bulkTypeFilter) state.bulkTypeFilter = 'all';
+    const typeFilter = state.bulkTypeFilter;
     const categoryFilter = state.bulkCategoryFilter || 'all';
     const priorityFilter = state.bulkPriorityFilter || 'all';
     const ownershipFilter = state.bulkOwnershipFilter || 'all';
     const sortBy = state.bulkSortBy || 'default';
+    const collapsedSections = state.userPrefs.bulkCollapsedSections || {};
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-
-    // Synchronize subtab buttons
-    const btnTodos = document.getElementById('btnSubtabTodos');
-    const btnRoutines = document.getElementById('btnSubtabRoutines');
-    if (btnTodos) {
-        if (subtab === 'todos') btnTodos.classList.add('active');
-        else btnTodos.classList.remove('active');
-    }
-    if (btnRoutines) {
-        if (subtab === 'routines') btnRoutines.classList.add('active');
-        else btnRoutines.classList.remove('active');
-    }
 
     const allTodos = (state.todoTasksData || []).map(normalizeTask);
     const allRoutines = state.routines || [];
@@ -914,21 +938,241 @@ export function renderBulkTriageList() {
         return 2;
     }
 
+    // Helper: matches category
+    function matchesCat(cat) {
+        if (categoryFilter === 'all') return true;
+        return (cat || 'Home').toLowerCase() === categoryFilter.toLowerCase();
+    }
+
+    // Helper: matches priority
+    function matchesPri(pri) {
+        if (priorityFilter === 'all') return true;
+        return (pri || 'medium').toLowerCase() === priorityFilter.toLowerCase();
+    }
+
+    // Helper: matches ownership
+    function matchesOwn(assignees = []) {
+        if (ownershipFilter === 'all') return true;
+        if (ownershipFilter === 'me') return assignees.includes(activeUid);
+        if (ownershipFilter === 'individual') return assignees.length === 1;
+        if (ownershipFilter === 'shared') return assignees.length === 0 || assignees.length > 1;
+        if (ownershipFilter === 'unassigned') return assignees.length === 0;
+        return true;
+    }
+
+    // Filter Tasks (To-Dos and Projects)
+    let filteredTasks = allTodos.filter(t => matchesCat(t.category) && matchesPri(t.priority) && matchesOwn(t.assignees));
+    if (query) {
+        filteredTasks = filteredTasks.filter(t => {
+            const nameMatch = (t.name || '').toLowerCase().includes(query);
+            const descMatch = (t.description || '').toLowerCase().includes(query);
+            const catMatch = (t.category || '').toLowerCase().includes(query);
+            const creatorMatch = (t.createdBy || '').toLowerCase().includes(query);
+            return nameMatch || descMatch || catMatch || creatorMatch;
+        });
+    }
+
+    // Filter Routines
+    let filteredRoutines = allRoutines.filter(r => matchesCat(r.category) && matchesPri(r.priority) && matchesOwn(r.assignees));
+    if (query) {
+        filteredRoutines = filteredRoutines.filter(r => {
+            const nameMatch = (r.name || '').toLowerCase().includes(query);
+            const catMatch = (r.category || '').toLowerCase().includes(query);
+            return nameMatch || catMatch;
+        });
+    }
+
+    // Sort Tasks: Incomplete first, completed auto-sorted to bottom!
+    function sortTasks(list) {
+        return list.slice().sort((a, b) => {
+            if (a.completed !== b.completed) return a.completed ? 1 : -1;
+
+            if (sortBy === 'priority') {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return (b.points || 5) - (a.points || 5);
+            } else if (sortBy === 'points') {
+                return (b.points || 5) - (a.points || 5);
+            } else if (sortBy === 'category') {
+                return (a.category || 'Home').localeCompare(b.category || 'Home');
+            } else if (sortBy === 'title') {
+                return (a.name || '').localeCompare(b.name || '');
+            } else {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+            }
+        });
+    }
+
+    // Sort Routines: Incomplete today first!
+    function sortRoutines(list) {
+        const todayKey = getLocalTodayKey();
+        return list.slice().sort((a, b) => {
+            const aDone = !!(a.completionsByDate && a.completionsByDate[todayKey]);
+            const bDone = !!(b.completionsByDate && b.completionsByDate[todayKey]);
+            if (aDone !== bDone) return aDone ? 1 : -1;
+
+            if (sortBy === 'priority') {
+                const pA = getPriorityWeight(a.priority);
+                const pB = getPriorityWeight(b.priority);
+                if (pA !== pB) return pB - pA;
+                return (b.points || 15) - (a.points || 15);
+            } else if (sortBy === 'points') {
+                return (b.points || 15) - (a.points || 15);
+            } else if (sortBy === 'category') {
+                return (a.category || 'Home').localeCompare(b.category || 'Home');
+            } else {
+                return (a.name || '').localeCompare(b.name || '');
+            }
+        });
+    }
+
+    const todosList = sortTasks(filteredTasks.filter(t => t.type === 'todo'));
+    const projectsList = sortTasks(filteredTasks.filter(t => t.type === 'project'));
+    const routinesList = sortRoutines(filteredRoutines);
+
+    // Render single task row for Bulk Triage
+    function renderBulkTaskRow(t) {
+        const isChecked = state.selectedTodoIds.has(t.id);
+        const isCompleted = !!t.completed;
+
+        return `
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isCompleted ? 'var(--bg-color)' : 'transparent')}; opacity: ${isCompleted ? 0.6 : 1};">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)" title="Select for bulk action">
+                
+                <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
+                    ${isCompleted ? '&#x2714;' : ''}
+                </button>
+
+                <input type="text" value="${escapeHtml(t.name)}" onchange="updateInlineTaskField('todo', '${t.id}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); text-decoration: ${isCompleted ? 'line-through' : 'none'}; box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
+
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button type="button" class="action-btn" onclick="editTask('${t.id}')" title="Full Edit Modal" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
+                    <button type="button" class="action-btn" onclick="deleteTask('${t.id}')" title="Delete Task" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Type:
+                    <select onchange="updateInlineTaskField('todo', '${t.id}', 'type', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="todo" ${t.type === 'todo' ? 'selected' : ''}>To-Do</option>
+                        <option value="project" ${t.type === 'project' ? 'selected' : ''}>Project</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Priority:
+                    <select onchange="updateInlineTaskField('todo', '${t.id}', 'priority', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="high" ${t.priority === 'high' ? 'selected' : ''}>High</option>
+                        <option value="medium" ${t.priority === 'medium' ? 'selected' : ''}>Medium</option>
+                        <option value="low" ${t.priority === 'low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Points:
+                    <input type="number" value="${t.points || 5}" min="0" onchange="updateInlineTaskField('todo', '${t.id}', 'points', parseInt(this.value, 10) || 5)" style="width: 45px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Cat:
+                    <input type="text" value="${escapeHtml(t.category || 'Home')}" onchange="updateInlineTaskField('todo', '${t.id}', 'category', this.value)" style="width: 75px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                </label>
+
+                <button type="button" class="action-btn" onclick="const d = document.getElementById('bulk-desc-${t.id}'); d.style.display = (d.style.display === 'none' ? 'block' : 'none');" style="padding: 2px 6px; font-size: 10px;">
+                    ${t.description ? '&#x1F4DD; Note' : '+ Note'}
+                </button>
+            </div>
+
+            <div id="bulk-desc-${t.id}" style="display: none; margin-left: 56px; margin-top: 4px;">
+                <input type="text" value="${escapeHtml(t.description || '')}" placeholder="Optional details/description..." onchange="updateInlineTaskField('todo', '${t.id}', 'description', this.value)" style="width: 100%; padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
+            </div>
+        </div>
+        `;
+    }
+
+    // Render single routine row for Bulk Triage
+    function renderBulkRoutineRow(r) {
+        const isChecked = state.selectedRoutineIds.has(r.uid);
+        const sched = r.schedule || {};
+        const freq = sched.type || 'daily';
+        const pts = r.points || 15;
+        const todayKey = getLocalTodayKey();
+        const isDoneToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
+
+        return `
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isDoneToday ? 'var(--bg-color)' : 'transparent')}; opacity: ${isDoneToday ? 0.7 : 1};">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)" title="Select for bulk action">
+                
+                <button type="button" class="item-checkbox ${isDoneToday ? 'checked' : ''}" onclick="${isDoneToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}" title="${isDoneToday ? 'Completed today - click to undo' : 'Mark done today'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
+                    ${isDoneToday ? '&#x2714;' : ''}
+                </button>
+
+                <input type="text" value="${escapeHtml(r.name)}" onchange="updateInlineTaskField('routine', '${r.uid}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); text-decoration: ${isDoneToday ? 'line-through' : 'none'}; box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
+
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button type="button" class="action-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
+                    <button type="button" class="action-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Schedule:
+                    <select onchange="updateRoutineScheduleInline('${r.uid}', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="daily" ${freq === 'daily' ? 'selected' : ''}>Daily</option>
+                        <option value="weekly" ${freq === 'weekly' ? 'selected' : ''}>Weekly</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Priority:
+                    <select onchange="updateInlineTaskField('routine', '${r.uid}', 'priority', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <option value="high" ${r.priority === 'high' ? 'selected' : ''}>High</option>
+                        <option value="medium" ${r.priority === 'medium' || !r.priority ? 'selected' : ''}>Medium</option>
+                        <option value="low" ${r.priority === 'low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Points:
+                    <input type="number" value="${pts}" min="0" onchange="updateInlineTaskField('routine', '${r.uid}', 'points', parseInt(this.value, 10) || 15)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
+                    Cat:
+                    <input type="text" value="${escapeHtml(r.category || 'Home')}" onchange="updateInlineTaskField('routine', '${r.uid}', 'category', this.value)" style="width: 75px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
+                </label>
+
+                <span style="font-size: 10px; color: var(--text-muted);">
+                    ${escapeHtml(r.timeOfDay || 'Anytime')}
+                </span>
+            </div>
+        </div>
+        `;
+    }
+
     let html = `
     <!-- Bulk Triage Filtering & Sorting Toolbar -->
     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 14px; background: var(--bg-color); border: 1px solid var(--border-color); border-bottom: none; border-radius: 8px 8px 0 0;">
-        <!-- Type Filter -->
-        <select class="todo-compact-select" onchange="setBulkTypeFilter(this.value)" title="Filter by Type">
-            <option value="all" ${typeFilter === 'all' ? 'selected' : ''}>Type: All</option>
-            <option value="todo" ${typeFilter === 'todo' ? 'selected' : ''}>To-Do</option>
-            <option value="project" ${typeFilter === 'project' ? 'selected' : ''}>Project / Idea</option>
-            <option value="routine" ${typeFilter === 'routine' ? 'selected' : ''}>Routine</option>
-        </select>
+        <!-- Type Filter Buttons -->
+        <div style="display: flex; gap: 6px;">
+            <button class="filter-pill ${typeFilter === 'all' ? 'active' : ''}" onclick="setBulkTypeFilter('all')">All</button>
+            <button class="filter-pill ${typeFilter === 'todo' ? 'active' : ''}" onclick="setBulkTypeFilter('todo')">&#x26A1; To-Dos</button>
+            <button class="filter-pill ${typeFilter === 'project' ? 'active' : ''}" onclick="setBulkTypeFilter('project')">&#x1F4A1; Projects</button>
+            <button class="filter-pill ${typeFilter === 'routine' ? 'active' : ''}" onclick="setBulkTypeFilter('routine')">&#x21BB; Routines</button>
+        </div>
 
         <!-- Category Filter -->
         <select class="todo-compact-select" onchange="setBulkCategoryFilter(this.value)" title="Filter by Category">
             <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
-            ${Array.from(new Set(allTodos.map(t => t.category || 'Home'))).sort().map(cat => `
+            ${Array.from(new Set([...allTodos.map(t => t.category || 'Home'), ...allRoutines.map(r => r.category || 'Home')])).sort().map(cat => `
                 <option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>
             `).join('')}
         </select>
@@ -960,235 +1204,83 @@ export function renderBulkTriageList() {
         </select>
     </div>
 
-    <div style="background: var(--card-bg); border-radius: 0 0 8px 8px; border: 1px solid var(--border-color); overflow: hidden;">
+    <div style="background: var(--card-bg); border-radius: 0 0 8px 8px; border: 1px solid var(--border-color); overflow: hidden; padding: 8px;">
     `;
 
-    if (subtab === 'todos') {
-        let filtered = allTodos;
-
-        // Apply Type Filter
-        if (typeFilter !== 'all') {
-            filtered = filtered.filter(t => t.type === typeFilter);
-        }
-
-        // Apply Category Filter
-        if (categoryFilter !== 'all') {
-            filtered = filtered.filter(t => (t.category || 'Home').toLowerCase() === categoryFilter.toLowerCase());
-        }
-
-        // Apply Priority Filter
-        if (priorityFilter !== 'all') {
-            filtered = filtered.filter(t => t.priority === priorityFilter);
-        }
-
-        // Apply Ownership Filter
-        if (ownershipFilter === 'me') {
-            filtered = filtered.filter(t => t.assignees && t.assignees.includes(activeUid));
-        } else if (ownershipFilter === 'individual') {
-            filtered = filtered.filter(t => t.assignees && t.assignees.length === 1);
-        } else if (ownershipFilter === 'shared') {
-            filtered = filtered.filter(t => !t.assignees || t.assignees.length === 0 || t.assignees.length > 1);
-        } else if (ownershipFilter === 'unassigned') {
-            filtered = filtered.filter(t => !t.assignees || t.assignees.length === 0);
-        }
-
-        // Apply Search Query
-        if (query) {
-            filtered = filtered.filter(t => {
-                const nameMatch = (t.name || '').toLowerCase().includes(query);
-                const descMatch = (t.description || '').toLowerCase().includes(query);
-                const catMatch = (t.category || '').toLowerCase().includes(query);
-                const creatorMatch = (t.createdBy || '').toLowerCase().includes(query);
-                return nameMatch || descMatch || catMatch || creatorMatch;
-            });
-        }
-
-        // AUTO-SORT COMPLETED ITEMS TO THE VERY BOTTOM
-        filtered.sort((a, b) => {
-            // 1. Incomplete first!
-            if (a.completed !== b.completed) return a.completed ? 1 : -1;
-
-            if (sortBy === 'priority') {
-                const pA = getPriorityWeight(a.priority);
-                const pB = getPriorityWeight(b.priority);
-                if (pA !== pB) return pB - pA;
-                return (b.points || 5) - (a.points || 5);
-            } else if (sortBy === 'points') {
-                return (b.points || 5) - (a.points || 5);
-            } else if (sortBy === 'category') {
-                return (a.category || 'Home').localeCompare(b.category || 'Home');
-            } else if (sortBy === 'title') {
-                return (a.name || '').localeCompare(b.name || '');
-            } else {
-                const pA = getPriorityWeight(a.priority);
-                const pB = getPriorityWeight(b.priority);
-                if (pA !== pB) return pB - pA;
-                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-            }
-        });
+    // 3-SECTION STACKED VIEW
+    if (typeFilter === 'all') {
+        const isTodosCollapsed = !!collapsedSections['todos'];
+        const isProjectsCollapsed = !!collapsedSections['projects'];
+        const isRoutinesCollapsed = !!collapsedSections['routines'];
 
         html += `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-color); border-bottom: 1px solid var(--border-color);">
-            <div style="font-weight: 800; font-size: 13px;">
-                Tasks (${filtered.length}${query ? ` matching "${escapeHtml(query)}"` : ''})
-            </div>
-            <label style="font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="bulkSelectAllCheckbox" onchange="toggleBulkSelectAll(this.checked)"> Select All
-            </label>
-        </div>
-        <div style="max-height: 540px; overflow-y: auto; padding: 8px;">
-        `;
-
-        if (filtered.length === 0) {
-            html += `<div style="text-align: center; color: var(--text-muted); padding: 25px;">No tasks match the selected filters.</div>`;
-        } else {
-            filtered.forEach(t => {
-                const isChecked = state.selectedTodoIds.has(t.id);
-                const isCompleted = !!t.completed;
-
-                html += `
-                <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isCompleted ? 'var(--bg-color)' : 'transparent')}; opacity: ${isCompleted ? 0.6 : 1};">
-                    <!-- Main Row -->
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)" title="Select for bulk action">
-                        
-                        <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
-                            ${isCompleted ? '&#x2714;' : ''}
-                        </button>
-
-                        <input type="text" value="${escapeHtml(t.name)}" onchange="updateInlineTaskField('todo', '${t.id}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); text-decoration: ${isCompleted ? 'line-through' : 'none'}; box-sizing: border-box;">
-
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <button type="button" class="action-btn" onclick="editTask('${t.id}')" title="Full Edit Modal" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
-                            <button type="button" class="action-btn" onclick="deleteTask('${t.id}')" title="Delete Task" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
-                        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- 1. TO-DOS (TOP SECTION) -->
+            <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-color); cursor: pointer;" onclick="toggleBulkSectionCollapse('todos')">
+                    <div style="font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x26A1; To-Dos</span>
+                        <span style="font-size: 11px; background: var(--card-bg); padding: 2px 6px; border-radius: 10px; border: 1px solid var(--border-color);">${todosList.length}</span>
                     </div>
-
-                    <!-- Inline Metadata Row -->
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
-                        <!-- Inline Type -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Type:
-                            <select onchange="updateInlineTaskField('todo', '${t.id}', 'type', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                                <option value="todo" ${t.type === 'todo' ? 'selected' : ''}>To-Do</option>
-                                <option value="project" ${t.type === 'project' ? 'selected' : ''}>Project</option>
-                            </select>
-                        </label>
-
-                        <!-- Inline Priority -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Priority:
-                            <select onchange="updateInlineTaskField('todo', '${t.id}', 'priority', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                                <option value="high" ${t.priority === 'high' ? 'selected' : ''}>High</option>
-                                <option value="medium" ${t.priority === 'medium' ? 'selected' : ''}>Medium</option>
-                                <option value="low" ${t.priority === 'low' ? 'selected' : ''}>Low</option>
-                            </select>
-                        </label>
-
-                        <!-- Inline Points -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Points:
-                            <input type="number" value="${t.points || 5}" min="0" onchange="updateInlineTaskField('todo', '${t.id}', 'points', parseInt(this.value, 10) || 5)" style="width: 45px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
-                        </label>
-
-                        <!-- Inline Category -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Cat:
-                            <input type="text" value="${escapeHtml(t.category || 'Home')}" onchange="updateInlineTaskField('todo', '${t.id}', 'category', this.value)" style="width: 75px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                        </label>
-
-                        <!-- Description Toggle -->
-                        <button type="button" class="action-btn" onclick="const d = document.getElementById('bulk-desc-${t.id}'); d.style.display = (d.style.display === 'none' ? 'block' : 'none');" style="padding: 2px 6px; font-size: 10px;">
-                            ${t.description ? '&#x1F4DD; Note' : '+ Note'}
-                        </button>
-                    </div>
-
-                    <!-- Inline Description Edit -->
-                    <div id="bulk-desc-${t.id}" style="display: none; margin-left: 56px; margin-top: 4px;">
-                        <input type="text" value="${escapeHtml(t.description || '')}" placeholder="Optional details/description..." onchange="updateInlineTaskField('todo', '${t.id}', 'description', this.value)" style="width: 100%; padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box;">
-                    </div>
+                    <span style="font-size: 12px; color: var(--text-muted);">${isTodosCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
-                `;
-            });
-        }
-
-        html += `</div>`;
-    } else {
-        // ROUTINES SUBTAB
-        let filtered = allRoutines;
-
-        if (categoryFilter !== 'all') {
-            filtered = filtered.filter(r => (r.category || 'Home').toLowerCase() === categoryFilter.toLowerCase());
-        }
-
-        if (query) {
-            filtered = filtered.filter(r => {
-                const nameMatch = (r.name || '').toLowerCase().includes(query);
-                const catMatch = (r.category || '').toLowerCase().includes(query);
-                return nameMatch || catMatch;
-            });
-        }
-
-        filtered.sort((a, b) => {
-            if (sortBy === 'points') return (b.points || 15) - (a.points || 15);
-            if (sortBy === 'category') return (a.category || 'Home').localeCompare(b.category || 'Home');
-            if (sortBy === 'title') return (a.name || '').localeCompare(b.name || '');
-            return (a.name || '').localeCompare(b.name || '');
-        });
-
-        html += `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-color); border-bottom: 1px solid var(--border-color);">
-            <div style="font-weight: 800; font-size: 13px;">
-                Routines (${filtered.length}${query ? ` matching "${escapeHtml(query)}"` : ''})
+                <div style="display: ${isTodosCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
+                    ${todosList.length > 0 ? todosList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No to-dos match filters.</div>'}
+                </div>
             </div>
-            <label style="font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="bulkSelectAllCheckbox" onchange="toggleBulkSelectAll(this.checked)"> Select All
-            </label>
-        </div>
-        <div style="max-height: 540px; overflow-y: auto; padding: 8px;">
-        `;
 
-        if (filtered.length === 0) {
-            html += `<div style="text-align: center; color: var(--text-muted); padding: 25px;">No routines match the selected criteria.</div>`;
-        } else {
-            filtered.forEach(r => {
-                const isChecked = state.selectedRoutineIds.has(r.uid);
-                const sched = r.schedule || {};
-                const freq = sched.type || 'daily';
-                const pts = r.points || 15;
-
-                html += `
-                <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : 'transparent'};">
-                    <!-- Main Row -->
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)" title="Select for bulk action">
-                        
-                        <span style="font-size: 14px; color: var(--primary);">&#x21BB;</span>
-
-                        <input type="text" value="${escapeHtml(r.name)}" onchange="updateInlineTaskField('routine', '${r.uid}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box;">
-
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <button type="button" class="action-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
-                            <button type="button" class="action-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
-                        </div>
+            <!-- 2. PROJECTS / IDEAS (MIDDLE SECTION) -->
+            <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-color); cursor: pointer;" onclick="toggleBulkSectionCollapse('projects')">
+                    <div style="font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x1F4A1; Projects / Ideas</span>
+                        <span style="font-size: 11px; background: var(--card-bg); padding: 2px 6px; border-radius: 10px; border: 1px solid var(--border-color);">${projectsList.length}</span>
                     </div>
+                    <span style="font-size: 12px; color: var(--text-muted);">${isProjectsCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
+                </div>
+                <div style="display: ${isProjectsCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
+                    ${projectsList.length > 0 ? projectsList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No projects match filters.</div>'}
+                </div>
+            </div>
 
-                    <!-- Inline Metadata Row for Routines -->
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
-                        <!-- Inline Schedule / Frequency -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Schedule:
-                            <select onchange="updateRoutineScheduleInline('${r.uid}', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                                <option value="daily" ${freq === 'daily' ? 'selected' : ''}>Daily</option>
-                                <option value="weekly" ${freq === 'weekly' ? 'selected' : ''}>Weekly</option>
-                            </select>
-                        </label>
+            <!-- 3. ROUTINES (BOTTOM SECTION) -->
+            <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-color); cursor: pointer;" onclick="toggleBulkSectionCollapse('routines')">
+                    <div style="font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                        <span>&#x21BB; Routines</span>
+                        <span style="font-size: 11px; background: var(--card-bg); padding: 2px 6px; border-radius: 10px; border: 1px solid var(--border-color);">${routinesList.length}</span>
+                    </div>
+                    <span style="font-size: 12px; color: var(--text-muted);">${isRoutinesCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
+                </div>
+                <div style="display: ${isRoutinesCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
+                    ${routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No routines match filters.</div>'}
+                </div>
+            </div>
+        </div>
+        `;
+    } else if (typeFilter === 'todo') {
+        html += `
+        <div style="max-height: 540px; overflow-y: auto; padding: 8px;">
+            ${todosList.length > 0 ? todosList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No to-dos match the selected filters.</div>'}
+        </div>
+        `;
+    } else if (typeFilter === 'project') {
+        html += `
+        <div style="max-height: 540px; overflow-y: auto; padding: 8px;">
+            ${projectsList.length > 0 ? projectsList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No projects match the selected filters.</div>'}
+        </div>
+        `;
+    } else if (typeFilter === 'routine') {
+        html += `
+        <div style="max-height: 540px; overflow-y: auto; padding: 8px;">
+            ${routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No routines match the selected filters.</div>'}
+        </div>
+        `;
+    }
 
-                        <!-- Inline Points -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Points:
-                            <input type="number" value="${pts}" min="0" onchange="updateInlineTaskField('routine', '${r.uid}', 'points', parseInt(this.value, 10) || 15)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
-                        </label>
+    html += `</div>`;
+    container.innerHTML = html;
+}
 
                         <!-- Inline Category -->
                         <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
@@ -1451,6 +1543,9 @@ if (typeof window !== 'undefined') {
     window.renderBrainDumpStaging = renderBrainDumpStaging;
     window.updateStagingItem = updateStagingItem;
     window.deleteStagingItem = deleteStagingItem;
+    window.addSubtaskToStaging = addSubtaskToStaging;
+    window.updateStagingSubtask = updateStagingSubtask;
+    window.removeStagingSubtask = removeStagingSubtask;
     window.toggleAllStagingRows = toggleAllStagingRows;
     window.toggleSectionStagingRows = toggleSectionStagingRows;
     window.clearBrainDumpStaging = clearBrainDumpStaging;
@@ -1470,6 +1565,7 @@ if (typeof window !== 'undefined') {
     window.switchManageSubtab = switchManageSubtab;
     window.filterManageList = filterManageList;
     window.renderBulkTriageList = renderBulkTriageList;
+    window.toggleBulkSectionCollapse = toggleBulkSectionCollapse;
     window.toggleBulkItem = toggleBulkItem;
     window.toggleBulkSelectAll = toggleBulkSelectAll;
     window.executeBulkAction = executeBulkAction;
