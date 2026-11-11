@@ -1,20 +1,29 @@
 // dashboard.js
 // App entry point: startup orchestration, Firestore-first data loading,
-// tab navigation, and lock-screen URL action parameter handling.
+// tab navigation, real-time listeners, and lock-screen URL action parameter handling.
 
-import { state, ALL_USERS } from './state.js';
+import { state } from './state.js';
 import * as api from './api.js';
-import { initChat, onChatTabOpened, refreshChatUser, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
-import { saveCloudPreference } from './preferences.js';
-import { savePin, setMode, setTimeOffset, getLocalTodayKey } from './utils.js';
+import { initChat, onChatTabOpened, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
+import {
+    savePin, setMode, setTimeOffset, getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek,
+    getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
+    openCategoryCombobox, toggleCategoryComboboxDropdown, filterCategoryCombobox,
+    selectCategoryComboboxOption, handleCategoryComboboxKeydown
+} from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
-import { updateLeaderboardUI, drawLeaderboard, renderAllowanceUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
+import {
+    updateLeaderboardUI, drawLeaderboard, renderAllowanceUI,
+    rebuildCompletedThisWeek, renderDoneThisWeekFeed,
+    rebuildCompletedToday, renderDoneTodayFeed,
+    changeDoneWeekOffset, resetDoneWeekToCurrent, setDoneTodayView
+} from './leaderboard.js';
 import {
     deleteTaskActivity, populateTaskPointsSelect,
     renderTasks, openQuickAddModal, closeQuickAddModal, submitQuickAdd
 } from './niptoTasks.js';
 import {
-    renderTodoTasks, openTaskModal, editTask, saveTask,
+    renderTodoTasks, renderSidebarTodos, openTaskModal, editTask, saveTask,
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
     setTodoPriorityFilter, setTodoTypeFilter, setTodoCategoryFilter, setTodoSort,
@@ -31,13 +40,15 @@ import {
 } from './routines.js';
 import {
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
-    updateStagingItem, deleteStagingItem, addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask,
+    updateStagingItem, updateStagingRoutineSchedule, deleteStagingItem,
+    addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask,
     toggleAllStagingRows, toggleSectionStagingRows,
     clearBrainDumpStaging, commitBrainDumpToFirestore, applyUnifiedStagingToFirestore,
     switchBrainDumpMode, analyzeRambleWithGemini, renderRambleDiffStaging,
     updateRambleRow, updateRambleProp, toggleAllRambleRows, clearRambleStaging,
     applyRambleUpdatesToFirestore,
-    renderBulkTriageList, toggleBulkItem, toggleBulkSelectAll, toggleBulkSectionCollapse, executeBulkAction,
+    renderBulkTriageList, toggleBulkItem, toggleBulkSelectAll, toggleBulkSectionCollapse,
+    executeBulkAction, openBulkCategoryModal, confirmBulkCategoryModal,
     switchManageSubtab, filterManageList, updateInlineTaskField, updateRoutineScheduleInline,
     setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter,
     setBulkSortBy
@@ -51,12 +62,18 @@ import {
 } from './settings.js';
 import { showToast } from './toast.js';
 
+// Firestore listener unsubscribe handles to prevent duplicate subscriptions
+let unsubTodos = null;
+let unsubRoutines = null;
+let unsubDailyComp = null;
+let unsubSyncSignal = null;
+
 // ==========================================
 // NAVIGATION TAB SWITCHER
 // ==========================================
 export function switchNavTab(tabName) {
     const tabs = ['schedule-todos', 'braindump', 'nipto', 'hub'];
-    
+
     tabs.forEach(t => {
         const btn = document.getElementById(`tab-${t}`);
         const pane = document.getElementById(`pane-${t}`);
@@ -103,17 +120,14 @@ async function handleUrlQuickActions() {
 
     if (!quickAction || !taskId) return;
 
-    // Clean URL so refresh does not re-trigger
     window.history.replaceState({}, document.title, window.location.pathname);
 
     if (quickAction === 'complete') {
-        // Check if taskId matches a To-Do
         const todo = state.todoTasksData?.find(t => t.id === taskId);
         if (todo) {
             await toggleTaskStatus(taskId, false);
             showToast("url_act", `Quick Action: Completed "${todo.name}"!`, todo.points || 0, "Notification");
         } else {
-            // Check if taskId matches a Routine
             const routine = state.routines?.find(r => r.uid === taskId);
             if (routine) {
                 const todayKey = getLocalTodayKey();
@@ -126,13 +140,14 @@ async function handleUrlQuickActions() {
     }
 }
 
-// Window bindings for inline HTML onclick handlers
+// Window bindings for inline HTML onclick/onchange/onfocus handlers
 Object.assign(window, {
     switchNavTab,
-    setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown,
+    setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill,
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
+    renderTodoTasks, renderSidebarTodos,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter,
     setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
@@ -142,15 +157,24 @@ Object.assign(window, {
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
     switchBrainDumpMode, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     applyUnifiedStagingToFirestore, toggleSectionStagingRows,
-    updateStagingItem, deleteStagingItem, addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask, toggleAllStagingRows,
+    updateStagingItem, updateStagingRoutineSchedule, deleteStagingItem, addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask, toggleAllStagingRows,
     analyzeRambleWithGemini, renderRambleDiffStaging, updateRambleRow, updateRambleProp,
     toggleAllRambleRows, clearRambleStaging, applyRambleUpdatesToFirestore,
-    toggleBulkItem, toggleBulkSelectAll, toggleBulkSectionCollapse, executeBulkAction, updateInlineTaskField, updateRoutineScheduleInline,
+    toggleBulkItem, toggleBulkSelectAll, toggleBulkSectionCollapse, executeBulkAction,
+    openBulkCategoryModal, confirmBulkCategoryModal,
+    updateInlineTaskField, updateRoutineScheduleInline,
     switchManageSubtab, filterManageList,
     setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter, setBulkSortBy,
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
-    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin, getLocalTodayKey,
-    rebuildCompletedToday, renderDoneTodayFeed
+    setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin,
+    getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek,
+    getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
+    openCategoryCombobox, toggleCategoryComboboxDropdown, filterCategoryCombobox,
+    selectCategoryComboboxOption, handleCategoryComboboxKeydown,
+    setDoneTodayView, changeDoneWeekOffset, resetDoneWeekToCurrent,
+    rebuildCompletedThisWeek, renderDoneThisWeekFeed,
+    rebuildCompletedToday, renderDoneTodayFeed,
+    sendChatMessage, editChatMessage, deleteChatMessage
 });
 
 window.submitPin = async () => {
@@ -191,11 +215,10 @@ async function startDashboardData() {
         renderTasks();
         renderAllowanceUI();
         updateLeaderboardUI();
-        await api.loadDailyCompletionsFromFirestore();
-        rebuildCompletedToday();
-        renderDoneTodayFeed();
+        await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
+        rebuildCompletedThisWeek();
+        renderDoneThisWeekFeed();
 
-        // Check for URL lockscreen quick actions
         handleUrlQuickActions();
     } catch (e) {
         console.error("Dashboard initialization error:", e);
@@ -206,37 +229,63 @@ async function startDashboardData() {
         }
     }
 
+    // Clean up any prior listeners before attaching new ones
+    if (unsubTodos) { unsubTodos(); unsubTodos = null; }
+    if (unsubRoutines) { unsubRoutines(); unsubRoutines = null; }
+    if (unsubDailyComp) { unsubDailyComp(); unsubDailyComp = null; }
+    if (unsubSyncSignal) { unsubSyncSignal(); unsubSyncSignal = null; }
+
     // Real-time listener for To-Dos in Firestore
-    window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+    unsubTodos = window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
         state.todoTasksData = [];
         snapshot.forEach(doc => {
             state.todoTasksData.push({ id: doc.id, ...doc.data() });
         });
-        rebuildCompletedToday();
-        renderDoneTodayFeed();
+        rebuildCompletedThisWeek();
+        renderDoneThisWeekFeed();
         renderTodoTasks();
         renderBulkTriageList();
+    }, err => {
+        console.error("Error in custom_tasks listener:", err);
     });
 
-    // Real-time listener for daily completions across devices (single doc for today)
+    // Real-time listener for Routines in Firestore (with schedule auto-healing)
+    unsubRoutines = window.getNiptoCollection('routines').onSnapshot(snapshot => {
+        state.routines = [];
+        snapshot.forEach(doc => {
+            state.routines.push(api.normalizeAndHealRoutineDoc({ uid: doc.id, ...doc.data() }));
+        });
+        rebuildCompletedThisWeek();
+        renderDoneThisWeekFeed();
+        renderRollingSchedule();
+        renderTodoTasks();
+        renderBulkTriageList();
+    }, err => {
+        console.error("Error in routines listener:", err);
+    });
+
+    // Real-time listener for today's daily_completions doc (merges with the rest of the current week)
     const todayKey = getLocalTodayKey();
-    window.getNiptoCollection('daily_completions').doc(todayKey).onSnapshot(doc => {
-        if (doc && doc.exists) {
-            const data = doc.data() || {};
-            const itemsMap = data.items || {};
-            state.persistedDailyCompletions = Object.values(itemsMap);
-        } else {
-            state.persistedDailyCompletions = [];
+    unsubDailyComp = window.getNiptoCollection('daily_completions').doc(todayKey).onSnapshot(doc => {
+        if ((state.doneWeekOffset || 0) === 0) {
+            const otherDays = (state.persistedDailyCompletions || []).filter(it => it && it.dateKey !== todayKey);
+            let todayItems = [];
+            if (doc && doc.exists) {
+                const data = doc.data() || {};
+                const itemsMap = data.items || {};
+                todayItems = Object.values(itemsMap).map(it => ({ ...it, dateKey: it.dateKey || todayKey }));
+            }
+            state.persistedDailyCompletions = [...todayItems, ...otherDays];
+            rebuildCompletedThisWeek();
+            renderDoneThisWeekFeed();
         }
-        rebuildCompletedToday();
-        renderDoneTodayFeed();
     }, err => {
         console.error("Error in daily_completions listener:", err);
     });
 
-    // Real-time listener for sync signal
+    // Real-time listener for cross-device activity sync signal
     let firstActivitySignal = true;
-    window.getNiptoCollection('sync_signals').doc('activity').onSnapshot(snap => {
+    unsubSyncSignal = window.getNiptoCollection('sync_signals').doc('activity').onSnapshot(snap => {
         if (firstActivitySignal) { firstActivitySignal = false; return; }
         if (snap.metadata.hasPendingWrites) return;
         if (window.__localActivityPingAt && (Date.now() - window.__localActivityPingAt < 5000)) return;

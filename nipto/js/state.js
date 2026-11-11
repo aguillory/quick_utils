@@ -10,14 +10,15 @@ export const state = {
     currentSplitDivisor: 1,
     historyViewMode: 'all',
     currentMode: 'live',
-    
+
     // Core data arrays
     tasks: [],             // Nipto repeatable chores from Firestore
     customChores: [],
     allWeekActivities: [],
     todoTasksData: [],     // Active To-Dos from Firestore
     routines: [],          // Routines from Firestore
-    
+    customCategories: [],  // User-created categories in combobox
+
     // Week browsing & history
     selectedWeekUid: 'current',
     weeksList: [],
@@ -32,17 +33,31 @@ export const state = {
     hasEnteredTaskPin: false,
     apiToken: localStorage.getItem("nipto_api_token") || "",
 
-    // Phase 3 & 4 new state extensions
+    // User preferences (cloud-synced & local cache)
+    userPrefs: {
+        niptoSortOrder: [],
+        customSortOrder: [],
+        todoSortOrder: [],
+        collapsed: {},
+        collapsedSections: {},
+        bulkCollapsedSections: {}
+    },
+
+    // Boys' Allowance Ledger (1 pt = $0.01)
     allowanceLedger: {
         ayden: { unpaidPoints: 0, payoutHistory: [] },
         dj: { unpaidPoints: 0, payoutHistory: [] }
     },
+
+    // Integrations Config (Gemini AI & Home Assistant Webhook)
     integrationsConfig: {
         geminiApiKey: "",
         geminiModel: "gemini-3.8-flash",
         haWebhookUrl: "https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge",
         publicAppUrl: "https://aguillory.github.io/quick_utils/nipto/common.html"
     },
+
+    // Adult Notification Preferences (Alyssa, Devyn, Carrina have phones connected; Kenny does not)
     notificationPreferences: {
         adults: {
             "Llb9JjyTDvMnn8SJWfizXgthxl83": {
@@ -79,36 +94,42 @@ export const state = {
             }
         }
     },
+
+    // "Done This Week" & Historical Week Browsing State
+    doneWeekOffset: 0,               // 0 = This Week (Mon-Sun local), -1 = Last Week, etc.
     recentCompletions: [],
-    persistedDailyCompletions: [],
-    completedToday: [], // Array of { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey }
-    
+    persistedDailyCompletions: [],   // Persisted daily_completions items for the active week
+    weeklyActivitiesForDone: [],     // Nipto activities for the active week
+    weeklyCompletionsCache: {},      // Cache keyed by weekKey (Monday YYYY-MM-DD)
+    completedThisWeek: [],           // Merged & deduplicated completions for the active week
+    completedToday: [],              // Backward-compatible alias to completedThisWeek
+
     // Filter & sort state
-    scheduleFilter: 'me',           // 'me' (default) | 'all' | uid
+    scheduleFilter: 'me',            // 'me' (default) | 'all' | uid
     hideCompletedRoutines: false,
-    todoView: 'my_actionable',      // 'my_actionable' (default) | 'shared' | 'projects' | 'all'
-    todoPersonFilter: 'all',        // 'all' | 'me' | 'unassigned' | uid
-    todoBucketFilter: 'all',        // 'all' | 'actionable' | 'project_idea'
-    todoTypeFilter: 'todo',         // 'todo' (default) | 'project' | 'all'
-    todoCategoryFilter: 'all',      // 'all' | specific category
-    todoPriorityFilter: 'all',      // 'all' | 'high' | 'medium' | 'low'
-    todoFrictionFilter: 'all',      // 'all' | 'quick' | 'low_brain' | 'deep_focus'
-    todoSort: 'priority',           // 'priority' | 'points' | 'category' | 'age'
-    todoGroupBy: 'category',        // 'category' (default accordions) | 'ownership'
-    manageSubtab: 'todos',          // 'todos' | 'routines'
+    todoView: 'my_actionable',       // 'my_actionable' (default) | 'shared' | 'projects' | 'all'
+    todoPersonFilter: 'all',         // 'all' | 'me' | 'unassigned' | uid
+    todoBucketFilter: 'all',         // 'all' | 'actionable' | 'project_idea'
+    todoTypeFilter: 'all',           // 'all' (default) | 'todo' | 'project' | 'routine'
+    todoCategoryFilter: 'all',       // 'all' | specific category
+    todoPriorityFilter: 'all',       // 'all' | 'high' | 'medium' | 'low'
+    todoFrictionFilter: 'all',       // 'all' | 'quick' | 'low_brain' | 'deep_focus'
+    todoSort: 'priority',            // 'priority' | 'points' | 'category' | 'age'
+    todoGroupBy: 'category',         // 'category' (default accordions) | 'ownership'
+    manageSubtab: 'todos',           // 'todos' | 'routines'
     manageSearchQuery: '',
-    bulkTypeFilter: 'all',          // 'all' | 'todo' | 'project' | 'routine'
-    bulkCategoryFilter: 'all',      // 'all' | category name
-    bulkPriorityFilter: 'all',      // 'all' | 'high' | 'medium' | 'low'
-    bulkOwnershipFilter: 'all',     // 'all' | 'me' | 'individual' | 'shared' | 'unassigned'
-    bulkSortBy: 'default',          // 'default' | 'priority' | 'points' | 'category' | 'title'
-    
+    bulkTypeFilter: 'all',           // 'all' | 'todo' | 'project' | 'routine'
+    bulkCategoryFilter: 'all',       // 'all' | category name
+    bulkPriorityFilter: 'all',       // 'all' | 'high' | 'medium' | 'low'
+    bulkOwnershipFilter: 'all',      // 'all' | 'me' | 'individual' | 'shared' | 'unassigned'
+    bulkSortBy: 'default',           // 'default' | 'priority' | 'points' | 'category' | 'title'
+
     // Bulk triage selection
     selectedTodoIds: new Set(),
     selectedRoutineIds: new Set(),
-    
-    // Gemini Brain Dump & Ramble to Manage staging
-    brainDumpMode: 'create',        // 'create' | 'manage'
+
+    // Gemini Brain Dump staging
+    brainDumpMode: 'create',
     brainDumpStaging: [],
     rambleStaging: [],
     staleCurrentIndex: 0

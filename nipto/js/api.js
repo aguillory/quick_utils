@@ -1,11 +1,18 @@
 // api.js
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
-import { getLocalTodayKey } from './utils.js';
-export { getLocalTodayKey };
+import { getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek } from './utils.js';
+export { getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek };
 
 const NIPTO_URL = "https://nipto.app/graphql";
+const KNOWN_DAILY_ROUTINE_SLUGS = new Set([
+    "feed orion",
+    "check kevin's water",
+    "check kevins water",
+    "feed turtle",
+    "collect eggs"
+]);
 
-// Core Nipto Fetch Wrapper
+// Core Nipto Fetch Wrapper (Only invoked on explicit task logging or manual Sync button)
 export async function fetchNipto(query, variables = {}) {
     if (!state.apiToken) throw new Error("Unauthorized: Missing Token");
 
@@ -20,7 +27,7 @@ export async function fetchNipto(query, variables = {}) {
         if (data.errors[0].message.toLowerCase().includes("unauthorized") || data.errors[0].message.toLowerCase().includes("token")) {
             localStorage.removeItem("nipto_api_token");
             state.apiToken = "";
-            throw new Error("Token Expired"); 
+            throw new Error("Token Expired");
         }
         throw new Error(data.errors[0].message || "GraphQL Error");
     }
@@ -78,7 +85,7 @@ export function checkAuth(onSuccess, onRequirePin, onFail) {
     });
 }
 
-// Firestore Loaders
+// Firestore Loaders (Strictly Firestore-first per AGENTS.md)
 export async function loadTasksFromFirestore() {
     const snapshot = await window.getNiptoCollection('nipto_tasks').get();
     state.tasks = snapshot.docs.map(doc => ({
@@ -93,7 +100,7 @@ export async function loadTasksFromFirestore() {
 
 export async function loadUsersFromFirestore() {
     const snapshot = await window.getNiptoCollection('users').orderBy('order', 'asc').get();
-    ALL_USERS.length = 0; // Clear it out
+    ALL_USERS.length = 0;
     if (snapshot.empty) {
         console.info("Migrating initial users to Firestore...");
         const initialUsers = [
@@ -117,74 +124,82 @@ export async function loadUsersFromFirestore() {
     }
 }
 
-// Data Fetchers
-export async function getWeeklyPointsData() {
-    if (!state.apiToken) throw new Error("Missing Token");
-    const QUERY = `{ activities { uid date user { uid name } task { name value } } }`;
+// Normalizes a routine document and repairs corrupted daily schedules (e.g. "Feed Orion", "Check Kevin's Water")
+export function normalizeAndHealRoutineDoc(rawDoc) {
+    if (!rawDoc) return rawDoc;
+    const r = { ...rawDoc };
+    const cleanName = (r.name || r.title || '').trim().toLowerCase().replace(/[\u2018\u2019]/g, "'");
+    const isKnownDailyCare = KNOWN_DAILY_ROUTINE_SLUGS.has(cleanName);
 
-    const data = await fetchNipto(QUERY);
-    if (!data.activities) throw new Error("No activities data found.");
+    let sched = (r.schedule && typeof r.schedule === 'object')
+        ? { ...r.schedule }
+        : { type: typeof r.schedule === 'string' ? r.schedule.toLowerCase() : 'daily' };
 
-    let points = {};
-    ALL_USERS.forEach(u => points[u.uid] = 0);
-    
-    const activities = [];
-    data.activities.forEach(activity => {
-        let awardedPts = (activity.task && activity.task.value) ? activity.task.value : 0;
-        if (activity.user && points[activity.user.uid] !== undefined) {
-            points[activity.user.uid] += awardedPts;
-        } else if (activity.user && activity.user.name) {
-            const matchedUser = ALL_USERS.find(u => u.name.toLowerCase() === activity.user.name.toLowerCase());
-            if (matchedUser && matchedUser.uid !== activity.user.uid) {
-                console.info(`[Nipto User Discovery] Auto-resolved ${matchedUser.name} UID to: ${activity.user.uid}`);
-                points[activity.user.uid] = (points[matchedUser.uid] || 0) + awardedPts;
-                delete points[matchedUser.uid];
-                
-                const oldUid = matchedUser.uid;
-                matchedUser.uid = activity.user.uid;
-                
-                window.getNiptoCollection('users').doc(oldUid).delete();
-                window.getNiptoCollection('users').doc(activity.user.uid).set({
-                    name: matchedUser.name,
-                    color: matchedUser.color,
-                    order: matchedUser.order || 99
-                });
-                
-                const oldToggle = document.getElementById(`toggle-${oldUid}`);
-                if (oldToggle) {
-                    oldToggle.id = `toggle-${activity.user.uid}`;
-                    oldToggle.setAttribute('onclick', `setActiveUser('${activity.user.uid}')`);
-                }
-                const oldPts = document.getElementById(`points-${oldUid}`);
-                if (oldPts) oldPts.id = `points-${activity.user.uid}`;
-            } else if (!ALL_USERS.some(u => u.uid === activity.user.uid)) {
-                console.info(`[Nipto User Discovery] Found unlisted user in activity: ${activity.user.name} (UID: ${activity.user.uid})`);
-            }
+    const rawDays = Array.isArray(sched.daysOfWeek) ? sched.daysOfWeek : (Array.isArray(r.daysOfWeek) ? r.daysOfWeek : null);
+    const uniqueDays = rawDays
+        ? Array.from(new Set(rawDays.map(d => Number(d)).filter(d => !isNaN(d) && d >= 0 && d <= 6)))
+        : null;
+
+    let needsFirestoreRepair = false;
+
+    // Repair 1: Known daily animal care routines or explicit daily type with polluted daysOfWeek / unit
+    if (
+        isKnownDailyCare ||
+        sched.type === 'daily' ||
+        (sched.type === 'weekly' && (!uniqueDays || uniqueDays.length === 0 || uniqueDays.length === 7)) ||
+        (sched.type === 'interval' && Number(sched.value || sched.interval || 1) === 1 && String(sched.unit || 'days').toLowerCase().startsWith('day'))
+    ) {
+        if (sched.type !== 'daily' || (Array.isArray(sched.daysOfWeek) && sched.daysOfWeek.length > 0 && sched.daysOfWeek.length < 7)) {
+            needsFirestoreRepair = true;
         }
-        activities.push({
-            ...activity,
-            parsedDate: new Date(activity.date),
-            awardedPts: awardedPts 
-        });
-    });
+        sched.type = 'daily';
+        sched.resetType = sched.resetType || 'midnight';
+        sched.timeOfDay = sched.timeOfDay || r.timeOfDay || 'Anytime';
+        delete sched.daysOfWeek;
+        delete sched.days;
+        delete sched.unit;
+        delete sched.value;
+        delete r.daysOfWeek;
+        delete r.days;
+    } else if (sched.type === 'weekly' && uniqueDays && uniqueDays.length > 0 && uniqueDays.length < 7) {
+        sched.daysOfWeek = uniqueDays.sort((a, b) => a - b);
+    }
 
-    state.allWeekActivities = activities;
-    state.currentWeekScores = { ...points };
-    archiveActivitiesToFirestore(activities);
-    return { points, activities };
+    r.schedule = sched;
+    if (!r.category) r.category = 'Home';
+
+    if (needsFirestoreRepair && r.uid && window.db) {
+        window.getNiptoCollection('routines').doc(r.uid).update({
+            schedule: sched,
+            daysOfWeek: window.firebase.firestore.FieldValue.delete()
+        }).catch(err => console.warn(`Could not auto-heal routine ${r.name}:`, err));
+    }
+
+    return r;
 }
 
-// Fetches the list of past weeks from Nipto GraphQL API
-export async function getWeeksList() {
-    if (!state.apiToken) return [];
+export async function loadRoutinesFromFirestore() {
+    const snapshot = await window.getNiptoCollection('routines').get();
+    state.routines = [];
+    snapshot.forEach(doc => {
+        const normalized = normalizeAndHealRoutineDoc({ uid: doc.id, ...doc.data() });
+        state.routines.push(normalized);
+    });
+    return state.routines;
+}
+
+export async function loadTodosFromFirestore() {
     try {
-        const QUERY = `{ weeks(limit: 52, sort: DESC) { uid startDate endDate scores { user { uid name } score } } }`;
-        const data = await fetchNipto(QUERY);
-        state.weeksList = (data && data.weeks) ? data.weeks : [];
-        return state.weeksList;
+        const snapshot = await window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').get();
+        state.todoTasksData = [];
+        snapshot.forEach(doc => {
+            state.todoTasksData.push({ id: doc.id, ...doc.data() });
+        });
+        return state.todoTasksData;
     } catch (e) {
-        console.warn("Could not fetch weeks list from Nipto:", e);
-        return state.weeksList || [];
+        console.error("Error loading todos from Firestore:", e);
+        state.todoTasksData = [];
+        return [];
     }
 }
 
@@ -223,7 +238,7 @@ export async function archiveActivitiesToFirestore(activities) {
             const actDate = act.parsedDate || (act.date ? new Date(act.date) : new Date());
             const weekUid = act.weekUid || getWeekUidForDate(actDate);
             const pts = (act.awardedPts !== undefined) ? act.awardedPts : ((act.task && act.task.value) ? act.task.value : 0);
-            
+
             let uName = (act.user && act.user.name) ? act.user.name : "Unknown";
             if (uName === "Alyssa M") uName = "Alyssa";
             const knownUser = ALL_USERS.find(u => (act.user && act.user.uid && u.uid === act.user.uid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
@@ -233,6 +248,7 @@ export async function archiveActivitiesToFirestore(activities) {
             const dataToSave = {
                 uid: act.uid,
                 date: actDate.toISOString(),
+                dateKey: getLocalTodayKey(actDate),
                 userName: userName,
                 userUid: userUid,
                 taskName: (act.task && act.task.name) ? act.task.name : "",
@@ -244,7 +260,6 @@ export async function archiveActivitiesToFirestore(activities) {
             batch.set(docRef, dataToSave, { merge: true });
             count++;
 
-            // Also keep in-memory cache synchronized immediately
             if (weekUid) {
                 if (!state.historicalActivitiesCache[weekUid]) state.historicalActivitiesCache[weekUid] = [];
                 const existingIdx = state.historicalActivitiesCache[weekUid].findIndex(a => a.uid === act.uid);
@@ -271,149 +286,13 @@ export async function archiveActivitiesToFirestore(activities) {
     }
 }
 
-// Pre-warms recent activities history in memory in the background
-export async function prefetchActivitiesHistory() {
-    try {
-        if (!state.weeksList || state.weeksList.length === 0) {
-            await getWeeksList();
-        }
-        const recentWeeks = (state.weeksList || []).slice(0, 2).map(w => w.uid);
-        for (const wUid of recentWeeks) {
-            if (!state.historicalActivitiesCache[wUid]) {
-                await loadHistoricalActivitiesForWeek(wUid);
-            }
-        }
-    } catch (e) {
-        console.warn("Could not prefetch activities history:", e);
-    }
-}
-
-// Loads historical activities for a prior week directly from official Nipto MCP (authoritative, reflects all deletions)
-// with fallback to Firestore activities_history if offline.
-export async function loadHistoricalActivitiesForWeek(weekUid, startDate, endDate) {
-    if (state.historicalActivitiesCache[weekUid] && state.historicalActivitiesCache[weekUid].length > 0) {
-        return state.historicalActivitiesCache[weekUid];
-    }
-    
-    let activities = [];
-
-    // 1. Primary authoritative source: Nipto MCP list_activities
-    // Nipto MCP is the direct upstream source of truth—if a task was completed and then deleted,
-    // it will NOT be returned by Nipto MCP, ensuring deleted tasks never linger with positive points.
-    if (weekUid && weekUid !== 'all') {
-        try {
-            const mcpData = await fetchNiptoMcp('list_activities', { week: weekUid });
-            if (mcpData && mcpData.activities) {
-                const labels = state.activityLabels || {};
-                mcpData.activities.forEach(act => {
-                    let uName = act.member?.name || "";
-                    if (uName === "Alyssa M") uName = "Alyssa";
-                    const uObj = ALL_USERS.find(u => u.uid === act.member?.uid || (uName && u.name.toLowerCase() === uName.toLowerCase()));
-                    const finalName = (uObj ? uObj.name : uName) || "Unknown";
-                    const finalUid = act.member?.uid || (uObj ? uObj.uid : "");
-                    const customLabel = labels[act.uid] || "";
-                    const pts = (act.eggs !== undefined) ? act.eggs : (act.task?.value || 0);
-
-                    activities.push({
-                        uid: act.uid,
-                        date: act.date,
-                        parsedDate: new Date(act.date),
-                        user: { uid: finalUid, name: finalName },
-                        task: { uid: act.task?.uid, name: act.task?.name || "Activity", value: pts },
-                        awardedPts: pts,
-                        label: customLabel,
-                        weekUid: weekUid
-                    });
-                });
-            }
-        } catch (mcpErr) {
-            console.warn(`[Nipto MCP] Could not fetch activities for week ${weekUid}, falling back to Firestore:`, mcpErr);
-        }
-    }
-
-    // 2. Fallback: Query Firestore activities_history only if MCP failed or returned no activities
-    if (activities.length === 0 && weekUid && weekUid !== 'all') {
-        try {
-            const snapshot = await window.getNiptoCollection('activities_history')
-                .where('weekUid', '==', weekUid)
-                .get();
-
-            if (snapshot && !snapshot.empty) {
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    let uName = data.userName || "";
-                    if (uName === "Alyssa M") uName = "Alyssa";
-                    const knownUser = ALL_USERS.find(u => (data.userUid && u.uid === data.userUid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
-                    const userUid = data.userUid || (knownUser ? knownUser.uid : "");
-                    const userName = (knownUser ? knownUser.name : uName) || "Unknown";
-                    const label = (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || "";
-                    const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
-
-                    activities.push({
-                        uid: data.uid || doc.id,
-                        date: data.date,
-                        parsedDate: new Date(data.date),
-                        user: { uid: userUid, name: userName },
-                        task: { name: data.taskName || "Activity", value: pts },
-                        awardedPts: pts,
-                        label: label,
-                        weekUid: data.weekUid || weekUid
-                    });
-                });
-            }
-        } catch (fsErr) {
-            console.warn(`Firestore fallback error for week ${weekUid}:`, fsErr);
-        }
-    }
-
-    // 3. Fallback date range filter if weekUid wasn't specified but dates were
-    if (activities.length === 0 && startDate && endDate) {
-        try {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const snapshot = await window.getNiptoCollection('activities_history')
-                .where('date', '>=', start.toISOString())
-                .where('date', '<=', end.toISOString())
-                .get();
-
-            if (snapshot && !snapshot.empty) {
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    let uName = data.userName || "";
-                    if (uName === "Alyssa M") uName = "Alyssa";
-                    const knownUser = ALL_USERS.find(u => (data.userUid && u.uid === data.userUid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
-                    const userUid = data.userUid || (knownUser ? knownUser.uid : "");
-                    const userName = (knownUser ? knownUser.name : uName) || "Unknown";
-                    const label = (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || "";
-                    const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
-
-                    activities.push({
-                        uid: data.uid || doc.id,
-                        date: data.date,
-                        parsedDate: new Date(data.date),
-                        user: { uid: userUid, name: userName },
-                        task: { name: data.taskName || "Activity", value: pts },
-                        awardedPts: pts,
-                        label: label,
-                        weekUid: data.weekUid || weekUid
-                    });
-                });
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    activities.sort((a, b) => b.parsedDate - a.parsedDate);
-    state.historicalActivitiesCache[weekUid] = activities;
-    return activities;
-}
-
 export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
     const activeDoers = (doers && doers.length > 0) ? doers : state.activeUsers;
     const data = await fetchNipto(
-        `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`, 
+        `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`,
         { done: taskUid, doers: activeDoers, date: targetDateStr }
     );
-    
+
     let activityUids = [];
     if (data && data.createActivity) {
         if (Array.isArray(data.createActivity)) activityUids = data.createActivity.map(a => a.uid);
@@ -431,18 +310,23 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
             const activitiesToArchive = activityUids.map((uid, index) => {
                 const doerUid = activeDoers[index] || activeDoers[0] || "";
                 const userObj = ALL_USERS.find(u => u.uid === doerUid);
-                // Also award to boys' allowance ledger if Ayden or DJ
                 awardAllowancePoints(doerUid, ptsPerUser);
-                return {
+                const actRecord = {
                     uid: uid,
                     date: targetDate.toISOString(),
+                    parsedDate: targetDate,
                     user: { uid: doerUid, name: userObj ? userObj.name : "Unknown" },
                     task: { uid: taskUid, name: tObj ? tObj.name : "Task", value: ptsPerUser },
                     awardedPts: ptsPerUser,
                     weekUid: weekUid
                 };
+                if (isDateInLocalWeek(targetDate, getLocalWeekBounds(new Date(), 0))) {
+                    state.allWeekActivities.unshift(actRecord);
+                    state.currentWeekScores[doerUid] = (state.currentWeekScores[doerUid] || 0) + ptsPerUser;
+                }
+                return actRecord;
             });
-            archiveActivitiesToFirestore(activitiesToArchive);
+            await archiveActivitiesToFirestore(activitiesToArchive);
         } catch (e) {
             console.warn("Could not immediately archive logged activity:", e);
         }
@@ -454,20 +338,19 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
 
 export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
-    
-    // 1. Immediately remove from live memory cache for current week
+
     if (state.allWeekActivities) {
         state.allWeekActivities = state.allWeekActivities.filter(a => a.uid !== activityUid);
     }
-
-    // 2. Remove from all historical in-memory caches
+    if (state.weeklyActivitiesForDone) {
+        state.weeklyActivitiesForDone = state.weeklyActivitiesForDone.filter(a => a.uid !== activityUid);
+    }
     if (state.historicalActivitiesCache) {
         Object.keys(state.historicalActivitiesCache).forEach(wUid => {
             state.historicalActivitiesCache[wUid] = state.historicalActivitiesCache[wUid].filter(a => a.uid !== activityUid);
         });
     }
 
-    // 3. Delete from Firestore activities_history
     try {
         await window.getNiptoCollection('activities_history').doc(activityUid).delete();
     } catch (e) { /* ignore */ }
@@ -490,70 +373,38 @@ export async function addFirestoreDocument(collection, data) {
     });
 }
 
-export async function loadRoutinesFromFirestore() {
-    const snapshot = await window.getNiptoCollection('routines').get();
-    state.routines = [];
-    snapshot.forEach(doc => {
-        state.routines.push({ uid: doc.id, ...doc.data() });
-    });
-}
-
-export async function loadTodosFromFirestore() {
-    try {
-        const snapshot = await window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').get();
-        state.todoTasksData = [];
-        snapshot.forEach(doc => {
-            state.todoTasksData.push({ id: doc.id, ...doc.data() });
-        });
-        return state.todoTasksData;
-    } catch (e) {
-        console.error("Error loading todos from Firestore:", e);
-        state.todoTasksData = [];
-        return [];
-    }
-}
-
-// Notifies all other open dashboards that Nipto activity data changed,
-// so their leaderboards/history refresh automatically.
 function pingActivitySignal() {
     try {
-        window.__localActivityPingAt = Date.now(); // lets this device ignore its own echo
+        window.__localActivityPingAt = Date.now();
         window.getNiptoCollection('sync_signals').doc('activity').set({
             updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
         }).catch(e => console.warn('Sync ping failed:', e));
-    } catch (e) { /* non-critical, never block logging */ }
+    } catch (e) { /* non-critical */ }
 }
 
-
+// Explicit Nipto Task Sync (Only called when clicking the Sync button)
 export async function syncNiptoTasks() {
-    // 1. Updated to match the IDs in common.html
     const statusText = document.getElementById('status');
     const syncBtn = document.getElementById('syncNiptoBtn');
-    
-    // 2. Pull the already decoded token from localStorage
-    const apiToken = localStorage.getItem("nipto_api_token");
+    const apiToken = localStorage.getItem("nipto_api_token") || state.apiToken;
 
     if (!apiToken) {
-        statusText.innerText = "Error: Please unlock the dashboard first.";
-        statusText.style.color = "#cf6679";
-        document.getElementById('pinModal').style.display = 'flex';
+        if (statusText) {
+            statusText.innerText = "Error: Please unlock the dashboard first.";
+            statusText.style.color = "#cf6679";
+        }
+        const pinModal = document.getElementById('pinModal');
+        if (pinModal) pinModal.style.display = 'flex';
         return;
     }
 
-    syncBtn.disabled = true;
-    statusText.innerText = "Connecting to Nipto API...";
-    statusText.style.color = "#e0e0e0";
+    if (syncBtn) syncBtn.disabled = true;
+    if (statusText) {
+        statusText.innerText = "Connecting to Nipto API...";
+        statusText.style.color = "#e0e0e0";
+    }
 
-    const QUERY = `
-        query GetTasks {
-          tasks {
-            uid
-            group
-            name
-            value
-          }
-        }
-    `;
+    const QUERY = `query GetTasks { tasks { uid group name value } }`;
 
     try {
         const response = await fetch(NIPTO_URL, {
@@ -566,7 +417,6 @@ export async function syncNiptoTasks() {
         });
 
         const jsonData = await response.json();
-
         if (jsonData.errors) {
             throw new Error(jsonData.errors[0].message || "GraphQL Error from Nipto");
         }
@@ -576,11 +426,11 @@ export async function syncNiptoTasks() {
             throw new Error("No tasks returned from Nipto.");
         }
 
-        statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
+        if (statusText) statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
 
         const activeNiptoTaskIds = new Set(tasks.map(task => task.uid));
         const firebaseSnapshot = await window.getNiptoCollection('nipto_tasks').get();
-        
+
         const uidsToDelete = [];
         firebaseSnapshot.forEach(doc => {
             if (!activeNiptoTaskIds.has(doc.id)) {
@@ -598,10 +448,9 @@ export async function syncNiptoTasks() {
             batch.set(docRef, task, { merge: true });
             operationCount++;
             totalSynced++;
-
             if (operationCount === 490) {
                 await batch.commit();
-                batch = window.db.batch(); 
+                batch = window.db.batch();
                 operationCount = 0;
             }
         }
@@ -611,10 +460,9 @@ export async function syncNiptoTasks() {
             batch.delete(docRef);
             operationCount++;
             totalDeleted++;
-
             if (operationCount === 490) {
                 await batch.commit();
-                batch = window.db.batch(); 
+                batch = window.db.batch();
                 operationCount = 0;
             }
         }
@@ -623,35 +471,32 @@ export async function syncNiptoTasks() {
             await batch.commit();
         }
 
-        statusText.innerText = `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`;
-        statusText.style.color = "var(--success, #03dac6)";
-        
-        // Clear success message after 4 seconds
-        setTimeout(() => {
-            if (statusText.innerText.includes("Success!")) {
-                statusText.innerText = "";
-            }
-        }, 4000);
-
+        if (statusText) {
+            statusText.innerText = `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`;
+            statusText.style.color = "var(--success, #03dac6)";
+            setTimeout(() => {
+                if (statusText.innerText.includes("Success!")) {
+                    statusText.innerText = "";
+                }
+            }, 4000);
+        }
     } catch (error) {
         console.error("Error syncing Nipto tasks:", error);
-        statusText.innerText = `Error: ${error.message}`;
-        statusText.style.color = "var(--danger, #cf6679)";
+        if (statusText) {
+            statusText.innerText = `Error: ${error.message}`;
+            statusText.style.color = "var(--danger, #cf6679)";
+        }
     } finally {
-        syncBtn.disabled = false;
+        if (syncBtn) syncBtn.disabled = false;
     }
 }
 
-
-
-// Loads the activityUid → real-name map used to relabel generic "assigned task" history rows.
 export async function loadActivityLabelsFromFirestore() {
     const snapshot = await window.getNiptoCollection('activity_labels').get();
     state.activityLabels = {};
     snapshot.forEach(doc => { state.activityLabels[doc.id] = doc.data().name; });
 }
 
-// Stores the real (routine/to-do) name against each Nipto activity UID it created.
 export async function saveActivityLabels(activityUids, name) {
     if (!activityUids || !activityUids.length || !name) return;
     if (!state.activityLabels) state.activityLabels = {};
@@ -661,7 +506,6 @@ export async function saveActivityLabels(activityUids, name) {
         batch.set(window.getNiptoCollection('activities_history').doc(uid), { label: name }, { merge: true });
         state.activityLabels[uid] = name;
 
-        // Also keep in-memory historical activities cache in sync
         Object.keys(state.historicalActivitiesCache).forEach(wUid => {
             const cached = state.historicalActivitiesCache[wUid].find(a => a.uid === uid);
             if (cached) cached.label = name;
@@ -770,7 +614,12 @@ export async function loadIntegrationsConfigFromFirestore() {
     try {
         const doc = await window.getNiptoCollection('config').doc('integrations').get();
         if (doc.exists) {
-            state.integrationsConfig = { ...state.integrationsConfig, ...doc.data() };
+            const data = doc.data() || {};
+            if (!data.geminiModel || String(data.geminiModel).includes('2.5')) {
+                data.geminiModel = 'gemini-3.8-flash';
+                window.getNiptoCollection('config').doc('integrations').set({ geminiModel: 'gemini-3.8-flash' }, { merge: true }).catch(() => {});
+            }
+            state.integrationsConfig = { ...state.integrationsConfig, ...data };
         } else {
             await window.getNiptoCollection('config').doc('integrations').set(state.integrationsConfig);
         }
@@ -781,7 +630,11 @@ export async function loadIntegrationsConfigFromFirestore() {
 }
 
 export async function saveIntegrationsConfigToFirestore(cfg) {
-    state.integrationsConfig = { ...state.integrationsConfig, ...cfg };
+    const sanitized = { ...cfg };
+    if (sanitized.geminiModel && String(sanitized.geminiModel).includes('2.5')) {
+        sanitized.geminiModel = 'gemini-3.8-flash';
+    }
+    state.integrationsConfig = { ...state.integrationsConfig, ...sanitized };
     try {
         await window.getNiptoCollection('config').doc('integrations').set(state.integrationsConfig, { merge: true });
     } catch (e) {
@@ -796,7 +649,15 @@ export async function loadNotificationPreferencesFromFirestore() {
     try {
         const doc = await window.getNiptoCollection('preferences').doc('notifications').get();
         if (doc.exists) {
-            state.notificationPreferences = { ...state.notificationPreferences, ...doc.data() };
+            const data = doc.data() || {};
+            state.notificationPreferences = {
+                ...state.notificationPreferences,
+                ...data,
+                adults: {
+                    ...state.notificationPreferences.adults,
+                    ...(data.adults || {})
+                }
+            };
         } else {
             await window.getNiptoCollection('preferences').doc('notifications').set(state.notificationPreferences);
         }
@@ -816,61 +677,83 @@ export async function saveNotificationPreferencesToFirestore(prefs) {
 }
 
 // ==========================================
-// HOME ASSISTANT WEBHOOK DISPATCH
+// HOME ASSISTANT WEBHOOK DISPATCH (NON-BLOCKING + TIMEOUT)
 // ==========================================
 export async function dispatchHomeAssistantNotification(payload) {
-    const url = state.integrationsConfig?.haWebhookUrl;
-    if (!url) {
-        console.warn("Home Assistant Webhook URL not configured.");
-        return false;
-    }
-    const publicUrl = state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL;
-    if (payload.dashboard_path && !payload.dashboard_path.startsWith('http')) {
-        payload.dashboard_path = publicUrl;
-    }
-    if (Array.isArray(payload.actions)) {
-        payload.actions = payload.actions.map(act => {
-            if (act.uri && !act.uri.startsWith('http')) {
-                const queryStr = act.uri.includes('?') ? act.uri.slice(act.uri.indexOf('?')) : '';
-                act.uri = `${publicUrl}${queryStr}`;
-            }
-            return act;
-        });
-    }
     try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        return res.ok;
+        const url = (state.integrationsConfig?.haWebhookUrl || '').trim();
+        if (!url || !payload) return false;
+
+        // Filter out empty or unconfigured targets (e.g. Kenny has no phone connected)
+        const rawTargets = Array.isArray(payload.targets) ? payload.targets : [];
+        const validTargets = rawTargets
+            .map(t => (typeof t === 'string' ? t.trim() : ''))
+            .filter(t => t.length > 0 && t.startsWith('notify.'));
+
+        if (validTargets.length === 0) {
+            return false;
+        }
+
+        const safePayload = {
+            ...payload,
+            targets: validTargets
+        };
+
+        const publicUrl = state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL;
+        if (safePayload.dashboard_path && !safePayload.dashboard_path.startsWith('http')) {
+            safePayload.dashboard_path = publicUrl;
+        }
+        if (Array.isArray(safePayload.actions)) {
+            safePayload.actions = safePayload.actions.map(act => {
+                const copy = { ...act };
+                if (copy.uri && !copy.uri.startsWith('http')) {
+                    const queryStr = copy.uri.includes('?') ? copy.uri.slice(copy.uri.indexOf('?')) : '';
+                    copy.uri = `${publicUrl}${queryStr}`;
+                }
+                return copy;
+            });
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(safePayload),
+                signal: controller.signal
+            });
+            return res.ok;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     } catch (err) {
-        console.error("Failed to POST to Home Assistant webhook:", err);
+        console.warn("Home Assistant webhook notification skipped/failed (non-blocking):", err?.message || err);
         return false;
     }
 }
 
 // ==========================================
-// FIRESTORE-FIRST LEADERBOARD LOADER
+// FIRESTORE-FIRST WEEKLY LEADERBOARD LOADER
+// Reset Boundary: Sunday 11:59:59.999 PM Local Time
 // ==========================================
 export async function loadWeeklyPointsFromFirestore() {
-    // Computes weekly points from cached currentWeekScores or activities_history
-    if (Object.keys(state.currentWeekScores || {}).length > 0) {
-        return { points: state.currentWeekScores, activities: state.allWeekActivities || [] };
-    }
-    let points = {};
+    const points = {};
     ALL_USERS.forEach(u => { points[u.uid] = 0; });
+
+    const weekBounds = getLocalWeekBounds(new Date(), 0);
     try {
-        const now = new Date();
-        const day = now.getDay();
-        const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
-        const mon = new Date(now.getFullYear(), now.getMonth(), diffToMon, 0, 0, 0);
         const snapshot = await window.getNiptoCollection('activities_history')
-            .where('date', '>=', mon.toISOString())
+            .where('date', '>=', weekBounds.startDate.toISOString())
             .get();
+
         const activities = [];
         snapshot.forEach(doc => {
             const data = doc.data();
+            const parsedDate = new Date(data.date);
+            if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
+
             const pts = data.awardedPts || data.taskValue || 0;
             if (data.userUid && points[data.userUid] !== undefined) {
                 points[data.userUid] += pts;
@@ -878,13 +761,14 @@ export async function loadWeeklyPointsFromFirestore() {
             activities.push({
                 uid: doc.id,
                 date: data.date,
-                parsedDate: new Date(data.date),
+                parsedDate: parsedDate,
                 user: { uid: data.userUid, name: data.userName },
                 task: { name: data.taskName, value: pts },
                 awardedPts: pts,
                 label: data.label || ""
             });
         });
+
         state.currentWeekScores = { ...points };
         state.allWeekActivities = activities;
         return { points, activities };
@@ -895,10 +779,8 @@ export async function loadWeeklyPointsFromFirestore() {
 }
 
 // ==========================================
-// DAILY COMPLETIONS ("DONE TODAY" PANEL)
-// Stored as a single doc per day at:
-// nipto/{env}/daily_completions/{YYYY-MM-DD}
-// with items: { [id]: { id, itemId, sourceType, title, user, userUid, points, completedAt, dateKey } }
+// WEEKLY COMPLETIONS ("DONE THIS WEEK" + HISTORICAL WEEKS)
+// Stored per day at: nipto/{env}/daily_completions/{YYYY-MM-DD}
 // ==========================================
 export async function recordDailyCompletion(entry) {
     if (!entry || !entry.id) return;
@@ -912,8 +794,7 @@ export async function recordDailyCompletion(entry) {
                 [entry.id]: entry
             }
         }, { merge: true });
-        
-        // Update persisted array in memory
+
         if (!state.persistedDailyCompletions) state.persistedDailyCompletions = [];
         const existingIdx = state.persistedDailyCompletions.findIndex(it => it.id === entry.id);
         if (existingIdx !== -1) {
@@ -922,8 +803,8 @@ export async function recordDailyCompletion(entry) {
             state.persistedDailyCompletions.unshift(entry);
         }
 
-        if (window.rebuildCompletedToday) window.rebuildCompletedToday();
-        if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+        if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();
+        if (window.renderDoneThisWeekFeed) window.renderDoneThisWeekFeed();
     } catch (e) {
         console.error("Error recording daily completion to Firestore:", e);
     }
@@ -938,40 +819,91 @@ export async function removeDailyCompletion(id, dateKey = null) {
             updatedAt: new Date().toISOString()
         });
     } catch (e) {
-        // Document might not exist yet if clearing an item not yet committed
         console.warn("Could not delete item from daily_completions doc:", e);
     }
 
-    // Update persisted array in memory
     if (state.persistedDailyCompletions) {
         state.persistedDailyCompletions = state.persistedDailyCompletions.filter(it => it.id !== id && it.itemId !== id);
     }
-    if (window.rebuildCompletedToday) window.rebuildCompletedToday();
-    if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+    if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();
+    if (window.renderDoneThisWeekFeed) window.renderDoneThisWeekFeed();
 }
 
-export async function loadDailyCompletionsFromFirestore() {
-    const todayKey = getLocalTodayKey();
+export async function loadWeeklyCompletionsFromFirestore(weekOffset = state.doneWeekOffset || 0) {
+    const weekBounds = getLocalWeekBounds(new Date(), weekOffset);
+    const { dateKeys, startDate, endDate, weekKey } = weekBounds;
+
     try {
-        const doc = await window.getNiptoCollection('daily_completions').doc(todayKey).get();
-        if (doc.exists) {
+        const [dailySnap, actSnap] = await Promise.all([
+            window.getNiptoCollection('daily_completions')
+                .where('dateKey', 'in', dateKeys)
+                .get()
+                .catch(async () => {
+                    const docs = await Promise.all(
+                        dateKeys.map(k => window.getNiptoCollection('daily_completions').doc(k).get())
+                    );
+                    return { forEach: (cb) => docs.forEach(d => { if (d.exists) cb(d); }) };
+                }),
+            window.getNiptoCollection('activities_history')
+                .where('date', '>=', startDate.toISOString())
+                .where('date', '<=', endDate.toISOString())
+                .get()
+                .catch(() => ({ forEach: () => {} }))
+        ]);
+
+        const persistedItems = [];
+        dailySnap.forEach(doc => {
             const data = doc.data() || {};
             const itemsMap = data.items || {};
-            state.persistedDailyCompletions = Object.values(itemsMap);
-        } else {
-            state.persistedDailyCompletions = [];
+            Object.values(itemsMap).forEach(item => {
+                if (item && item.id) {
+                    persistedItems.push({
+                        ...item,
+                        dateKey: item.dateKey || doc.id
+                    });
+                }
+            });
+        });
+
+        const weekActivities = [];
+        actSnap.forEach(doc => {
+            const data = doc.data() || {};
+            const parsedDate = new Date(data.date);
+            if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
+            const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
+            weekActivities.push({
+                uid: data.uid || doc.id,
+                date: data.date,
+                parsedDate,
+                dateKey: getLocalTodayKey(parsedDate),
+                user: { uid: data.userUid || '', name: data.userName || 'Unknown' },
+                task: { name: data.taskName || 'Activity', value: pts },
+                awardedPts: pts,
+                label: (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || ''
+            });
+        });
+
+        state.weeklyCompletionsCache[weekKey] = {
+            persistedItems,
+            weekActivities
+        };
+
+        if (weekOffset === (state.doneWeekOffset || 0)) {
+            state.persistedDailyCompletions = persistedItems;
+            state.weeklyActivitiesForDone = weekActivities;
         }
     } catch (e) {
-        console.error("Error loading daily_completions from Firestore:", e);
+        console.error("Error loading weekly completions from Firestore:", e);
         state.persistedDailyCompletions = [];
+        state.weeklyActivitiesForDone = [];
     }
 
-    if (window.rebuildCompletedToday) {
-        window.rebuildCompletedToday();
-    }
-    if (window.renderDoneTodayFeed) {
-        window.renderDoneTodayFeed();
-    }
-    return state.completedToday;
+    if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();
+    if (window.renderDoneThisWeekFeed) window.renderDoneThisWeekFeed();
+    return state.completedThisWeek;
 }
 
+// Backward-compatible alias
+export async function loadDailyCompletionsFromFirestore() {
+    return loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
+}

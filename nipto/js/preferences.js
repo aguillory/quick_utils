@@ -6,14 +6,18 @@ state.userPrefs = {
     theme: 'boring',
     historyView: 'everyone',
     niptoSortOrder: [],
+    customSortOrder: [],
     todoSortOrder: [],
     todoSort: 'priority',
     todoGroupBy: 'category',
-    todoTypeFilter: 'todo',
+    todoTypeFilter: 'all',
     todoCategoryFilter: 'all',
     todoPriorityFilter: 'all',
     todoPersonFilter: 'all',
-    collapsed: {}
+    collapsed: {},
+    collapsedSections: {},
+    bulkCollapsedSections: {},
+    ...(state.userPrefs || {})
 };
 
 // Loads a user's saved preferences from Firestore into state with local cache fallback.
@@ -53,6 +57,9 @@ function applyPrefsToState() {
     if (state.userPrefs.todoCategoryFilter) state.todoCategoryFilter = state.userPrefs.todoCategoryFilter;
     if (state.userPrefs.todoPriorityFilter) state.todoPriorityFilter = state.userPrefs.todoPriorityFilter;
     if (state.userPrefs.todoPersonFilter) state.todoPersonFilter = state.userPrefs.todoPersonFilter;
+    if (state.userPrefs.todoBucketFilter) state.todoBucketFilter = state.userPrefs.todoBucketFilter;
+    if (state.userPrefs.todoFrictionFilter) state.todoFrictionFilter = state.userPrefs.todoFrictionFilter;
+    if (state.userPrefs.todoView) state.todoView = state.userPrefs.todoView;
 }
 
 // Saves a single preference key/value to Firestore, local state, and local cache.

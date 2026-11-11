@@ -14,37 +14,48 @@
     --text-main: #000000;     /* Black Text */
     --text-muted: #333333;    /* Dark Gray Text */
     --border-color: #ba8c0f;  /* Gold Border */
-    
+
     /* Saiyan Energy Elements */
     --ki-yellow: #ba8c0f;
     --ki-yellow-glow: #e0ac16;
     --aura-blue: #01003d;
 }
 
-body { 
-    font-family: 'Ubuntu', sans-serif; 
-    margin: 0; 
-    background-color: var(--bg-color); 
+body {
+    font-family: 'Ubuntu', sans-serif;
+    margin: 0;
+    background-color: var(--bg-color);
     color: var(--text-main);
-    
-    /* Vegeta Background */
-background-image: url('vegeta.webp');
-    background-size: auto min(95vh, 650px); /* Keeps it within the screen height while capping max width */
+    background-image: url('vegeta.webp');
+    background-size: auto min(95vh, 650px);
     background-position: bottom right;
     background-attachment: fixed;
     background-repeat: no-repeat;
 }
 
-h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacing: 2px; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }`r`nh3, h4 { font-family: 'Ubuntu', sans-serif; color: var(--text-main); font-weight: bold; letter-spacing: 1px; text-shadow: none; }
+h1, h2 {
+    font-family: 'Bangers', cursive;
+    color: var(--text-main);
+    letter-spacing: 2px;
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+}
+
+h3, h4 {
+    font-family: 'Ubuntu', sans-serif;
+    color: var(--text-main);
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-shadow: none;
+}
 
 /* ==========================================
    CONTAINERS & LAYOUT (CAPSULE CORP STYLE)
    ========================================== */
 .header, .sidebar, .widget-panel, .modal-content {
     background: var(--card-bg);
-    border: 3px solid var(--primary); 
+    border: 3px solid var(--primary);
     border-radius: 12px;
-    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.1); 
+    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.1);
     position: relative;
     backdrop-filter: blur(8px);
 }
@@ -59,21 +70,21 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
 /* ==========================================
    BUTTONS (ENERGY BLASTS)
    ========================================== */
-.task-btn, .action-btn, .qt-btn, .ht-btn, .mode-btn { 
+.task-btn, .action-btn, .qt-btn, .ht-btn, .mode-btn {
     font-family: 'Bangers', cursive;
-    font-weight: 400;
+    font-weight: bold;
     font-size: 18px;
-    border-radius: 20px; 
+    border-radius: 20px;
     border: 2px solid #fff;
-    background-color: var(--primary); 
+    background-color: var(--primary);
     color: #000;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-weight: bold;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     text-transform: uppercase;
     letter-spacing: 1.5px;
     transition: all 0.2s ease-in-out;
 }
 
-.task-btn:hover:not(:disabled), .action-btn:hover { 
+.task-btn:hover:not(:disabled), .action-btn:hover {
     background-color: var(--ki-yellow);
     color: #000;
     border-color: #000;
@@ -85,10 +96,11 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
     transform: scale(0.95);
 }
 
-.task-btn.success, .action-btn.save-mode, #refreshBtn, #syncNiptoBtn { 
-    background-color: var(--aura-blue) !important; 
+.task-btn.success, .action-btn.save-mode, #refreshBtn, #syncNiptoBtn {
+    background-color: var(--aura-blue) !important;
     border-color: #0277BD !important;
-    color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); 
+    color: #fff !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
 
 .task-btn.success:hover, .action-btn.save-mode:hover, #refreshBtn:hover, #syncNiptoBtn:hover {
@@ -111,12 +123,13 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
     padding: 8px 16px;
 }
 
-.user-name { 
-    font-family: 'Bangers', cursive; 
-    color: var(--text-main); 
+.user-name {
+    font-family: 'Bangers', cursive;
+    color: var(--text-main);
     font-size: 14px;
     letter-spacing: 1px;
 }
+
 .user-points {
     font-size: 10px;
     font-weight: bold;
@@ -134,10 +147,10 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
 /* ==========================================
    CHORE CARDS (DRAGON BALLS)
    ========================================== */
-.chore-card { 
-    background: var(--card-bg) !important; 
-    border-left: 8px solid var(--primary) !important; 
-    border-radius: 8px !important; 
+.chore-card {
+    background: var(--card-bg) !important;
+    border-left: 8px solid var(--primary) !important;
+    border-radius: 8px !important;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
     transition: transform 0.2s;
     backdrop-filter: blur(8px);
@@ -145,35 +158,44 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
 
 .chore-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(186, 140, 15, 0.3) !important; /* Orange glow */
+    box-shadow: 0 6px 12px rgba(186, 140, 15, 0.3) !important;
 }
 
-.chore-title { 
+.chore-title {
     font-family: 'Bangers', cursive;
     font-size: 20px;
-    color: var(--text-main) !important; 
+    color: var(--text-main) !important;
     letter-spacing: 1px;
 }
 
-.chore-points { background: var(--primary) !important; color: #000 !important; border: none !important; border-radius: 20px !important; font-family: 'Ubuntu', sans-serif; font-weight: bold; padding: 4px 10px !important; text-shadow: none !important; }
+.chore-points {
+    background: var(--primary) !important;
+    color: #000 !important;
+    border: none !important;
+    border-radius: 20px !important;
+    font-family: 'Ubuntu', sans-serif;
+    font-weight: bold;
+    padding: 4px 10px !important;
+    text-shadow: none !important;
+}
 
-.chore-desc { 
-    background: rgba(0,0,0,0.02) !important; 
+.chore-desc {
+    background: rgba(0,0,0,0.02) !important;
     border-radius: 4px !important;
-    color: var(--text-main) !important; 
+    color: var(--text-main) !important;
     font-family: 'Ubuntu', sans-serif;
 }
 
 .chore-btn { color: var(--primary) !important; font-size: 18px !important; }
 .chore-btn:hover { background: rgba(242, 140, 40, 0.1) !important; transform: scale(1.1); }
 
-.chore-btn.complete-btn:hover { 
-    background: rgba(1, 0, 61, 0.2) !important; 
-    color: var(--aura-blue) !important; 
+.chore-btn.complete-btn:hover {
+    background: rgba(1, 0, 61, 0.2) !important;
+    color: var(--aura-blue) !important;
 }
 
 /* ==========================================
-   NEW UI ELEMENTS (DRAWER, TOASTS, ETC)
+   NEW UI ELEMENTS (DRAWER, TOASTS, COMBOBOX)
    ========================================== */
 #floating-user-indicator {
     background: var(--ki-yellow);
@@ -184,6 +206,7 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
     font-family: 'Bangers', cursive;
     letter-spacing: 1px;
 }
+
 .floating-avatar {
     background: var(--primary);
     border: 2px solid #fff;
@@ -195,6 +218,12 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
     background: var(--card-bg);
     border: 2px solid var(--primary);
     border-radius: 12px;
+}
+
+.category-combobox-input,
+.category-combobox-menu {
+    background: #ffffff !important;
+    color: #000000 !important;
 }
 
 /* Toast Notifications (Scouter Alert) */
@@ -214,35 +243,30 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
    THE CROWN REPLACEMENT (4-STAR DRAGON BALL)
    ========================================== */
 .leader-crown {
-    font-size: 0 !important; /* Hides default emoji */
+    font-size: 0 !important;
     position: absolute;
     top: -15px;
     right: -15px;
     pointer-events: none;
     z-index: 100 !important;
-    
-    /* Create the Dragon Ball */
     width: 32px;
     height: 32px;
     background: radial-gradient(circle at 30% 30%, #FFD54F, #ba8c0f);
     border-radius: 50%;
-    box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 
+    box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4),
                 inset 2px 2px 4px rgba(255,255,255,0.6),
                 0 4px 8px rgba(0,0,0,0.5);
-    
-    /* Animation for floating energy */
     animation: saiyan-float 3s infinite ease-in-out;
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
-/* The Stars */
 .leader-crown::after {
     content: "\2605\2605\2605\2605";
-    font-family: Arial, sans-serif; /* For clean stars */
+    font-family: Arial, sans-serif;
     font-size: 8px;
-    color: #D50000; /* Deep Red Stars */
+    color: #D50000;
     text-shadow: 0px 0px 1px rgba(255,255,255,0.5);
     text-align: center;
     line-height: 0.9;
@@ -254,14 +278,12 @@ h1, h2 { font-family: 'Bangers', cursive; color: var(--text-main); letter-spacin
     50% { transform: translateY(-3px) scale(1.05); box-shadow: inset -4px -4px 6px rgba(0,0,0,0.4), 0 8px 12px rgba(0,0,0,0.4), 0 0 15px var(--ki-yellow-glow); }
 }
 
-
-
-
 /* ==========================================
    INLINE STYLE OVERRIDES FOR LEGIBILITY
    ========================================== */
-span[style*="var(--bg-color)"] {
-    background: rgba(255,255,255,0.9) !important;
+span[style*="var(--bg-color)"],
+div[style*="var(--bg-color)"] {
+    background: rgba(255,255,255,0.92) !important;
     color: #000 !important;
 }
 span[style*="#f3f4f6"] {

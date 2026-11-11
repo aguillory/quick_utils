@@ -5,7 +5,7 @@
 import { state, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { discoverActiveGeminiFlashModel, DEFAULT_GEMINI_MODEL } from './braindump.js';
+import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -13,7 +13,6 @@ export function openSettingsModal() {
     const modal = document.getElementById('settingsModal');
     if (!modal) return;
 
-    // Load Integrations
     const cfg = state.integrationsConfig || {};
     const geminiInput = document.getElementById('settingGeminiApiKey');
     const geminiModelInput = document.getElementById('settingGeminiModel');
@@ -23,19 +22,21 @@ export function openSettingsModal() {
     if (geminiInput) geminiInput.value = cfg.geminiApiKey || '';
 
     let currentModel = (cfg.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-    if (currentModel === 'gemini-2.5-flash') {
+    if (!currentModel || currentModel.includes('2.5')) {
         currentModel = DEFAULT_GEMINI_MODEL;
     }
     if (geminiModelInput) geminiModelInput.value = currentModel;
 
-    if (haInput) haInput.value = cfg.haWebhookUrl || 'https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge';
+    if (haInput) {
+        haInput.value = cfg.haWebhookUrl || 'https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge';
+    }
 
     if (testBadge) {
         testBadge.style.display = 'none';
         testBadge.textContent = '';
     }
 
-    // Load Adult Notification Profiles
+    // Load Adult Notification Profiles (Alyssa, Devyn, Carrina have phones; Kenny does not)
     const adults = state.notificationPreferences?.adults || {};
 
     const adultKeys = [
@@ -71,7 +72,7 @@ export function closeSettingsModal() {
 export async function saveSettingsModal() {
     const geminiKey = document.getElementById('settingGeminiApiKey')?.value.trim() || '';
     let geminiModel = document.getElementById('settingGeminiModel')?.value.trim() || DEFAULT_GEMINI_MODEL;
-    if (geminiModel === 'gemini-2.5-flash') {
+    if (!geminiModel || geminiModel.includes('2.5')) {
         geminiModel = DEFAULT_GEMINI_MODEL;
     }
     const haWebhook = document.getElementById('settingHaWebhookUrl')?.value.trim() || '';
@@ -94,7 +95,7 @@ export async function saveSettingsModal() {
 
     adultKeys.forEach(a => {
         const target = document.getElementById(`setting_${a.key}_target`)?.value.trim() || '';
-        const mode = document.getElementById(`setting_${a.key}_chatMode`)?.value || 'all_messages';
+        const mode = document.getElementById(`setting_${a.key}_chatMode`)?.value || (a.key === 'kenny' ? 'muted' : 'all_messages');
         const direct = document.getElementById(`setting_${a.key}_direct`)?.checked || false;
         const morning = document.getElementById(`setting_${a.key}_morning`)?.checked || false;
         const evening = document.getElementById(`setting_${a.key}_evening`)?.checked || false;
@@ -102,10 +103,10 @@ export async function saveSettingsModal() {
         updatedAdults[a.uid] = {
             name: a.name,
             haTarget: target,
-            chatMode: mode,
-            directAssignmentAlerts: direct,
-            morningDigest: morning,
-            eveningDigest: evening
+            chatMode: target ? mode : 'muted',
+            directAssignmentAlerts: target ? direct : false,
+            morningDigest: target ? morning : false,
+            eveningDigest: target ? evening : false
         };
     });
 
@@ -122,7 +123,7 @@ export async function saveSettingsModal() {
     }
 }
 
-// Tiny 5-token test prompt to verify API Key & Model
+// Verifies API Key & Model with automatic free-tier model discovery/fallback
 export async function testGeminiConnection() {
     const keyInput = document.getElementById('settingGeminiApiKey');
     const modelInput = document.getElementById('settingGeminiModel');
@@ -141,7 +142,7 @@ export async function testGeminiConnection() {
     }
 
     let model = (modelInput?.value || state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-    if (model === 'gemini-2.5-flash') {
+    if (!model || model.includes('2.5')) {
         model = DEFAULT_GEMINI_MODEL;
         if (modelInput) modelInput.value = model;
     }
@@ -157,54 +158,27 @@ export async function testGeminiConnection() {
         badge.textContent = `Testing ${model}...`;
     }
 
-    const runTest = async (targetModel) => {
-        const clean = targetModel.replace(/^models\//, '');
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${clean}:generateContent?key=${apiKey}`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: 'Respond "OK"' }] }],
-                generationConfig: { maxOutputTokens: 5 }
-            })
-        });
-        if (!res.ok) {
-            const errBody = await res.json().catch(() => ({}));
-            const err = new Error(errBody.error?.message || `HTTP ${res.status}`);
-            err.status = res.status;
-            err.code = errBody.error?.code;
-            throw err;
-        }
-        return await res.json();
-    };
-
     try {
-        let activeModel = model;
-        try {
-            await runTest(activeModel);
-        } catch (err) {
-            const isDeprecationOr404 = err.status === 404 ||
-                err.code === 404 ||
-                /no longer available|not found|deprecated/i.test(err.message || '');
-
-            if (isDeprecationOr404) {
-                if (badge) {
-                    badge.textContent = `Model ${activeModel} unavailable. Discovering Flash model...`;
-                }
-                const discovered = await discoverActiveGeminiFlashModel(apiKey);
-                activeModel = discovered;
-                await runTest(activeModel);
-                if (modelInput) modelInput.value = activeModel;
-            } else {
-                throw err;
+        const { modelUsed } = await callGeminiWithFallback(
+            apiKey,
+            model,
+            'Respond "OK"',
+            null,
+            { maxOutputTokens: 5 },
+            (statusMsg) => {
+                if (badge) badge.textContent = statusMsg;
             }
+        );
+
+        if (modelInput && modelUsed) {
+            modelInput.value = modelUsed;
         }
 
         if (badge) {
             badge.style.display = 'inline-block';
             badge.style.background = 'rgba(16, 185, 129, 0.15)';
             badge.style.color = '#059669';
-            badge.innerHTML = `&#x2714; Connected (${activeModel.replace(/^models\//, '')})`;
+            badge.innerHTML = `&#x2714; Connected (${modelUsed.replace(/^models\//, '')})`;
         }
     } catch (err) {
         console.error("Test Gemini connection failed:", err);
@@ -222,8 +196,9 @@ export async function testGeminiConnection() {
     }
 }
 
-// Bind to window for HTML onclicks
-window.openSettingsModal = openSettingsModal;
-window.closeSettingsModal = closeSettingsModal;
-window.saveSettingsModal = saveSettingsModal;
-window.testGeminiConnection = testGeminiConnection;
+if (typeof window !== 'undefined') {
+    window.openSettingsModal = openSettingsModal;
+    window.closeSettingsModal = closeSettingsModal;
+    window.saveSettingsModal = saveSettingsModal;
+    window.testGeminiConnection = testGeminiConnection;
+}

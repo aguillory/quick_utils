@@ -4,11 +4,11 @@ import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
-import { saveCloudCollapsed } from './preferences.js';
+import { saveCloudCollapsed, saveCloudPreference } from './preferences.js';
 import { renderRoutines } from './routines.js';
 import { enableDragSort } from './dragSort.js';
-import { saveCloudPreference } from './preferences.js';
 import { getLocalTodayKey } from './utils.js';
+
 // Logs a task to Nipto for the active users and cross-wires linked routines.
 export async function logTask(buttonElement, taskUid, taskName) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return false; }
@@ -19,10 +19,10 @@ export async function logTask(buttonElement, taskUid, taskName) {
 
     buttonElement.style.transition = 'border 0.1s, transform 0.1s';
     buttonElement.style.transform = 'scale(0.96)';
-    buttonElement.disabled = true; // Disable double clicks while logging
+    buttonElement.disabled = true;
 
     const statusDiv = document.getElementById('status');
-    let targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
+    const targetDate = state.currentMode === 'live' ? new Date() : new Date(document.getElementById('taskDate').value);
 
     if (state.currentMode !== 'live' && !document.getElementById('taskDate').value) {
         statusDiv.innerText = "Error: Please select a valid custom date/time.";
@@ -32,14 +32,14 @@ export async function logTask(buttonElement, taskUid, taskName) {
         return false;
     }
 
-    let namesString = state.activeUsers.map(uid => ALL_USERS.find(u => u.uid === uid).name).join(', ');
+    const namesString = state.activeUsers.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown').join(', ');
     const taskObj = state.tasks.find(t => t.uid === taskUid);
     const points = taskObj ? Math.ceil(taskObj.value / state.currentSplitDivisor) : 0;
+    const targetDateKey = getLocalTodayKey(targetDate);
 
     try {
         await api.logActivityToNipto(taskUid, targetDate.toISOString());
-        
-        // Success feedback!
+
         buttonElement.style.border = '2px solid var(--success, #22c55e)';
         setTimeout(() => { buttonElement.style.border = ''; buttonElement.style.transform = 'scale(1)'; }, 250);
         showToast(taskUid, taskName, points, namesString);
@@ -50,8 +50,17 @@ export async function logTask(buttonElement, taskUid, taskName) {
             let requiresRoutineRender = false;
 
             for (const routine of linkedRoutines) {
-                let newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-                let newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
+                const newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
+                const newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
+                const newCompletionsByDate = routine.completionsByDate ? { ...routine.completionsByDate } : {};
+
+                const primaryUid = state.activeUsers[0] || '';
+                newCompletionsByDate[targetDateKey] = {
+                    completedAt: targetDate.toISOString(),
+                    completedByUid: primaryUid,
+                    completedByName: namesString,
+                    withoutPoints: false
+                };
 
                 if (routine.completionType === 'shared') {
                     newLastCompleted['shared'] = targetDate.toISOString();
@@ -66,35 +75,34 @@ export async function logTask(buttonElement, taskUid, taskName) {
 
                 routine.lastCompleted = newLastCompleted;
                 routine.lastCompletedBy = newLastCompletedBy;
+                routine.completionsByDate = newCompletionsByDate;
                 requiresRoutineRender = true;
 
                 api.updateFirestoreDocument('routines', routine.uid, {
                     lastCompleted: newLastCompleted,
-                    lastCompletedBy: newLastCompletedBy
+                    lastCompletedBy: newLastCompletedBy,
+                    completionsByDate: newCompletionsByDate
                 }).catch(e => console.error("Routine auto-update failed:", e));
             }
 
             if (requiresRoutineRender) { renderRoutines(); }
         }
 
-        // Record to daily_completions
-        const todayKey = getLocalTodayKey();
-        if (getLocalTodayKey(targetDate) === todayKey) {
-            for (const uid of state.activeUsers) {
-                const uObj = ALL_USERS.find(u => u.uid === uid);
-                const actId = `nipto_${taskUid}_${uid}_${Date.now()}`;
-                await api.recordDailyCompletion({
-                    id: actId,
-                    itemId: taskUid,
-                    sourceType: 'nipto',
-                    title: taskName,
-                    user: uObj ? uObj.name : namesString,
-                    userUid: uid,
-                    points: points,
-                    completedAt: targetDate.toISOString(),
-                    dateKey: todayKey
-                });
-            }
+        // Record to daily_completions for the target date key so it appears in "Done This Week"
+        for (const uid of state.activeUsers) {
+            const uObj = ALL_USERS.find(u => u.uid === uid);
+            const actId = `nipto_${taskUid}_${uid}_${Date.now()}`;
+            await api.recordDailyCompletion({
+                id: actId,
+                itemId: taskUid,
+                sourceType: 'nipto',
+                title: taskName,
+                user: uObj ? uObj.name : namesString,
+                userUid: uid,
+                points: points,
+                completedAt: targetDate.toISOString(),
+                dateKey: targetDateKey
+            });
         }
 
         rebuildCompletedToday();
@@ -125,9 +133,6 @@ export async function deleteTaskActivity(activityUid, btnElement) {
         await api.deleteActivityFromNipto(activityUid);
         await api.removeDailyCompletion(`nipto_${activityUid}`, getLocalTodayKey());
 
-
-
-        // 2. Clean up from custom_tasks (Quick Add chores and General To-Dos)
         const linkedTodo = state.todoTasksData ? state.todoTasksData.find(t =>
             (t.completedActivityUids && t.completedActivityUids.includes(activityUid)) ||
             t.completedActivityUid === activityUid
@@ -135,11 +140,9 @@ export async function deleteTaskActivity(activityUid, btnElement) {
 
         if (linkedTodo) {
             if (linkedTodo.category === '&#x26A1; Quick Add' || linkedTodo.notes === 'Quick added points') {
-                // Completely delete the quick add task from Firestore!
                 await api.deleteFirestoreDocument('custom_tasks', linkedTodo.id);
                 state.todoTasksData = state.todoTasksData.filter(t => t.id !== linkedTodo.id);
             } else {
-                // Revert regular to-do to incomplete
                 await api.updateFirestoreDocument('custom_tasks', linkedTodo.id, {
                     completed: false,
                     completedActivityUids: [],
@@ -154,7 +157,6 @@ export async function deleteTaskActivity(activityUid, btnElement) {
             }
         }
 
-        // Also query Firestore directly to ensure any tasks not in memory are cleaned up
         try {
             const snap = await window.getNiptoCollection('custom_tasks')
                 .where('completedActivityUids', 'array-contains', activityUid).get();
@@ -176,10 +178,8 @@ export async function deleteTaskActivity(activityUid, btnElement) {
             console.warn("Firestore custom_tasks cleanup query:", e);
         }
 
-        // Re-render to-do lists if visible
-        const { renderTodoTasks, renderSidebarTodos } = await import('./todos.js');
+        const { renderTodoTasks } = await import('./todos.js');
         renderTodoTasks();
-        renderSidebarTodos();
 
         statusDiv.innerText = `Activity and task deleted successfully!`;
         statusDiv.style.color = 'var(--success)';
@@ -236,7 +236,6 @@ export async function togglePinTask(taskUid) {
     } catch (error) { console.error("Error updating pin:", error); }
 }
 
-// Logs a pinned task (wrapper around logTask).
 export async function logPinnedTask(btnElement, taskUid, taskName) {
     await logTask(btnElement, taskUid, taskName);
 }
@@ -288,6 +287,7 @@ export function populateTaskPointsSelect(selectedValue = '', elementId = 'taskPo
 // Renders the main Nipto task grid, grouped and ordered by category.
 export function renderTasks() {
     const container = document.getElementById('mainContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     let visibleTasks = [];
@@ -310,12 +310,12 @@ export function renderTasks() {
         return acc;
     }, {});
 
-    let savedOrder = state.userPrefs.niptoSortOrder || [];
-    let keys = Object.keys(groupedTasks);
+    const savedOrder = state.userPrefs.niptoSortOrder || [];
+    const keys = Object.keys(groupedTasks);
 
     keys.sort((a, b) => {
-        let idxA = savedOrder.indexOf(a);
-        let idxB = savedOrder.indexOf(b);
+        const idxA = savedOrder.indexOf(a);
+        const idxB = savedOrder.indexOf(b);
         if (idxA !== -1 && idxB !== -1) return idxA - idxB;
         if (idxA !== -1) return -1;
         if (idxB !== -1) return 1;
@@ -328,7 +328,7 @@ export function renderTasks() {
 
         const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
 
-const orderControls = `
+        const orderControls = `
         <span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">&#x2630;</span>
         <span class="sort-controls" style="font-size: 14px; opacity: 0.5;">
         <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
@@ -345,8 +345,7 @@ const orderControls = `
         gridWrapper.className = `collapsible-content ${isCatCollapsed ? 'collapsed' : ''}`;
 
         header.onclick = (e) => {
-            
-            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('drag-handle')) return; 
+            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('drag-handle')) return;
             const collapsed = gridWrapper.classList.toggle('collapsed');
             header.querySelector('.toggle-icon').classList.toggle('collapsed', collapsed);
             saveCloudCollapsed(`nipto_${category}`, collapsed);
@@ -367,12 +366,12 @@ const orderControls = `
             if (state.isEditMode) {
                 btn.classList.add('edit-mode');
                 if (state.tempEditPrefs.has(task.uid)) {
-    btn.classList.add('selected-pref');
-    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x2714; Selected</span>';
-} else {
-    btn.classList.add('unselected-pref');
-    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x274C; Hidden</span>';
-}
+                    btn.classList.add('selected-pref');
+                    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x2714; Selected</span>';
+                } else {
+                    btn.classList.add('unselected-pref');
+                    btn.innerHTML = taskContentHtml + '<span class="edit-status-label" style="font-size:12px; margin-top:5px; display:block;">&#x274C; Hidden</span>';
+                }
 
                 const targetUid = state.activeUsers[0];
                 const isPinned = targetUid && task.pinnedUsers && task.pinnedUsers.includes(targetUid);
@@ -399,12 +398,12 @@ const orderControls = `
         section.appendChild(gridWrapper);
         container.appendChild(section);
     });
-enableDragSort('mainContainer', (order) => saveCloudPreference('niptoSortOrder', order));
+    enableDragSort('mainContainer', (order) => saveCloudPreference('niptoSortOrder', order));
 }
 
-// Renders the active user's pinned tasks.
 export function renderPinnedTasks() {
     const container = document.getElementById('pinnedContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     const targetUid = state.activeUsers[0];
@@ -437,10 +436,7 @@ export function renderPinnedTasks() {
 
 // =======================================================
 // QUICK ADD FEATURE
-// Quickly awards points and logs a completed chore to Nipto
 // =======================================================
-
-// Opens the Quick Add modal and prepares fields
 export function openQuickAddModal() {
     const modal = document.getElementById('quickAddModal');
     if (!modal) return;
@@ -448,10 +444,7 @@ export function openQuickAddModal() {
     const descInput = document.getElementById('quickAddDesc');
     if (descInput) descInput.value = '';
 
-    // Populate points dropdown dynamically
     populateTaskPointsSelect('', 'quickAddPoints');
-
-    // Populate user checkboxes
     populateQuickAddUsers();
 
     modal.style.display = 'flex';
@@ -466,21 +459,18 @@ export function openQuickAddModal() {
     document.addEventListener('keydown', escHandler);
 }
 
-// Closes the Quick Add modal
 export function closeQuickAddModal() {
     const modal = document.getElementById('quickAddModal');
     if (modal) modal.style.display = 'none';
 }
 
-// Builds user checkboxes for who completed the quick task
 export function populateQuickAddUsers() {
     const container = document.getElementById('quickAddUsersContainer');
     if (!container) return;
     container.innerHTML = '';
 
-    // Default to the currently active user(s) on the dashboard
-    const activeUids = state.activeUsers && state.activeUsers.length > 0 
-        ? state.activeUsers 
+    const activeUids = state.activeUsers && state.activeUsers.length > 0
+        ? state.activeUsers
         : (ALL_USERS.length > 0 ? [ALL_USERS[0].uid] : []);
 
     ALL_USERS.forEach(u => {
@@ -494,7 +484,6 @@ export function populateQuickAddUsers() {
     });
 }
 
-// Submits the Quick Add chore, logs to Nipto and Firestore, and refreshes UI
 export async function submitQuickAdd() {
     const descInput = document.getElementById('quickAddDesc');
     const pointsSelect = document.getElementById('quickAddPoints');
@@ -531,9 +520,10 @@ export async function submitQuickAdd() {
         submitBtn.innerText = "Awarding...";
     }
 
-    let targetDate = state.currentMode === 'live' 
-        ? new Date() 
+    const targetDate = state.currentMode === 'live'
+        ? new Date()
         : new Date(document.getElementById('taskDate').value || new Date());
+    const targetDateKey = getLocalTodayKey(targetDate);
 
     const taskObj = state.tasks ? state.tasks.find(t => t.uid === linkedNiptoTask) : null;
     const rawPoints = taskObj ? taskObj.value : 0;
@@ -545,17 +535,14 @@ export async function submitQuickAdd() {
     }).join(', ');
 
     try {
-        // 1. Log to Nipto API with specified doers
         const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString(), selectedUids);
-
-        // 2. Save activity label so the custom description displays in the left sidebar activity history
         await api.saveActivityLabels(activityUids, description);
 
-        // 3. Save as completed in Firestore custom_tasks for audit/history
         await api.addFirestoreDocument('custom_tasks', {
             name: description,
             category: '&#x26A1; Quick Add',
-            priority: 'Medium',
+            priority: 'medium',
+            points: pointsPerUser,
             assignees: selectedUids,
             linkedNiptoTask: linkedNiptoTask,
             completed: true,
@@ -565,12 +552,25 @@ export async function submitQuickAdd() {
             notes: 'Quick added points'
         });
 
-        // 4. Refresh leaderboard points, crown, and left sidebar history
+        for (let i = 0; i < selectedUids.length; i++) {
+            const uid = selectedUids[i];
+            const u = ALL_USERS.find(user => user.uid === uid);
+            const actUid = activityUids[i] || `${linkedNiptoTask}_${uid}_${Date.now()}`;
+            await api.recordDailyCompletion({
+                id: `nipto_${actUid}`,
+                itemId: actUid,
+                sourceType: 'nipto',
+                title: description,
+                user: u ? u.name : doerNames,
+                userUid: uid,
+                points: pointsPerUser,
+                completedAt: targetDate.toISOString(),
+                dateKey: targetDateKey
+            });
+        }
+
         await updateLeaderboardUI();
-
-        // 5. Show celebratory toast
         showToast(linkedNiptoTask, description, pointsPerUser, doerNames);
-
         closeQuickAddModal();
     } catch (error) {
         console.error("Error in submitQuickAdd:", error);

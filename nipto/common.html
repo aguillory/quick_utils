@@ -94,14 +94,14 @@
          RESPONSIVE 2-COLUMN DESKTOP / 1-COLUMN MOBILE LAYOUT
          ========================================== -->
     <div class="app-layout">
-        
+
         <!-- Left: Main Tab Workspace (~70% width) -->
         <main class="main-workspace">
-            
+
             <!-- TAB 1: SCHEDULE & TO-DOS (DEFAULT LANDING VIEW) -->
             <section id="pane-schedule-todos">
-                
-                <!-- TOP SECTION: 7-Day Rolling Schedule (-3 Days | TODAY | +3 Days) -->
+
+                <!-- TOP SECTION: 3-Column Routine Board (Past Missed | Current Today | Upcoming Next 3 Days) -->
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
                         <div>
@@ -148,7 +148,7 @@
 
             <!-- TAB 2: BRAIN DUMP & MANAGE (THE PLANNING & BULK-EDIT VIEW) -->
             <section id="pane-braindump" style="display: none;">
-                
+
                 <!-- Gemini AI Unified Brain Dump Omnibox Card -->
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
                     <h3 style="margin: 0 0 6px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
@@ -264,13 +264,13 @@
 
         <!-- Right: Persistent Household Hub Sidebar (~30% width on Desktop, Tab 4 on Mobile) -->
         <aside class="household-hub-sidebar" id="householdHubSidebar">
-            
+
             <!-- SECTION 1: Leaderboard & Boys' Allowance Ledger -->
             <div class="card" style="background: var(--card-bg); padding: 18px; border-radius: 14px; border: 1px solid var(--border-color);">
                 <h3 style="margin: 0 0 10px 0; font-size: 16px; display: flex; align-items: center; gap: 6px;">
                     &#x1F3C6; Weekly Leaderboard
                 </h3>
-                
+
                 <!-- Rankings -->
                 <div id="leaderboard-container">
                     <div style="font-size: 12px; color: var(--text-muted);">Loading rankings...</div>
@@ -282,11 +282,11 @@
                 </div>
             </div>
 
-            <!-- SECTION 2: Recently Completed / Done Today Feed -->
+            <!-- SECTION 2: Done This Week + Historical Week Navigation -->
             <div class="card" style="background: var(--card-bg); padding: 18px; border-radius: 14px; border: 1px solid var(--border-color);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h3 style="margin: 0; font-size: 16px; display: flex; align-items: center; gap: 6px;">
-                        &#x2714; Done Today
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px; flex-wrap: wrap;">
+                    <h3 id="doneSectionTitle" style="margin: 0; font-size: 16px; display: flex; align-items: center; gap: 6px;">
+                        &#x2714; Done This Week
                     </h3>
                     <div style="display: flex; gap: 4px;">
                         <button id="btnDoneEveryone" class="filter-pill active" onclick="setDoneTodayView('everyone')" style="padding: 2px 8px; font-size: 11px;">Everyone</button>
@@ -294,8 +294,19 @@
                     </div>
                 </div>
 
+                <!-- Historical Week Navigator (Resets Sunday 11:59:59 PM Local Time) -->
+                <div id="doneWeekNavBar" class="done-week-nav-bar">
+                    <button type="button" id="btnDonePrevWeek" class="week-nav-btn" onclick="changeDoneWeekOffset(-1)" title="Previous Week (Mon–Sun)">&#x25C0;</button>
+                    <div class="done-week-label-wrap">
+                        <div id="doneWeekRangeLabel" class="done-week-range-label">This Week</div>
+                        <div class="done-week-reset-sub">Resets Sun 11:59 PM</div>
+                    </div>
+                    <button type="button" id="btnDoneResetWeek" class="week-archive-reset-btn" onclick="resetDoneWeekToCurrent()" style="display: none;" title="Return to Current Week">This Week</button>
+                    <button type="button" id="btnDoneNextWeek" class="week-nav-btn" onclick="changeDoneWeekOffset(1)" disabled title="Next Week (Mon–Sun)">&#x25B6;</button>
+                </div>
+
                 <div id="doneTodayFeed">
-                    <div style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center; padding: 10px 0;">Loading today's activity...</div>
+                    <div style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center; padding: 10px 0;">Loading weekly activity...</div>
                 </div>
             </div>
 
@@ -349,15 +360,14 @@
                 <div style="font-size: 13px; font-weight: 800; color: var(--primary); margin-bottom: 8px; text-transform: uppercase;">
                     1. API &amp; Webhook Integrations
                 </div>
-                
+
                 <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 6px;">Gemini API Key (for Brain Dump AI):</label>
                 <input type="password" id="settingGeminiApiKey" placeholder="AIzaSy..." style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
 
-                <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 10px;">Gemini Model:</label>
+                <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 10px;">Gemini Model (Auto-falls back on quota/404):</label>
                 <input type="text" id="settingGeminiModel" value="gemini-3.8-flash" placeholder="gemini-3.8-flash" list="geminiModelOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
                 <datalist id="geminiModelOptions">
                     <option value="gemini-3.8-flash"></option>
-                    <option value="gemini-2.5-flash"></option>
                 </datalist>
 
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
@@ -511,10 +521,10 @@
         <div class="modal" style="background: var(--card-bg, #fff); padding: 20px; border-radius: 10px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
             <h2 id="taskModalTitle" style="margin: 0;">Add To-Do Task</h2>
             <input type="hidden" id="taskId">
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Task Name</label>
             <input type="text" id="taskName" placeholder="What needs to be done?" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-            
+
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Type</label>
@@ -522,7 +532,6 @@
                         <option value="todo">Actionable To-Do</option>
                         <option value="project">Project / Idea</option>
                     </select>
-                    <!-- Legacy hidden input for bucket compatibility -->
                     <input type="hidden" id="taskBucket" value="actionable">
                 </div>
                 <div>
@@ -554,11 +563,20 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Category</label>
-                    <input type="text" id="taskCategory" placeholder="Home, Farm..." style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box;">
+                    <div class="category-combobox-wrapper" style="margin-top: 2px;">
+                        <div class="category-combobox-input-wrap">
+                            <input type="text" id="taskCategory" class="category-combobox-input" value="Home" placeholder="Search or create category..." autocomplete="off"
+                                onfocus="openCategoryCombobox(this, false)"
+                                oninput="filterCategoryCombobox(this)"
+                                onkeydown="handleCategoryComboboxKeydown(event, this)">
+                            <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
+                        </div>
+                        <div class="category-combobox-menu" style="display: none;"></div>
+                    </div>
                 </div>
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Created By</label>
-                    <select id="taskCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                    <select id="taskCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 2px;">
                         <option value="Alyssa">Alyssa</option>
                         <option value="Devyn">Devyn</option>
                         <option value="Carrina">Carrina</option>
@@ -573,7 +591,7 @@
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Assign To</label>
             <div id="todoAssignees" style="display: flex; flex-wrap: wrap; gap: 10px; background: var(--bg-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             </div>
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Description / Details</label>
             <textarea id="taskDescription" rows="2" placeholder="Additional context, steps, or notes..." style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; font-family: inherit; resize: vertical;"></textarea>
             <textarea id="taskNotes" style="display: none;"></textarea>
@@ -585,7 +603,7 @@
             <div id="subTasksContainer" style="display: flex; flex-direction: column; gap: 6px; background: var(--bg-color); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
                 <div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>
             </div>
-            
+
             <div class="modal-buttons" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
                 <button type="button" class="action-btn" onclick="closeTaskModal()">Cancel</button>
                 <button type="button" class="action-btn save-mode" onclick="saveTask()">Save Task</button>
@@ -620,21 +638,34 @@
         <div class="modal" style="background: var(--card-bg, #fff); padding: 20px; border-radius: 10px; width: 100%; max-width: 550px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
             <h2 id="routineModalTitle" style="margin: 0;">Add Routine</h2>
             <input type="hidden" id="routineId">
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Routine Name</label>
             <input type="text" id="routineName" placeholder="e.g. Milk Goats, Feed Chickens, Change Filters" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;">
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Completion Type</label>
-                    <select id="routineType" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
-                        <option value="shared">Shared (One person completes for all)</option>
-                        <option value="individual">Individual (Every assigned person must complete)</option>
+                    <select id="routineType" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 2px;">
+                        <option value="shared">Shared (One completes)</option>
+                        <option value="individual">Individual (Each person)</option>
                     </select>
                 </div>
                 <div>
+                    <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Category</label>
+                    <div class="category-combobox-wrapper" style="margin-top: 2px;">
+                        <div class="category-combobox-input-wrap">
+                            <input type="text" id="routineCategory" class="category-combobox-input" value="Home" placeholder="Search or create..." autocomplete="off"
+                                onfocus="openCategoryCombobox(this, false)"
+                                oninput="filterCategoryCombobox(this)"
+                                onkeydown="handleCategoryComboboxKeydown(event, this)">
+                            <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
+                        </div>
+                        <div class="category-combobox-menu" style="display: none;"></div>
+                    </div>
+                </div>
+                <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Created By</label>
-                    <select id="routineCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                    <select id="routineCreatedBy" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; margin-top: 2px;">
                         <option value="Alyssa">Alyssa</option>
                         <option value="Devyn">Devyn</option>
                         <option value="Carrina">Carrina</option>
@@ -651,7 +682,7 @@
 
             <div style="background: rgba(37, 99, 235, 0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(37, 99, 235, 0.2);">
                 <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Schedule &amp; Frequency</label>
-                
+
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
                     <div>
                         <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Frequency</label>
@@ -712,7 +743,7 @@
 
             <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
             <input type="number" id="routinePoints" min="0" placeholder="e.g. 15" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px; width: 100%; box-sizing: border-box;">
-            
+
             <div class="modal-buttons" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                 <button type="button" id="btnDeleteRoutine" class="action-btn" onclick="deleteRoutineFromModal()" style="display: none; background: var(--danger); color: white;">&#x1F5D1; Delete</button>
                 <div style="display: flex; gap: 10px; margin-left: auto;">
@@ -734,15 +765,15 @@
                 </h2>
                 <button type="button" onclick="closeQuickAddModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
             </div>
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Chore Description</label>
             <input type="text" id="quickAddDesc" placeholder="e.g. Folded laundry, cleaned gutters..." style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px;" onkeydown="if(event.key==='Enter') submitQuickAdd()">
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points to Award</label>
             <div id="quickAddPillsContainer" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;"></div>
             <select id="quickAddPoints" style="padding: 8px; border-radius: 6px; border: 1px solid var(--primary); background: rgba(37, 99, 235, 0.05); font-size: 13px;">
             </select>
-            
+
             <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Who completed it?</label>
             <div id="quickAddUsersContainer" style="display: flex; flex-wrap: wrap; gap: 8px; background: var(--bg-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             </div>
@@ -761,7 +792,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="js/firebase-config.js"></script>
-    <script type="module" src="js/dashboard.js?v=20261109b"></script>
+    <script type="module" src="js/dashboard.js?v=20261111a"></script>
 
 </body>
 </html>

@@ -1,14 +1,107 @@
 // utils.js
-// Generic helpers: PIN auth, date/time mode controls, tab switching, collapsible sections.
+// Generic helpers: PIN auth, local date/week boundary utilities, custom time mode controls,
+// and the reusable Searchable / Creatable Category Combobox component.
+
 import { state } from './state.js';
 
-// Formats local YYYY-MM-DD from a Date object (defaults to now) to prevent 6:00 PM CST UTC rollover bugs
+const DEFAULT_CATEGORIES = ['Home', 'Farm', 'Errands', 'Tech', 'Kids', 'Project', 'General'];
+
+export function escapeHtmlAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Formats local YYYY-MM-DD from a Date object (defaults to now) to prevent UTC rollover bugs
 export function getLocalTodayKey(date = new Date()) {
     const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+}
+
+/**
+ * Computes strict local-time Monday 00:00:00.000 through Sunday 23:59:59.999 boundaries.
+ * Weekly reset occurs Sunday night at 11:59:59.999 PM local time (Monday 12:00:00.000 AM starts a new week).
+ * @param {Date} referenceDate - Base date (defaults to now)
+ * @param {number} weekOffset - 0 for current week, -1 for previous week, etc.
+ */
+export function getLocalWeekBounds(referenceDate = new Date(), weekOffset = 0) {
+    const base = (referenceDate instanceof Date) ? new Date(referenceDate.getTime()) : new Date(referenceDate);
+    base.setHours(0, 0, 0, 0);
+
+    const dayOfWeek = base.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    const diffToMonday = dayOfWeek === 0 ? -6 : (1 - dayOfWeek);
+
+    const startDate = new Date(
+        base.getFullYear(),
+        base.getMonth(),
+        base.getDate() + diffToMonday + (weekOffset * 7),
+        0, 0, 0, 0
+    );
+
+    const endDate = new Date(
+        startDate.getFullYear(),
+        startDate.getMonth(),
+        startDate.getDate() + 6,
+        23, 59, 59, 999
+    );
+
+    const dateKeys = [];
+    for (let i = 0; i < 7; i++) {
+        const dayDate = new Date(
+            startDate.getFullYear(),
+            startDate.getMonth(),
+            startDate.getDate() + i,
+            12, 0, 0, 0
+        );
+        dateKeys.push(getLocalTodayKey(dayDate));
+    }
+
+    const sameYear = startDate.getFullYear() === endDate.getFullYear();
+    const startFmt = startDate.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        ...(sameYear ? {} : { year: 'numeric' })
+    });
+    const endFmt = endDate.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+
+    return {
+        weekOffset,
+        startDate,
+        endDate,
+        startMs: startDate.getTime(),
+        endMs: endDate.getTime(),
+        dateKeys,
+        dateKeySet: new Set(dateKeys),
+        weekKey: dateKeys[0],
+        label: `${startFmt} \u2013 ${endFmt}`
+    };
+}
+
+// Checks whether a Date, ISO timestamp string, or YYYY-MM-DD key falls within local week bounds
+export function isDateInLocalWeek(dateOrIsoOrKey, weekBounds = getLocalWeekBounds()) {
+    if (!dateOrIsoOrKey || !weekBounds) return false;
+    if (typeof dateOrIsoOrKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateOrIsoOrKey.trim())) {
+        return weekBounds.dateKeySet.has(dateOrIsoOrKey.trim());
+    }
+    const d = (dateOrIsoOrKey instanceof Date) ? dateOrIsoOrKey : new Date(dateOrIsoOrKey);
+    const ms = d.getTime();
+    if (isNaN(ms)) return false;
+    return ms >= weekBounds.startMs && ms <= weekBounds.endMs;
 }
 
 // Reconstructs the API key from a 4-digit PIN.
@@ -20,38 +113,18 @@ function decodeKey(pin) {
 
 // Validates and stores the API token from the PIN modal.
 export function savePin(onSuccessCallback) {
-    const pin = document.getElementById('pinInput').value;
+    const pinInput = document.getElementById('pinInput');
+    const pinError = document.getElementById('pinError');
+    const pin = pinInput ? pinInput.value : '';
     if (pin.length !== 4) {
-        document.getElementById('pinError').style.display = 'block';
+        if (pinError) pinError.style.display = 'block';
         return;
     }
     state.apiToken = decodeKey(pin);
     localStorage.setItem("nipto_api_token", state.apiToken);
-    document.getElementById('pinModal').style.display = 'none';
+    const pinModal = document.getElementById('pinModal');
+    if (pinModal) pinModal.style.display = 'none';
     if (onSuccessCallback) onSuccessCallback();
-}
-
-// Switches the visible main tab (nipto / routines / todo).
-export function switchTab(tabName) {
-    ['nipto', 'routines', 'todo', 'messages'].forEach(t => {
-        const tabBtn = document.getElementById(`tab-${t}`);
-        if (tabBtn) {
-            tabBtn.style.backgroundColor = 'var(--card-bg)';
-            tabBtn.style.color = 'var(--text-main)';
-            tabBtn.classList.remove('active');
-        }
-        const pane = document.getElementById(`pane-${t}`);
-        if (pane) pane.style.display = 'none';
-    });
-
-    const activeBtn = document.getElementById(`tab-${tabName}`);
-    if (activeBtn) {
-        activeBtn.style.backgroundColor = 'var(--primary)';
-        activeBtn.style.color = 'white';
-        activeBtn.classList.add('active');
-    }
-    const activePane = document.getElementById(`pane-${tabName}`);
-    if (activePane) activePane.style.display = 'block';
 }
 
 // Formats a Date for a datetime-local input.
@@ -68,16 +141,19 @@ function formatForInput(dateObj) {
 export function setMode(mode) {
     if (state.isEditMode) return;
     state.currentMode = mode;
+    const btnLive = document.getElementById('btnLive');
+    const btnCustom = document.getElementById('btnCustom');
+    const customBox = document.getElementById('customTimeBox');
     if (mode === 'live') {
-        document.getElementById('btnLive').classList.add('active');
-        document.getElementById('btnCustom').classList.remove('active');
-        document.getElementById('customTimeBox').classList.remove('visible');
+        if (btnLive) btnLive.classList.add('active');
+        if (btnCustom) btnCustom.classList.remove('active');
+        if (customBox) customBox.classList.remove('visible');
     } else {
-        document.getElementById('btnCustom').classList.add('active');
-        document.getElementById('btnLive').classList.remove('active');
-        document.getElementById('customTimeBox').classList.add('visible');
+        if (btnCustom) btnCustom.classList.add('active');
+        if (btnLive) btnLive.classList.remove('active');
+        if (customBox) customBox.classList.add('visible');
         const dateInput = document.getElementById('taskDate');
-        if (!dateInput.value) dateInput.value = formatForInput(new Date());
+        if (dateInput && !dateInput.value) dateInput.value = formatForInput(new Date());
     }
 }
 
@@ -85,138 +161,221 @@ export function setMode(mode) {
 export function setTimeOffset(minutes) {
     if (state.currentMode === 'live') setMode('custom');
     const dateInput = document.getElementById('taskDate');
-    let targetDate = dateInput.value ? new Date(dateInput.value) : new Date();
+    if (!dateInput) return;
+    const targetDate = dateInput.value ? new Date(dateInput.value) : new Date();
     targetDate.setMinutes(targetDate.getMinutes() + minutes);
     dateInput.value = formatForInput(targetDate);
 }
 
-// Toggles a collapsible section and remembers its state in localStorage.
-export function toggleSection(contentId, iconId, storageKey) {
-    const content = document.getElementById(contentId);
-    const icon = document.getElementById(iconId);
-    if (!content || !icon) return;
-    const isCollapsed = content.classList.toggle('collapsed');
-    icon.classList.toggle('collapsed', isCollapsed);
-    if (storageKey) localStorage.setItem(storageKey, isCollapsed);
-}
+// ==========================================
+// SEARCHABLE / CREATABLE CATEGORY COMBOBOX
+// ==========================================
 
-// Restores collapsed states for a set of sections on load.
-export function initCollapsibles(sectionsArray) {
-    sectionsArray.forEach(sec => {
-        if (localStorage.getItem(sec.key) === 'true') {
-            const content = document.getElementById(sec.content);
-            const icon = document.getElementById(sec.icon);
-            if (content) content.classList.add('collapsed');
-            if (icon) icon.classList.add('collapsed');
+export function getAllKnownCategories() {
+    const seenLower = new Map();
+    const addCat = (raw) => {
+        if (!raw || typeof raw !== 'string') return;
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.includes('Quick Add') || trimmed.includes('&#x26A1;')) return;
+        const lower = trimmed.toLowerCase();
+        if (!seenLower.has(lower)) {
+            seenLower.set(lower, trimmed);
         }
-    });
-}
-// Toggles the header between full view and a compact mini-bar.
-export function toggleHeaderCollapse() {
-    const full = document.getElementById('headerFullContent');
-    const mini = document.getElementById('headerMiniBar');
-    const btn = document.getElementById('headerCollapseBtn');
-    if (!full || !mini || !btn) return;
+    };
 
-    const collapsing = full.style.display !== 'none';
-    if (collapsing) {
-        full.style.display = 'none';
-        mini.style.display = 'flex'; // Changed to flex to respect our new single-line layout
-        btn.innerHTML = '&#x25BC; Expand';
-        updateMiniUserDisplay();
-    } else {
-        full.style.display = 'block';
-        mini.style.display = 'none';
-        btn.innerHTML = '&#x25B2; Collapse';
-    }
-    localStorage.setItem('nipto_header_collapsed', collapsing);
+    DEFAULT_CATEGORIES.forEach(addCat);
+    (state.customCategories || []).forEach(addCat);
+    (state.todoTasksData || []).forEach(t => addCat(t.category));
+    (state.routines || []).forEach(r => addCat(r.category));
+    (state.tasks || []).forEach(t => addCat(t.category));
+    (state.brainDumpStaging || []).forEach(it => addCat(it.category));
+
+    return Array.from(seenLower.values()).sort((a, b) => a.localeCompare(b));
 }
-// Toggles the mini user dropdown
-export function toggleMiniUserMenu(event) {
-    // Stop the click from bubbling up and instantly triggering the document close listener
-    if (event) {
-        event.stopPropagation();
-        event.preventDefault();
+
+export function registerCustomCategory(catName) {
+    if (!catName || typeof catName !== 'string') return '';
+    const clean = catName.trim();
+    if (!clean) return '';
+    if (!Array.isArray(state.customCategories)) state.customCategories = [];
+    const exists = state.customCategories.some(c => c.toLowerCase() === clean.toLowerCase());
+    if (!exists) state.customCategories.push(clean);
+    return clean;
+}
+
+/**
+ * Renders an interactive Searchable / Creatable Category Combobox HTML string.
+ * @param {Object} opts
+ * @param {string} [opts.id] - Input element ID (for modals)
+ * @param {string} [opts.value] - Current category value
+ * @param {string} [opts.placeholder] - Input placeholder
+ * @param {string} [opts.onChangeExpr] - Inline JS expression using `this.value` when value changes
+ * @param {boolean} [opts.compact] - True for compact inline rows (Bulk Triage / Staging)
+ * @param {string} [opts.style] - Optional inline style override for wrapper
+ */
+export function renderCategoryCombobox(opts = {}) {
+    const {
+        id = '',
+        value = 'Home',
+        placeholder = 'Search or create category...',
+        onChangeExpr = '',
+        compact = false,
+        style = ''
+    } = opts;
+
+    const idAttr = id ? `id="${escapeHtmlAttr(id)}"` : '';
+    const valAttr = escapeHtmlAttr(value || '');
+    const phAttr = escapeHtmlAttr(placeholder);
+    const changeAttr = onChangeExpr ? `data-onchange="${escapeHtmlAttr(onChangeExpr)}" onchange="${escapeHtmlAttr(onChangeExpr)}"` : '';
+    const compactClass = compact ? 'is-compact' : '';
+
+    return `<div class="category-combobox-wrapper ${compactClass}" style="${escapeHtmlAttr(style)}">
+        <div class="category-combobox-input-wrap">
+            <input type="text" ${idAttr} class="category-combobox-input ${compactClass}" value="${valAttr}" placeholder="${phAttr}" autocomplete="off"
+                onfocus="openCategoryCombobox(this, false)"
+                oninput="filterCategoryCombobox(this)"
+                onkeydown="handleCategoryComboboxKeydown(event, this)"
+                ${changeAttr}>
+            <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
+        </div>
+        <div class="category-combobox-menu" style="display: none;"></div>
+    </div>`;
+}
+
+function populateCategoryComboboxMenu(inputEl, showAll = false) {
+    if (!inputEl) return;
+    const wrapper = inputEl.closest('.category-combobox-wrapper');
+    const menu = wrapper ? wrapper.querySelector('.category-combobox-menu') : null;
+    if (!menu) return;
+
+    const rawQuery = (inputEl.value || '').trim();
+    const queryLower = rawQuery.toLowerCase();
+    const allCats = getAllKnownCategories();
+
+    const filtered = showAll || !queryLower
+        ? allCats
+        : allCats.filter(c => c.toLowerCase().includes(queryLower));
+
+    const exactMatch = allCats.find(c => c.toLowerCase() === queryLower);
+
+    let html = '';
+    filtered.forEach(cat => {
+        const isCurrent = cat.toLowerCase() === queryLower;
+        html += `<button type="button" class="category-combobox-option ${isCurrent ? 'active' : ''}"
+            onmousedown="selectCategoryComboboxOption(event, this, '${escapeHtmlAttr(cat)}', false)">
+            <span>&#x1F4C1; ${escapeHtmlAttr(cat)}</span>
+            ${isCurrent ? '<span class="cat-check">&#x2714;</span>' : ''}
+        </button>`;
+    });
+
+    if (rawQuery && !exactMatch) {
+        html += `<button type="button" class="category-combobox-option create-new-option"
+            onmousedown="selectCategoryComboboxOption(event, this, '${escapeHtmlAttr(rawQuery)}', true)">
+            <span>+ Create "<strong>${escapeHtmlAttr(rawQuery)}</strong>"</span>
+        </button>`;
     }
-    
-    const menu = document.getElementById('miniUserMenu');
-    const toggleBtn = document.getElementById('miniUserToggleBtn');
-    if (!menu || !toggleBtn) return;
-    
-    // Toggle visibility
+
+    if (!html) {
+        html = `<div class="category-combobox-empty">Type a category name to create it</div>`;
+    }
+
+    menu.innerHTML = html;
+    menu.style.display = 'flex';
+}
+
+export function openCategoryCombobox(inputEl, showAll = true) {
+    if (!inputEl) return;
+    document.querySelectorAll('.category-combobox-menu').forEach(m => {
+        const w = m.closest('.category-combobox-wrapper');
+        if (!w || !w.contains(inputEl)) m.style.display = 'none';
+    });
+    populateCategoryComboboxMenu(inputEl, showAll);
+}
+
+export function toggleCategoryComboboxDropdown(event, btnEl) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const wrapper = btnEl ? btnEl.closest('.category-combobox-wrapper') : null;
+    if (!wrapper) return;
+    const inputEl = wrapper.querySelector('.category-combobox-input');
+    const menu = wrapper.querySelector('.category-combobox-menu');
+    if (!inputEl || !menu) return;
+
     if (menu.style.display === 'flex') {
         menu.style.display = 'none';
-        return;
+    } else {
+        inputEl.focus();
+        openCategoryCombobox(inputEl, true);
     }
-
-    menu.style.display = 'flex';
-    
-    // Populate the list items the first time it is opened
-    if (menu.children.length === 0) {
-        import('./state.js').then(function (mod) {
-            const ALL_USERS = mod.ALL_USERS;
-            let html = '';
-            
-            ALL_USERS.forEach(u => {
-                html += `<button type="button" class="theme-option" onclick="setActiveUser('${u.uid}')">&#x1F464; ${u.name}</button>`;
-            });
-            
-            menu.innerHTML = html;
-        });
-    }
-
-    // THE FIX: Move the menu to the body and position it absolutely 
-    // based on the button's coordinates to escape any CSS clipping masks
-    document.body.appendChild(menu);
-    
-    const rect = toggleBtn.getBoundingClientRect();
-    menu.style.position = 'absolute';
-    // Add window.scrollY to account for page scrolling
-    menu.style.top = `${rect.bottom + window.scrollY + 5}px`; 
-    menu.style.left = `${rect.left + window.scrollX}px`;
-    menu.style.zIndex = '99999'; // Ensure it's on top of everything
 }
 
-// Make it available to the inline HTML onclick
-window.toggleMiniUserMenu = toggleMiniUserMenu;
+export function filterCategoryCombobox(inputEl) {
+    populateCategoryComboboxMenu(inputEl, false);
+}
 
-// Close the menu if the user clicks anywhere (either outside the menu or selecting an item inside it)
-document.addEventListener('click', function () {
-    const menu = document.getElementById('miniUserMenu');
-    if (menu && menu.style.display === 'flex') {
+export function selectCategoryComboboxOption(event, optionEl, chosenValue, isNew = false) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const wrapper = optionEl ? optionEl.closest('.category-combobox-wrapper') : null;
+    if (!wrapper) return;
+    const inputEl = wrapper.querySelector('.category-combobox-input');
+    const menu = wrapper.querySelector('.category-combobox-menu');
+
+    const finalValue = registerCustomCategory(chosenValue);
+    if (inputEl) {
+        inputEl.value = finalValue;
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (menu) {
         menu.style.display = 'none';
     }
-});
-// Refreshes the mini header bar to show the active user text on the button
-export function updateMiniUserDisplay() {
-    const btnText = document.getElementById('miniUserBtnText');
-    if (!btnText) return;
+}
 
-    import('./state.js').then(function (mod) {
-        const state = mod.state;
-        const ALL_USERS = mod.ALL_USERS;
-        
-        if (!state.activeUsers || state.activeUsers.length === 0) {
-            btnText.innerText = '&#x1F464; Select User';
-            return;
+export function handleCategoryComboboxKeydown(event, inputEl) {
+    const wrapper = inputEl ? inputEl.closest('.category-combobox-wrapper') : null;
+    const menu = wrapper ? wrapper.querySelector('.category-combobox-menu') : null;
+    if (event.key === 'Escape') {
+        if (menu) menu.style.display = 'none';
+        inputEl.blur();
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const rawVal = (inputEl.value || '').trim();
+        if (rawVal) {
+            const allCats = getAllKnownCategories();
+            const existing = allCats.find(c => c.toLowerCase() === rawVal.toLowerCase());
+            const finalVal = existing || registerCustomCategory(rawVal);
+            inputEl.value = finalVal;
+            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
-        
-        if (state.isTogetherMode) {
-            btnText.innerText = '&#x1F91D; Together';
-            return;
-        }
+        if (menu) menu.style.display = 'none';
+    }
+}
 
-        let names = state.activeUsers.map(uid => {
-            const u = ALL_USERS.find(user => user.uid === uid);
-            return u ? u.name : null;
-        }).filter(Boolean);
-        
-        btnText.innerText = '&#x1F464; ' + (names.length ? names.join(', ') : 'Select User');
+// Close any open category combobox dropdown when clicking outside
+if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.category-combobox-wrapper')) {
+            document.querySelectorAll('.category-combobox-menu').forEach(m => {
+                m.style.display = 'none';
+            });
+        }
     });
 }
-// Restores the collapsed header state on load.
-export function initHeaderCollapse() {
-    if (localStorage.getItem('nipto_header_collapsed') === 'true') {
-        toggleHeaderCollapse();
-    }
+
+if (typeof window !== 'undefined') {
+    window.getLocalTodayKey = getLocalTodayKey;
+    window.getLocalWeekBounds = getLocalWeekBounds;
+    window.isDateInLocalWeek = isDateInLocalWeek;
+    window.getAllKnownCategories = getAllKnownCategories;
+    window.registerCustomCategory = registerCustomCategory;
+    window.renderCategoryCombobox = renderCategoryCombobox;
+    window.openCategoryCombobox = openCategoryCombobox;
+    window.toggleCategoryComboboxDropdown = toggleCategoryComboboxDropdown;
+    window.filterCategoryCombobox = filterCategoryCombobox;
+    window.selectCategoryComboboxOption = selectCategoryComboboxOption;
+    window.handleCategoryComboboxKeydown = handleCategoryComboboxKeydown;
 }

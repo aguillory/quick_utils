@@ -1,5 +1,5 @@
 // todos.js
-// Active To-Dos: Single compact toolbar row (My Actionable / Shared / Projects / All),
+// Active To-Dos: Single compact toolbar row (All Types / To-Dos / Projects / Routines),
 // Unified data model (type, points, priority, description, lastReviewedAt),
 // Collapsible category accordions, quiet non-overwhelming cards,
 // gentle task blindness refresher, and Direct Assignment Alerts to Home Assistant.
@@ -8,9 +8,10 @@ import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
-import { getLocalTodayKey } from './utils.js';
+import { getLocalTodayKey, registerCustomCategory } from './utils.js';
 import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
 import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees } from './routines.js';
+import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
 export { NIPTO_PUBLIC_URL };
 
@@ -211,7 +212,6 @@ export async function clearTaskFriction(taskId, event) {
     }
 }
 
-// Format compact assignee pill
 function formatTodoAssigneePill(task) {
     const assignees = task.assignees || [];
     if (assignees.length === 0) {
@@ -237,7 +237,6 @@ function formatTodoAssigneePill(task) {
     return `<span class="todo-pill" style="color: ${u.color}; font-weight: 700;">&#x1F464; ${escapeHtml(u.name)}</span>`;
 }
 
-// Collapsible section toggle for 3-section stacked view
 export function toggleMainSectionCollapse(sectionKey) {
     if (!state.userPrefs.collapsedSections) state.userPrefs.collapsedSections = {};
     const curr = !!state.userPrefs.collapsedSections[sectionKey];
@@ -253,13 +252,12 @@ export function renderTodoTasks() {
     const container = document.getElementById('todoContainer');
     if (!container) return;
 
-    let tasks = (state.todoTasksData || []).map(normalizeTask);
+    const tasks = (state.todoTasksData || []).map(normalizeTask);
     const routines = state.routines || [];
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
     const activeName = activeUserObj ? activeUserObj.name : 'Active';
 
-    // Defaults & stored preferences (Default to 'all' for 3 stacked sections)
     if (!state.todoTypeFilter) state.todoTypeFilter = 'all';
     if (!state.todoSort) state.todoSort = 'priority';
     if (!state.todoGroupBy) state.todoGroupBy = 'category';
@@ -275,13 +273,11 @@ export function renderTodoTasks() {
     const priorityFilter = state.todoPriorityFilter;
     const collapsedSections = state.userPrefs.collapsedSections || {};
 
-    // Gather unique categories for filter dropdown across tasks & routines
     const uniqueCategories = Array.from(new Set([
         ...tasks.map(t => t.category || 'General').filter(Boolean),
         ...routines.map(r => r.category || 'Home').filter(Boolean)
     ])).sort();
 
-    // Helper: matches ownership
     function matchesOwnership(item) {
         if (personFilter === 'all') return true;
         const assignees = item.assignees || [];
@@ -296,21 +292,18 @@ export function renderTodoTasks() {
         }
     }
 
-    // Helper: matches category
     function matchesCategory(item) {
         if (categoryFilter === 'all') return true;
         const cat = (item.category || 'General').toLowerCase();
         return cat === categoryFilter.toLowerCase();
     }
 
-    // Helper: matches priority
     function matchesPriority(item) {
         if (priorityFilter === 'all') return true;
         const p = (item.priority || 'medium').toLowerCase();
         return p === priorityFilter.toLowerCase();
     }
 
-    // Helper: matches friction
     function matchesFriction(item) {
         if (!state.todoFrictionFilter || state.todoFrictionFilter === 'all') return true;
         return item.frictionTag === state.todoFrictionFilter;
@@ -325,7 +318,6 @@ export function renderTodoTasks() {
         return 2;
     }
 
-    // Sort helper for tasks
     function sortTaskList(list) {
         return list.slice().sort((a, b) => {
             if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -352,7 +344,6 @@ export function renderTodoTasks() {
         });
     }
 
-    // Sort helper for routines
     function sortRoutineList(list) {
         const todayKey = getLocalTodayKey();
         return list.slice().sort((a, b) => {
@@ -375,7 +366,6 @@ export function renderTodoTasks() {
         });
     }
 
-    // Check for Stale Tasks for the calm refresher banner
     const staleTasks = getStaleTasks();
     let staleBannerHtml = '';
     if (staleTasks.length > 0) {
@@ -394,11 +384,9 @@ export function renderTodoTasks() {
         `;
     }
 
-    // Build Compact Filter / Sort Bar
     let toolbarHtml = `
     ${staleBannerHtml}
     <div class="todo-toolbar-row" style="margin-bottom: 16px;">
-        <!-- Left: Quick Type Pills -->
         <div class="todo-view-pills">
             <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View To-Dos, Projects, and Routines in 3 stacked sections">
                 All Types
@@ -414,7 +402,6 @@ export function renderTodoTasks() {
             </button>
         </div>
 
-        <!-- Right: Compact Selects & Grouping Toggle -->
         <div class="todo-secondary-filters" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
             ${currentType === 'todo' ? `
             <button class="filter-pill" onclick="setTodoGroupBy('${currentGroupBy === 'category' ? 'ownership' : 'category'}')" title="Toggle between Collapsible Categories and Ownership layout" style="font-size: 11px; padding: 4px 8px;">
@@ -422,7 +409,6 @@ export function renderTodoTasks() {
             </button>
             ` : ''}
 
-            <!-- Sort By Select -->
             <select class="todo-compact-select" onchange="setTodoSort(this.value)" title="Sort tasks">
                 <option value="priority" ${currentSort === 'priority' ? 'selected' : ''}>Sort: Priority (High&rarr;Low)</option>
                 <option value="points" ${currentSort === 'points' ? 'selected' : ''}>Sort: Points</option>
@@ -430,13 +416,11 @@ export function renderTodoTasks() {
                 <option value="age" ${currentSort === 'age' ? 'selected' : ''}>Sort: Newest</option>
             </select>
 
-            <!-- Category Filter -->
             <select class="todo-compact-select" onchange="setTodoCategoryFilter(this.value)" title="Filter by Category">
                 <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
                 ${uniqueCategories.map(cat => `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
             </select>
 
-            <!-- Priority Filter -->
             <select class="todo-compact-select" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
                 <option value="all" ${priorityFilter === 'all' ? 'selected' : ''}>Priority: All</option>
                 <option value="high" ${priorityFilter === 'high' ? 'selected' : ''}>&#x1F525; High</option>
@@ -444,7 +428,6 @@ export function renderTodoTasks() {
                 <option value="low" ${priorityFilter === 'low' ? 'selected' : ''}>&#x1F53D; Low</option>
             </select>
 
-            <!-- Ownership Filter -->
             <select class="todo-compact-select" onchange="setTodoPersonFilter(this.value)" title="Filter by Ownership">
                 <option value="all" ${personFilter === 'all' ? 'selected' : ''}>Owner: All</option>
                 <option value="me" ${personFilter === 'me' ? 'selected' : ''}>Me (${escapeHtml(activeName)})</option>
@@ -455,16 +438,13 @@ export function renderTodoTasks() {
     </div>
     `;
 
-    // Filter To-Dos & Projects
     const filteredTasks = tasks.filter(t => matchesOwnership(t) && matchesCategory(t) && matchesPriority(t) && matchesFriction(t));
     const todosList = sortTaskList(filteredTasks.filter(t => t.type === 'todo'));
     const projectsList = sortTaskList(filteredTasks.filter(t => t.type === 'project'));
 
-    // Filter Routines
     const filteredRoutines = routines.filter(r => matchesOwnership(r) && matchesCategory(r) && matchesPriority(r) && matchesFriction(r));
     const routinesList = sortRoutineList(filteredRoutines);
 
-    // Helper: Render quiet card with tiny metadata icons & active user highlight
     function renderCard(t) {
         const isCompleted = !!t.completed;
         const assigneePill = formatTodoAssigneePill(t);
@@ -472,7 +452,6 @@ export function renderTodoTasks() {
         const priorityClass = `priority-${pri}`;
         const isAssignedToMe = (t.assignees && t.assignees.length === 1 && t.assignees[0] === activeUid);
 
-        // Tiny Priority Pill
         let priorityPill = '';
         if (pri === 'high') {
             priorityPill = `<span class="todo-pill priority-pill high" title="High Priority">&#x1F525; High</span>`;
@@ -482,7 +461,6 @@ export function renderTodoTasks() {
             priorityPill = `<span class="todo-pill priority-pill medium" title="Medium Priority">&#x26A1; Med</span>`;
         }
 
-        // Tiny Friction Pill
         let frictionPill = '';
         if (t.frictionTag === 'quick') {
             frictionPill = `<span class="todo-pill friction-pill" title="Quick (<5m)">&#x26A1; &lt;5m</span>`;
@@ -492,28 +470,23 @@ export function renderTodoTasks() {
             frictionPill = `<span class="todo-pill friction-pill" title="Deep Focus">&#x1F3AF; Deep Focus</span>`;
         }
 
-        // Tiny Creator Pill
         let creatorPill = '';
         if (t.createdBy) {
             creatorPill = `<span class="todo-pill creator-pill" title="Created by ${escapeHtml(t.createdBy)}">&#x270D;&#xFE0F; ${escapeHtml(t.createdBy)}</span>`;
         }
 
-        // Project badge
         const projectBadge = t.type === 'project'
             ? `<span class="todo-pill project-pill">&#x1F4A1; Project</span>`
             : '';
 
-        // Category badge
         let categoryBadge = '';
         if (t.category && currentGroupBy !== 'category') {
             categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
         }
 
-        // Points badge
         const pts = t.points || 5;
         const ptsDisplay = `<span class="pts-badge">+${pts} pts</span>`;
 
-        // Description / Notes indicator button
         let descButton = '';
         let descBox = '';
         if (t.description) {
@@ -529,7 +502,6 @@ export function renderTodoTasks() {
             `;
         }
 
-        // Subtasks section
         let subtasksSection = '';
         if (t.subTasks && t.subTasks.length > 0) {
             const completedCount = t.subTasks.filter(st => st.completed).length;
@@ -584,7 +556,6 @@ export function renderTodoTasks() {
         `;
     }
 
-    // Helper: Render routine card for the routines section
     function renderRoutineCard(r) {
         const todayKey = getLocalTodayKey();
         const isCompletedToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
@@ -610,8 +581,8 @@ export function renderTodoTasks() {
         <div class="todo-card ${priorityClass} ${isCompletedToday ? 'completed' : ''} ${isAssignedToMe ? 'is-assigned-to-me' : ''}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
-                    <button type="button" class="item-checkbox ${isCompletedToday ? 'checked' : ''}" 
-                        onclick="${isCompletedToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}" 
+                    <button type="button" class="item-checkbox ${isCompletedToday ? 'checked' : ''}"
+                        onclick="${isCompletedToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}"
                         title="${isCompletedToday ? 'Completed today - click to undo' : 'Mark routine done today (awards points)'}"
                         aria-label="${isCompletedToday ? 'Undo completion' : 'Mark complete'}">
                         ${isCompletedToday ? '&#x2714;' : ''}
@@ -641,9 +612,6 @@ export function renderTodoTasks() {
 
     let bodyHtml = '';
 
-    // ==========================================
-    // 3-SECTION STACKED VIEW (DEFAULT: ALL TYPES)
-    // ==========================================
     if (currentType === 'all') {
         const isTodosCollapsed = !!collapsedSections['todos'];
         const isProjectsCollapsed = !!collapsedSections['projects'];
@@ -651,7 +619,6 @@ export function renderTodoTasks() {
 
         bodyHtml = `
         <div style="display: flex; flex-direction: column; gap: 16px;">
-            <!-- 1. TO-DOS (TOP SECTION) -->
             <div class="todo-section-container">
                 <div class="todo-section-header" onclick="toggleMainSectionCollapse('todos')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                     <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -661,14 +628,13 @@ export function renderTodoTasks() {
                     <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isTodosCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isTodosCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${todosList.length > 0 
+                    ${todosList.length > 0
                         ? `<div class="todo-grid">${todosList.map(renderCard).join('')}</div>`
                         : `<div class="empty-section-muted">No to-dos matching current filters.</div>`
                     }
                 </div>
             </div>
 
-            <!-- 2. PROJECTS / IDEAS (MIDDLE SECTION) -->
             <div class="todo-section-container">
                 <div class="todo-section-header" onclick="toggleMainSectionCollapse('projects')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                     <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -678,14 +644,13 @@ export function renderTodoTasks() {
                     <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isProjectsCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isProjectsCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${projectsList.length > 0 
+                    ${projectsList.length > 0
                         ? `<div class="todo-grid">${projectsList.map(renderCard).join('')}</div>`
                         : `<div class="empty-section-muted">No projects matching current filters.</div>`
                     }
                 </div>
             </div>
 
-            <!-- 3. ROUTINES (BOTTOM SECTION) -->
             <div class="todo-section-container">
                 <div class="todo-section-header" onclick="toggleMainSectionCollapse('routines')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                     <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -695,7 +660,7 @@ export function renderTodoTasks() {
                     <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isRoutinesCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isRoutinesCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${routinesList.length > 0 
+                    ${routinesList.length > 0
                         ? `<div class="todo-grid">${routinesList.map(renderRoutineCard).join('')}</div>`
                         : `<div class="empty-section-muted">No routines matching current filters.</div>`
                     }
@@ -784,18 +749,23 @@ export function renderTodoTasks() {
             </div>
             `;
         } else {
-            // By Ownership
+            // By Ownership (Fixed: Individual tasks go to individualTasks, Shared tasks go to sharedTasks)
             const individualTasks = [];
             const sharedTasks = [];
 
             todosList.forEach(t => {
                 const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
-                if (isShared) individualTasks.push(t);
-                else sharedTasks.push(t);
+                if (isShared) {
+                    sharedTasks.push(t);
+                } else {
+                    individualTasks.push(t);
+                }
             });
 
-            let individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
-            if (personFilter !== 'all' && personFilter !== 'me' && personFilter !== 'shared_anyone') {
+            let individualSectionTitle = `Assigned to Individuals`;
+            if (personFilter === 'me') {
+                individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
+            } else if (personFilter !== 'all' && personFilter !== 'shared_anyone') {
                 const u = ALL_USERS.find(user => user.uid === personFilter);
                 individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'}`;
             }
@@ -831,6 +801,10 @@ export function renderTodoTasks() {
     }
 
     container.innerHTML = toolbarHtml + bodyHtml;
+}
+
+export function renderSidebarTodos() {
+    renderTodoTasks();
 }
 
 // ==========================================
@@ -888,7 +862,6 @@ export function renderStaleRefresherModalContent() {
         </span>
     </div>
 
-    <!-- Active Stale Card -->
     <div style="background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
         <div style="font-size: 16px; font-weight: 800; color: var(--text-main); margin-bottom: 6px;">
             ${escapeHtml(norm.name)}
@@ -904,7 +877,6 @@ export function renderStaleRefresherModalContent() {
             </div>
         ` : ''}
 
-        <!-- Inline Reword / Edit Box (Hidden by default, revealed on click) -->
         <div id="staleInlineEditBox" style="display: none; margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 12px;">
             <label style="font-size: 11px; font-weight: bold; color: var(--text-muted);">Reword Title:</label>
             <input type="text" id="staleInputTitle" value="${escapeHtml(norm.name)}" style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border-color); box-sizing: border-box; margin-top: 4px;">
@@ -923,7 +895,6 @@ export function renderStaleRefresherModalContent() {
         </div>
     </div>
 
-    <!-- Quick Action Buttons -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
         <button type="button" class="action-btn" onclick="toggleStaleInlineEdit()" style="padding: 10px; font-size: 12px; font-weight: 700; text-align: center;">
             &#x270E; Reword / Break Down
@@ -1019,7 +990,6 @@ export async function handleStaleAction(taskId, action) {
             showToast("stale_proj", "Moved to Projects & Ideas.", 0, "");
         }
 
-        // Update in-memory record immediately
         const t = state.todoTasksData?.find(item => item.id === taskId);
         if (t) {
             t.lastReviewedAt = nowIso;
@@ -1039,7 +1009,7 @@ export async function handleStaleAction(taskId, action) {
     }
 }
 
-// 1-Click AI Breakdown
+// 1-Click AI Breakdown with Automatic Free-Tier Model Fallback
 export async function simplifyTaskWithAi(taskId) {
     const task = state.todoTasksData?.find(t => t.id === taskId);
     if (!task) return;
@@ -1057,25 +1027,23 @@ export async function simplifyTaskWithAi(taskId) {
     }
 
     try {
-        const model = (state.integrationsConfig?.geminiModel || 'gemini-3.8-flash').replace(/^models\//, '');
+        const preferredModel = (state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
         const prompt = `Simplify or break down this sitting household task into 2-3 small actionable steps or a clearer title:
 Title: "${task.name}"
 Description: "${task.description || task.notes || ''}"
 Output JSON: { "suggestedTitle": "...", "suggestedDescription": "..." }`;
 
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
-            })
-        });
+        const { data } = await callGeminiWithFallback(
+            apiKey,
+            preferredModel,
+            prompt,
+            "You are a concise household task assistant. Return pure JSON only."
+        );
 
-        const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) {
-            const parsed = JSON.parse(text);
+            const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+            const parsed = JSON.parse(cleaned);
             const titleInput = document.getElementById('staleInputTitle');
             const descInput = document.getElementById('staleInputDesc');
             if (titleInput && parsed.suggestedTitle) titleInput.value = parsed.suggestedTitle;
@@ -1105,7 +1073,6 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
     const doerUid = state.activeUsers[0] || ALL_USERS[0].uid;
     const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone';
 
-    // Update in-memory task immediately
     todo.completed = nextCompleted;
     todo.completedAt = nextCompleted ? nowIso : null;
     todo.completedBy = nextCompleted ? [doerUid] : [];
@@ -1124,7 +1091,6 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
         if (nextCompleted) {
             const pts = todo.points || 5;
             showToast("todo_done", `Completed "${todo.name}"!`, pts, doerName);
-            // Award allowance if Ayden or DJ
             if (pts > 0) {
                 api.awardAllowancePoints(doerUid, pts);
             }
@@ -1331,7 +1297,6 @@ function populateSubTaskFields(subtasks = []) {
     subtasks.forEach(st => addSubTaskField(st.name || st.text, st.completed, st.createdBy));
 }
 
-// Saves a task to Firestore and triggers Direct Assignment Alerts
 export async function saveTask() {
     const id = document.getElementById('taskId')?.value;
     const name = document.getElementById('taskName')?.value.trim();
@@ -1342,7 +1307,8 @@ export async function saveTask() {
     const points = parseInt(document.getElementById('taskPoints')?.value, 10) || 5;
     const priority = document.getElementById('taskPriority')?.value || 'medium';
     const frictionTag = document.getElementById('taskFriction')?.value || '';
-    const category = document.getElementById('taskCategory')?.value || 'Home';
+    const rawCat = document.getElementById('taskCategory')?.value.trim() || 'Home';
+    const category = registerCustomCategory(rawCat) || 'Home';
     const location = document.getElementById('taskLocation')?.value || 'Inside';
     const description = document.getElementById('taskDescription')?.value.trim() || '';
 
@@ -1371,7 +1337,7 @@ export async function saveTask() {
         frictionTag,
         createdBy,
         description,
-        notes: description, // Backward compatibility
+        notes: description,
         assignees,
         subTasks,
         updatedAt: nowIso,
@@ -1388,7 +1354,7 @@ export async function saveTask() {
             const docRef = await window.getNiptoCollection('custom_tasks').add(taskData);
             createdId = docRef.id;
 
-            // Direct Assignment Alert to Home Assistant for Adults
+            // Non-blocking Home Assistant notification for Adults with connected phones
             dispatchDirectAssignmentAlerts(taskData, createdId);
         }
 
@@ -1400,7 +1366,7 @@ export async function saveTask() {
     }
 }
 
-// Dispatches Home Assistant push notification if assigned directly to an adult
+// Dispatches Home Assistant push notification asynchronously if assigned to an adult with a connected phone
 function dispatchDirectAssignmentAlerts(task, taskId) {
     if (!task.assignees || task.assignees.length === 0) return;
     const adultProfiles = state.notificationPreferences?.adults || {};
@@ -1408,10 +1374,11 @@ function dispatchDirectAssignmentAlerts(task, taskId) {
 
     task.assignees.forEach(uid => {
         const profile = adultProfiles[uid];
-        if (profile && profile.haTarget && profile.directAssignmentAlerts) {
+        const target = (profile?.haTarget || '').trim();
+        if (profile && target && target.startsWith('notify.') && profile.directAssignmentAlerts) {
             const appUrl = (state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL);
             const payload = {
-                targets: [profile.haTarget],
+                targets: [target],
                 title: `Task Assigned: ${task.name}`,
                 message: `Assigned to you by ${activeUserName}`,
                 tag: `task_${taskId}`,
@@ -1423,7 +1390,7 @@ function dispatchDirectAssignmentAlerts(task, taskId) {
                     { action: "URI", title: "Snooze 1 Hr", uri: `${appUrl}?quickAction=snooze&taskId=${taskId}` }
                 ]
             };
-            api.dispatchHomeAssistantNotification(payload);
+            void api.dispatchHomeAssistantNotification(payload);
         }
     });
 }
@@ -1437,7 +1404,6 @@ export async function deleteTask(id) {
     }
 }
 
-// Bind to window for HTML onclicks
 if (typeof window !== 'undefined') {
     window.setTodoView = setTodoView;
     window.setTodoTypeFilter = setTodoTypeFilter;
@@ -1462,6 +1428,7 @@ if (typeof window !== 'undefined') {
     window.deleteTask = deleteTask;
     window.addSubTaskField = addSubTaskField;
     window.renderTodoTasks = renderTodoTasks;
+    window.renderSidebarTodos = renderSidebarTodos;
     window.openStaleRefresherModal = openStaleRefresherModal;
     window.closeStaleRefresherModal = closeStaleRefresherModal;
     window.prevStaleCard = prevStaleCard;

@@ -6,9 +6,17 @@ import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
-import { getLocalTodayKey } from './utils.js';
+import { getLocalTodayKey, registerCustomCategory } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
+
+const DAILY_CARE_ROUTINE_SLUGS = new Set([
+    "feed orion",
+    "check kevin's water",
+    "check kevins water",
+    "feed turtle",
+    "collect eggs"
+]);
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -20,60 +28,95 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-// Determines if routine runs every single day (daily frequency, interval of 1, 7 days/week, or default routine)
+// Format local YYYY-MM-DD
+function toLocalDateKey(d) {
+    return getLocalTodayKey(d);
+}
+
+// Determines if a routine runs every single day.
+// Rule: Daily routines ONLY ever exist on Today's board—never in Past (Missed) or Upcoming.
 export function isDailyRoutine(task) {
     if (!task) return false;
 
-    // Helper: Normalize string check for daily keywords
+    // 1. Check known daily animal care titles/slugs first ("Feed Orion", "Check Kevin's Water", etc.)
+    const rawTitle = String(task.name || task.title || '').trim().toLowerCase().replace(/[\u2018\u2019]/g, "'");
+    if (DAILY_CARE_ROUTINE_SLUGS.has(rawTitle)) {
+        return true;
+    }
+
+    const sched = (task.schedule && typeof task.schedule === 'object') ? task.schedule : null;
+    const schedType = String((sched && sched.type) || (typeof task.schedule === 'string' ? task.schedule : '') || task.frequency || task.recurrence || '').trim().toLowerCase();
+
+    // 2. Explicit daily schedule type takes immediate precedence over any stale properties
+    if (schedType === 'daily' || schedType === 'everyday' || schedType === 'every day') {
+        return true;
+    }
+
+    // 3. Weekly schedule check: normalize daysOfWeek to unique valid day numbers (0..6)
+    const rawDays = (sched && (sched.daysOfWeek || sched.days)) || task.daysOfWeek || task.days;
+    const uniqueDays = Array.isArray(rawDays)
+        ? Array.from(new Set(rawDays.map(d => Number(d)).filter(d => !isNaN(d) && d >= 0 && d <= 6)))
+        : null;
+
+    if (schedType === 'weekly') {
+        // If 1 to 6 specific days are selected, it is a weekly routine (not daily)
+        if (uniqueDays && uniqueDays.length > 0 && uniqueDays.length < 7) {
+            return false;
+        }
+        // If all 7 days are selected (or daysOfWeek was left empty by AI staging), treat as daily
+        return true;
+    }
+
+    // 4. Custom interval schedule check (ONLY inspect interval value when schedule type is 'interval';
+    // NEVER read task.value which stores Nipto chore points!)
+    if (schedType === 'interval') {
+        const intervalVal = Number(
+            (sched && (sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue ?? sched.value)) ??
+            (task.interval ?? task.repeatEvery ?? task.every ?? 1)
+        );
+        const unitVal = String(
+            (sched && (sched.unit || sched.intervalUnit)) || task.unit || task.intervalUnit || 'days'
+        ).trim().toLowerCase();
+
+        if (['weeks', 'week', 'months', 'month', 'years', 'year'].includes(unitVal)) {
+            return false;
+        }
+        if (!isNaN(intervalVal) && intervalVal > 1) {
+            return false;
+        }
+        return true;
+    }
+
+    // 5. If days array is present without an explicit schedType
+    if (uniqueDays) {
+        if (uniqueDays.length > 0 && uniqueDays.length < 7) {
+            return false;
+        }
+        if (uniqueDays.length >= 7) {
+            return true;
+        }
+    }
+
+    // 6. Check recurrence/timeOfDay strings (including 'afternoon' and 'midnight')
     const checkStringForDaily = (val) => {
         if (!val || typeof val !== 'string') return false;
         const s = val.trim().toLowerCase();
         const dailyKeywords = [
             'daily', 'every day', 'everyday', '1d', '1 day', 'day',
-            '2x daily', 'twice daily', 'morning', 'evening', 'am', 'pm', 'night', 'anytime'
+            '2x daily', 'twice daily', 'morning', 'afternoon', 'evening',
+            'am', 'pm', 'night', 'midnight', 'noon', 'anytime'
         ];
         return dailyKeywords.some(kw => s.includes(kw));
     };
 
-    const sched = (task.schedule && typeof task.schedule === 'object') ? task.schedule : null;
-
-    // 1. Weekly routine with specific days: if 1-6 days specified, NOT daily. If 7 days, IS daily.
-    const days = (sched && (sched.daysOfWeek || sched.days)) || task.daysOfWeek || task.days;
-    if (Array.isArray(days)) {
-        if (days.length > 0 && days.length < 7) {
-            return false;
-        }
-        if (days.length >= 7) {
-            return true;
-        }
-    }
-
-    // 2. Explicit numeric interval / unit check
-    const intervalVal = Number(
-        (sched && (sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue ?? sched.value)) ??
-        (task.interval ?? task.repeatEvery ?? task.every ?? task.value)
-    );
-    const unitVal = String(
-        (sched && (sched.unit || sched.intervalUnit)) || task.unit || task.intervalUnit || 'days'
-    ).trim().toLowerCase();
-
-    if (!isNaN(intervalVal) && intervalVal > 1) {
-        return false;
-    }
-    if (['weeks', 'week', 'months', 'month', 'years', 'year'].includes(unitVal)) {
-        return false;
-    }
-
-    // 3. Check direct recurrence/schedule strings across root and schedule object
     const stringProps = [
-        task.schedule, task.frequency, task.recurrence, task.interval,
+        task.schedule, task.frequency, task.recurrence,
         task.timeOfDay, task.repeat, task.times, task.resetType,
         sched ? sched.type : null,
         sched ? sched.frequency : null,
         sched ? sched.recurrence : null,
         sched ? sched.timeOfDay : null,
-        sched ? sched.resetType : null,
-        sched ? sched.unit : null
+        sched ? sched.resetType : null
     ];
     for (const prop of stringProps) {
         if (checkStringForDaily(prop)) {
@@ -81,32 +124,12 @@ export function isDailyRoutine(task) {
         }
     }
 
-    // Check title/name for daily keyword (e.g. "Feed Orion daily", "Feed Orion - morning")
-    const title = (task.name || task.title || '').toLowerCase();
-    if (/\b(daily|every day|everyday|morning|evening|night|am|pm|twice daily|2x daily)\b/i.test(title)) {
+    if (/\b(daily|every day|everyday|morning|afternoon|evening|night|am|pm|twice daily|2x daily)\b/i.test(rawTitle)) {
         return true;
     }
 
-    // 4. If numeric interval is exactly 1 day
-    if (intervalVal === 1 && (unitVal === 'days' || unitVal === 'day')) {
-        return true;
-    }
-
-    // 5. If it's a routine (in state.routines or has routine-like metadata) with no explicit weekly/interval restriction,
-    // it defaults to standard daily routine!
-    const isRoutineItem = task.uid || task.linkedNiptoTask || task.type === 'routine' || task.isRoutine || !!task.schedule;
-    if (isRoutineItem) {
-        const typeStr = (sched?.type || task.type || '').toLowerCase();
-        if (typeStr === 'weekly' && Array.isArray(days) && days.length > 0 && days.length < 7) {
-            return false;
-        }
-        if (typeStr === 'interval' && !isNaN(intervalVal) && intervalVal > 1) {
-            return false;
-        }
-        return true;
-    }
-
-    return false;
+    // 7. Default for any routine item not explicitly restricted to <7 weekly days or >1 interval
+    return true;
 }
 
 // Compact assignee label for a routine card or row
@@ -157,25 +180,59 @@ export function toggleHideCompletedRoutines() {
     renderRollingSchedule();
 }
 
-// Determines if routine applies to a given JS Date object
+// Determines if a routine applies to a given JS Date object.
+// Enforces the strict rule that daily routines ONLY apply to Today.
 function routineAppliesToDate(routine, targetDate) {
-    const sched = routine.schedule || { type: 'daily' };
+    if (!routine || !targetDate) return false;
+
+    const todayKey = toLocalDateKey(new Date());
+    const targetKey = toLocalDateKey(targetDate);
+
+    // STRICT DAILY GUARD: Daily routines can ONLY ever apply to todayKey
+    if (isDailyRoutine(routine)) {
+        return targetKey === todayKey;
+    }
+
+    const sched = (routine.schedule && typeof routine.schedule === 'object') ? routine.schedule : { type: 'daily' };
     const dayOfWeek = targetDate.getDay(); // 0 = Sun, 1 = Mon ...
-    
-    if (sched.type === 'daily') return true;
+
     if (sched.type === 'weekly') {
-        const days = sched.daysOfWeek || [];
+        const rawDays = sched.daysOfWeek || routine.daysOfWeek || [];
+        const days = rawDays.map(d => Number(d)).filter(d => !isNaN(d));
         return days.includes(dayOfWeek);
     }
-    if (sched.type === 'interval') {
-        return true;
-    }
-    return true;
-}
 
-// Format local YYYY-MM-DD
-function toLocalDateKey(d) {
-    return getLocalTodayKey(d);
+    if (sched.type === 'interval') {
+        const intervalVal = Math.max(1, Number(sched.value || sched.interval || 1));
+        const unit = String(sched.unit || 'days').toLowerCase();
+        let stepDays = intervalVal;
+        if (unit.startsWith('week')) stepDays = intervalVal * 7;
+        else if (unit.startsWith('month')) stepDays = intervalVal * 30;
+
+        if (stepDays <= 1) {
+            return targetKey === todayKey;
+        }
+
+        // Anchor interval calculation to most recent completion date or createdAt
+        const compKeys = routine.completionsByDate ? Object.keys(routine.completionsByDate).sort() : [];
+        const anchorStr = compKeys.length > 0
+            ? `${compKeys[compKeys.length - 1]}T00:00:00`
+            : (routine.createdAt || `${todayKey}T00:00:00`);
+        const anchorDate = new Date(anchorStr);
+        if (isNaN(anchorDate.getTime())) return targetKey === todayKey;
+
+        anchorDate.setHours(0, 0, 0, 0);
+        const checkDate = new Date(targetDate.getTime());
+        checkDate.setHours(0, 0, 0, 0);
+
+        const diffDays = Math.round((checkDate.getTime() - anchorDate.getTime()) / 86400000);
+        if (compKeys.length > 0) {
+            return diffDays > 0 && (diffDays % stepDays === 0);
+        }
+        return diffDays >= 0 && (diffDays % stepDays === 0);
+    }
+
+    return targetKey === todayKey;
 }
 
 // Filter matching helper
@@ -198,7 +255,6 @@ export function renderRollingSchedule() {
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
     const activeName = activeUserObj ? activeUserObj.name : 'Active';
 
-    // Default to 'me' on load
     if (!state.scheduleFilter) state.scheduleFilter = 'me';
     const filter = state.scheduleFilter;
 
@@ -221,6 +277,7 @@ export function renderRollingSchedule() {
 
     // ------------------------------------------
     // COLUMN 1: Past (Missed) - Past 3 days (-1, -2, -3)
+    // Daily routines are strictly excluded.
     // ------------------------------------------
     const pastDays = [-1, -2, -3].map(offset => {
         const d = new Date(today);
@@ -237,7 +294,6 @@ export function renderRollingSchedule() {
     const missedItems = [];
     pastDays.forEach(day => {
         routines.forEach(r => {
-            // CRITICAL DAILY RULE: Daily routines must NEVER appear in Past (Missed)
             if (isDailyRoutine(r)) return;
             if (!routineMatchesFilter(r, filter, activeUid)) return;
             if (!routineAppliesToDate(r, day.dateObj)) return;
@@ -254,7 +310,6 @@ export function renderRollingSchedule() {
         });
     });
 
-    // Sort missed items: most recent missed first
     missedItems.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 
     // ------------------------------------------
@@ -274,16 +329,16 @@ export function renderRollingSchedule() {
         });
     });
 
-    // Sort today items: incomplete first, then alphabetically
     todayItems.sort((a, b) => {
         if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
-        return a.routine.name.localeCompare(b.routine.name);
+        return (a.routine.name || '').localeCompare(b.routine.name || '');
     });
 
     const completedTodayCount = todayItems.filter(item => item.isDone).length;
 
     // ------------------------------------------
     // COLUMN 3: Upcoming (Next 3 Days) - (+1, +2, +3)
+    // Daily routines are strictly excluded.
     // ------------------------------------------
     const upcomingDays = [1, 2, 3].map(offset => {
         const d = new Date(today);
@@ -300,7 +355,6 @@ export function renderRollingSchedule() {
     const upcomingItems = [];
     upcomingDays.forEach(day => {
         routines.forEach(r => {
-            // CRITICAL DAILY RULE: Routines that run every day must NEVER appear in Upcoming
             if (isDailyRoutine(r)) return;
             if (!routineMatchesFilter(r, filter, activeUid)) return;
             if (!routineAppliesToDate(r, day.dateObj)) return;
@@ -314,7 +368,6 @@ export function renderRollingSchedule() {
         });
     });
 
-    // Sort upcoming items by dateKey ascending
     upcomingItems.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
     // ------------------------------------------
@@ -342,7 +395,6 @@ export function renderRollingSchedule() {
     if (missedItems.length === 0) {
         boardHtml += `<div class="empty-col-msg">&#x2714; No missed routines in past 3 days</div>`;
     } else {
-        // Group missed items chronologically by dateKey (descending: yesterday, -2, -3)
         const missedGroups = {};
         missedItems.forEach(item => {
             if (!missedGroups[item.dateKey]) {
@@ -474,7 +526,6 @@ export function renderRollingSchedule() {
     if (upcomingItems.length === 0) {
         boardHtml += `<div class="empty-col-msg">No upcoming non-daily routines</div>`;
     } else {
-        // Group upcoming items chronologically by dateKey (ascending: tomorrow, +2, +3)
         const upcomingGroups = {};
         upcomingItems.forEach(item => {
             if (!upcomingGroups[item.dateKey]) {
@@ -528,9 +579,6 @@ export function renderRollingSchedule() {
         });
     }
     boardHtml += `</div></div>`;
-
-    boardHtml += `</div>`; // Close .routine-board-grid
-
     boardHtml += `</div>`; // Close .routine-board-grid
 
     container.innerHTML = filterHtml + boardHtml;
@@ -574,7 +622,6 @@ export async function clearAllMissedRoutines() {
     const creditedUid = activeUid || ALL_USERS[0].uid;
     const creditedName = ALL_USERS.find(u => u.uid === creditedUid)?.name || 'Admin';
 
-    // Group updates by routineId
     const updatesByRoutine = {};
     missedToClear.forEach(item => {
         const r = routines.find(rt => rt.uid === item.routineId);
@@ -629,9 +676,10 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
     const userObj = ALL_USERS.find(u => u.uid === creditedUid);
     if (userObj) creditedName = userObj.name;
 
+    const nowIso = new Date().toISOString();
     const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
     completions[dateKey] = {
-        completedAt: new Date().toISOString(),
+        completedAt: nowIso,
         completedByUid: creditedUid,
         completedByName: creditedName,
         withoutPoints: !awardPoints
@@ -661,24 +709,21 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
             showToast("admin_clear", `Dismissed "${routine.name}" on ${dateKey} (no points)`, 0, creditedName);
         }
 
-        // Record to daily_completions for today
-        if (dateKey === getLocalTodayKey()) {
-            const compId = `routine_${routineId}_${dateKey}`;
-            if (awardPoints) {
-                await api.recordDailyCompletion({
-                    id: compId,
-                    itemId: routineId,
-                    sourceType: 'routine',
-                    title: routine.name,
-                    user: creditedName,
-                    userUid: creditedUid,
-                    points: routinePts,
-                    completedAt: new Date().toISOString(),
-                    dateKey: dateKey
-                });
-            } else {
-                await api.removeDailyCompletion(compId, dateKey);
-            }
+        const compId = `routine_${routineId}_${dateKey}`;
+        if (awardPoints) {
+            await api.recordDailyCompletion({
+                id: compId,
+                itemId: routineId,
+                sourceType: 'routine',
+                title: routine.name,
+                user: creditedName,
+                userUid: creditedUid,
+                points: routinePts,
+                completedAt: nowIso,
+                dateKey: dateKey
+            });
+        } else {
+            await api.removeDailyCompletion(compId, dateKey);
         }
 
         rebuildCompletedToday();
@@ -705,7 +750,6 @@ export async function undoRoutineForDate(routineId, dateKey) {
         });
         routine.completionsByDate = completions;
 
-        // Remove from daily_completions
         const compId = `routine_${routineId}_${dateKey}`;
         await api.removeDailyCompletion(compId, dateKey);
 
@@ -728,9 +772,12 @@ export function openRoutineModal() {
     document.getElementById('routineFrequency').value = 'daily';
     document.getElementById('routineDailyReset').value = 'midnight';
     document.getElementById('routineSpecificTimes').value = '';
-    document.querySelectorAll('.routine-day-cb').forEach(cb => cb.checked = false);
+    document.querySelectorAll('.routine-day-cb').forEach(cb => { cb.checked = false; });
     document.getElementById('routineIntervalValue').value = '1';
-    document.getElementById('routineIntervalUnit').value = 'months';
+    document.getElementById('routineIntervalUnit').value = 'days';
+
+    const catEl = document.getElementById('routineCategory');
+    if (catEl) catEl.value = 'Home';
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
@@ -760,21 +807,27 @@ export function editRoutine(routineId) {
     document.getElementById('routineId').value = routine.uid;
     document.getElementById('routineName').value = routine.name;
     document.getElementById('routineType').value = routine.completionType || 'shared';
-    document.getElementById('routineFrequency').value = routine.schedule?.type || 'daily';
 
-    const freq = routine.schedule?.type || 'daily';
+    const catEl = document.getElementById('routineCategory');
+    if (catEl) catEl.value = routine.category || 'Home';
+
+    const freq = isDailyRoutine(routine) ? 'daily' : (routine.schedule?.type || 'daily');
+    document.getElementById('routineFrequency').value = freq;
+
     if (freq === 'daily') {
         document.getElementById('routineDailyReset').value = routine.schedule?.resetType || 'midnight';
         if (routine.schedule?.resetType === 'specific') {
             document.getElementById('routineSpecificTimes').value = (routine.schedule?.specificTimes || []).join(', ');
         }
+        document.querySelectorAll('.routine-day-cb').forEach(cb => { cb.checked = false; });
     } else if (freq === 'weekly') {
+        const days = (routine.schedule?.daysOfWeek || []).map(d => Number(d));
         document.querySelectorAll('.routine-day-cb').forEach(cb => {
-            cb.checked = (routine.schedule?.daysOfWeek || []).includes(parseInt(cb.value));
+            cb.checked = days.includes(parseInt(cb.value, 10));
         });
     } else if (freq === 'interval') {
         document.getElementById('routineIntervalValue').value = routine.schedule?.value || 1;
-        document.getElementById('routineIntervalUnit').value = routine.schedule?.unit || 'months';
+        document.getElementById('routineIntervalUnit').value = routine.schedule?.unit || 'days';
     }
 
     const timeOfDayEl = document.getElementById('routineTimeOfDay');
@@ -833,9 +886,12 @@ export async function saveRoutine() {
     const assignees = Array.from(document.querySelectorAll('.routine-assignee-cb:checked')).map(cb => cb.value);
     if (assignees.length === 0) { alert("Assign the routine to at least one person!"); return; }
 
-    const freq = document.getElementById('routineFrequency').value;
+    let freq = document.getElementById('routineFrequency').value;
     const timeOfDayVal = document.getElementById('routineTimeOfDay')?.value || 'Anytime';
     const pointsVal = parseInt(document.getElementById('routinePoints')?.value, 10) || 0;
+    const rawCat = document.getElementById('routineCategory')?.value.trim() || 'Home';
+    const categoryVal = registerCustomCategory(rawCat) || 'Home';
+
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
     const createdByVal = document.getElementById('routineCreatedBy')?.value || activeName;
@@ -847,23 +903,35 @@ export async function saveRoutine() {
         scheduleData.resetType = resetType;
         if (resetType === 'specific') {
             const times = document.getElementById('routineSpecificTimes').value;
-            scheduleData.specificTimes = times.split(',').map(t => t.trim()).filter(t => t);
-            scheduleData.specificTimes.sort();
+            scheduleData.specificTimes = times.split(',').map(t => t.trim()).filter(Boolean).sort();
         }
     } else if (freq === 'weekly') {
-        const days = Array.from(document.querySelectorAll('.routine-day-cb:checked')).map(cb => parseInt(cb.value));
+        const days = Array.from(document.querySelectorAll('.routine-day-cb:checked')).map(cb => parseInt(cb.value, 10));
         if (days.length === 0) { alert("Select at least one day of the week!"); return; }
-        scheduleData.daysOfWeek = days;
+        if (days.length === 7) {
+            scheduleData.type = 'daily';
+            scheduleData.resetType = 'midnight';
+        } else {
+            scheduleData.daysOfWeek = days;
+        }
     } else if (freq === 'interval') {
-        scheduleData.value = parseInt(document.getElementById('routineIntervalValue').value);
-        scheduleData.unit = document.getElementById('routineIntervalUnit').value;
+        const val = parseInt(document.getElementById('routineIntervalValue').value, 10) || 1;
+        const unit = document.getElementById('routineIntervalUnit').value || 'days';
+        if (val === 1 && unit === 'days') {
+            scheduleData.type = 'daily';
+            scheduleData.resetType = 'midnight';
+        } else {
+            scheduleData.value = val;
+            scheduleData.unit = unit;
+        }
     }
 
     const id = document.getElementById('routineId').value;
     const routine = id ? state.routines.find(r => r.uid === id) : null;
 
-    let routineData = {
+    const routineData = {
         name: name,
+        category: categoryVal,
         completionType: document.getElementById('routineType').value,
         assignees: assignees,
         schedule: scheduleData,
@@ -884,6 +952,7 @@ export async function saveRoutine() {
         closeRoutineModal();
         await api.loadRoutinesFromFirestore();
         renderRollingSchedule();
+        if (window.renderTodoTasks) window.renderTodoTasks();
         if (window.renderBulkTriageList) window.renderBulkTriageList();
     } catch (error) {
         alert("Error saving routine: " + error.message);
@@ -896,6 +965,7 @@ export async function deleteRoutine(routineId) {
         await api.deleteFirestoreDocument('routines', routineId);
         await api.loadRoutinesFromFirestore();
         renderRollingSchedule();
+        if (window.renderTodoTasks) window.renderTodoTasks();
         if (window.renderBulkTriageList) window.renderBulkTriageList();
     } catch (e) {
         alert("Error deleting routine: " + e.message);
@@ -913,6 +983,7 @@ export function renderSidebarRoutines() {
 
 // Window bindings for inline HTML onclick handlers
 if (typeof window !== 'undefined') {
+    window.isDailyRoutine = isDailyRoutine;
     window.setScheduleFilter = setScheduleFilter;
     window.toggleHideCompletedRoutines = toggleHideCompletedRoutines;
     window.clearAllMissedRoutines = clearAllMissedRoutines;
