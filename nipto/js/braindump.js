@@ -417,23 +417,61 @@ export function renderBrainDumpStaging() {
         else actionBadge = '<span style="background: rgba(16, 185, 129, 0.15); color: #059669; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">NEW</span>';
 
         const cur = item.current;
+        let curHtml = '';
+        if (cur) {
+            curHtml = '<div style="font-size: 11px; color: var(--text-muted); padding: 4px 8px; background: var(--bg-color); border-radius: 4px;">' +
+                'Current state: <strong>' + escapeHtml(cur.title) + '</strong> &bull; Type: ' + cur.type + ' &bull; ' + (cur.points || 5) + ' pts &bull; Pri: ' + (cur.priority || 'med') + ' &bull; Cat: ' + escapeHtml(cur.category || 'Home') +
+                '</div>';
+        }
+
+        const reasonHtml = item.reason 
+            ? '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">' + escapeHtml(item.reason) + '</span>'
+            : '';
+
+        const targetVal = 'value="' + escapeHtml(item.assignee) + '"';
+        const assigneeOptionsHtml = userOptionsHtml.replace(targetVal, targetVal + ' selected');
+
+        let scheduleHtml = '';
+        if (item.type === 'routine') {
+            const isWeekly = item.schedule && item.schedule.type === 'weekly';
+            scheduleHtml = '<label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">' +
+                'Schedule:' +
+                '<select onchange="const s = item.schedule || {}; s.type = this.value; updateStagingItem(' + idx + ', \'schedule\', s);" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">' +
+                '<option value="daily"' + (!isWeekly ? ' selected' : '') + '>Daily</option>' +
+                '<option value="weekly"' + (isWeekly ? ' selected' : '') + '>Weekly</option>' +
+                '</select>' +
+                '</label>';
+        }
+
+        let subtasksHtml = '';
+        if (item.subtasks && item.subtasks.length > 0) {
+            const subtaskRows = item.subtasks.map((step, sIdx) => {
+                return '<div style="display: flex; gap: 6px; align-items: center;">' +
+                    '<span style="font-size: 11px; color: var(--text-muted);">&#x2022;</span>' +
+                    '<input type="text" value="' + escapeHtml(step) + '" onchange="updateStagingSubtask(' + idx + ', ' + sIdx + ', this.value)" placeholder="Step description..." style="flex: 1; padding: 3px 6px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">' +
+                    '<button type="button" onclick="removeStagingSubtask(' + idx + ', ' + sIdx + ')" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove step">&times;</button>' +
+                    '</div>';
+            }).join('');
+
+            subtasksHtml = '<div style="display: flex; flex-direction: column; gap: 4px; padding-left: 6px;">' + subtaskRows + '</div>';
+        }
+
+        const isUnselected = !item.selected;
+        const opacityVal = item.selected ? '1' : '0.6';
+        const checkedAttr = item.selected ? 'checked' : '';
 
         return `
-        <div class="staging-card ${!item.selected ? 'is-unselected' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px; opacity: ${item.selected ? '1' : '0.6'}; display: flex; flex-direction: column; gap: 8px;">
+        <div class="staging-card ${isUnselected ? 'is-unselected' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px; opacity: ${opacityVal}; display: flex; flex-direction: column; gap: 8px;">
             <!-- Line 1: Checkbox, Badge, Title, Reason, Delete -->
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
+                <input type="checkbox" ${checkedAttr} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
                 ${actionBadge}
                 <input type="text" value="${escapeHtml(item.title)}" onchange="updateStagingItem(${idx}, 'title', this.value)" style="flex: 1; min-width: 180px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);" placeholder="Task title...">
-                ${item.reason ? `<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${escapeHtml(item.reason)}</span>` : ''}
+                ${reasonHtml}
                 <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px; margin-left: auto;" title="Remove row">&times;</button>
             </div>
 
-            ${cur ? `
-            <div style="font-size: 11px; color: var(--text-muted); padding: 4px 8px; background: var(--bg-color); border-radius: 4px;">
-                Current state: <strong>${escapeHtml(cur.title)}</strong> &bull; Type: ${cur.type} &bull; ${cur.points || 5} pts &bull; Pri: ${cur.priority || 'med'} &bull; Cat: ${cur.category || 'Home'}
-            </div>
-            ` : ''}
+            ${curHtml}
 
             <!-- Line 2: Full Editable Metadata Grid (Type, Category, Points, Priority, Friction, Assignee, Schedule) -->
             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 11px;">
@@ -478,19 +516,11 @@ export function renderBrainDumpStaging() {
                 <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
                     Assignee:
                     <select onchange="updateStagingItem(${idx}, 'assignee', this.value)" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                        ${userOptionsHtml.replace(`value="${escapeHtml(item.assignee)}"`, `value="${escapeHtml(item.assignee)}" selected`)}
+                        ${assigneeOptionsHtml}
                     </select>
                 </label>
 
-                ${item.type === 'routine' ? `
-                <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
-                    Schedule:
-                    <select onchange="const s = item.schedule || {}; s.type = this.value; updateStagingItem(${idx}, 'schedule', s);" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                        <option value="daily" ${item.schedule?.type !== 'weekly' ? 'selected' : ''}>Daily</option>
-                        <option value="weekly" ${item.schedule?.type === 'weekly' ? 'selected' : ''}>Weekly</option>
-                    </select>
-                </label>
-                ` : ''}
+                ${scheduleHtml}
             </div>
 
             <!-- Line 3: Description (Always visible & editable) -->
@@ -509,17 +539,7 @@ export function renderBrainDumpStaging() {
                         + Add Step
                     </button>
                 </div>
-                ${(item.subtasks && item.subtasks.length > 0) ? `
-                <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 6px;">
-                    ${item.subtasks.map((step, sIdx) => `
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <span style="font-size: 11px; color: var(--text-muted);">&#x2022;</span>
-                            <input type="text" value="${escapeHtml(step)}" onchange="updateStagingSubtask(${idx}, ${sIdx}, this.value)" placeholder="Step description..." style="flex: 1; padding: 3px 6px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
-                            <button type="button" onclick="removeStagingSubtask(${idx}, ${sIdx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove step">&times;</button>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : ''}
+                ${subtasksHtml}
             </div>
         </div>
         `;
@@ -1105,12 +1125,16 @@ export function renderBulkTriageList() {
         const todayKey = getLocalTodayKey();
         const isDoneToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
 
+        const toggleRoutineCall = isDoneToday 
+            ? 'undoRoutineForDate(\'' + r.uid + '\', \'' + todayKey + '\')'
+            : 'completeRoutineForDate(\'' + r.uid + '\', \'' + todayKey + '\', true)';
+
         return `
         <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isDoneToday ? 'var(--bg-color)' : 'transparent')}; opacity: ${isDoneToday ? 0.7 : 1};">
             <div style="display: flex; align-items: center; gap: 10px;">
                 <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)" title="Select for bulk action">
                 
-                <button type="button" class="item-checkbox ${isDoneToday ? 'checked' : ''}" onclick="${isDoneToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}" title="${isDoneToday ? 'Completed today - click to undo' : 'Mark done today'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
+                <button type="button" class="item-checkbox ${isDoneToday ? 'checked' : ''}" onclick="${toggleRoutineCall}" title="${isDoneToday ? 'Completed today - click to undo' : 'Mark done today'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
                     ${isDoneToday ? '&#x2714;' : ''}
                 </button>
 
@@ -1276,28 +1300,6 @@ export function renderBulkTriageList() {
             ${routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No routines match the selected filters.</div>'}
         </div>
         `;
-    }
-
-    html += `</div>`;
-    container.innerHTML = html;
-}
-
-                        <!-- Inline Category -->
-                        <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
-                            Cat:
-                            <input type="text" value="${escapeHtml(r.category || 'Home')}" onchange="updateInlineTaskField('routine', '${r.uid}', 'category', this.value)" style="width: 75px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
-                        </label>
-
-                        <span style="font-size: 10px; color: var(--text-muted);">
-                            ${escapeHtml(r.timeOfDay || 'Anytime')}
-                        </span>
-                    </div>
-                </div>
-                `;
-            });
-        }
-
-        html += `</div>`;
     }
 
     html += `</div>`;
