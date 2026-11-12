@@ -1,12 +1,33 @@
 // Client-side Unit Price Normalization & Deal Math Engine
-// Matches the logic in Python normalizer.py
+// Matches the logic in Python normalizer.py with edge-case & unit-conversion fixes
+
+const GRAMS_PER_LB = 453.59237;
+const GRAMS_PER_OZ = 28.349523125;
+const FL_OZ_PER_GAL = 128.0;
+const OZ_PER_LB = 16.0;
 
 export function parseNumeric(val) {
     if (val === null || val === undefined) return null;
-    if (typeof val === 'number') return val > 0 ? val : null;
+    if (typeof val === 'number') {
+        return Number.isFinite(val) && val > 0 ? val : null;
+    }
+
     const s = String(val).replace(/,/g, '').trim();
+    if (!s) return null;
+
+    // Detect explicit cent pricing without dollar sign (e.g., "99¢", "79 cents", "89¢/lb")
+    if (!s.includes('$')) {
+        const mCents = s.match(/(?:^|\s)(\d{1,3})\s*(?:¢|cents?\b)/i);
+        if (mCents) {
+            const centsVal = parseFloat(mCents[1]) / 100.0;
+            return Number.isFinite(centsVal) && centsVal > 0 ? parseFloat(centsVal.toFixed(4)) : null;
+        }
+    }
+
     const m = s.match(/\$?\s*(\d+(?:\.\d+)?)/);
-    return m ? parseFloat(m[1]) : null;
+    if (!m) return null;
+    const parsed = parseFloat(m[1]);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function extractMultiBuy(text) {
@@ -16,7 +37,9 @@ export function extractMultiBuy(text) {
     if (mSlash) {
         const qty = parseInt(mSlash[1], 10);
         const total = parseFloat(mSlash[2]);
-        if (qty > 1 && qty <= 20 && total > 0) return { qty, total };
+        if (Number.isFinite(qty) && qty > 1 && qty <= 20 && Number.isFinite(total) && total > 0) {
+            return { qty, total };
+        }
     }
 
     // 3 for $10
@@ -24,7 +47,9 @@ export function extractMultiBuy(text) {
     if (mFor) {
         const qty = parseInt(mFor[1], 10);
         const total = parseFloat(mFor[2]);
-        if (qty > 1 && qty <= 20 && total > 0 && total <= 100) return { qty, total };
+        if (Number.isFinite(qty) && qty > 1 && qty <= 20 && Number.isFinite(total) && total > 0 && total <= 100) {
+            return { qty, total };
+        }
     }
     return null;
 }
@@ -44,7 +69,7 @@ export function extractPackageRange(text) {
     const minVal = parseFloat(m[1]);
     const maxVal = parseFloat(m[2]);
     const rawUnit = m[3].toLowerCase();
-    if (minVal > 0 && maxVal > minVal) {
+    if (Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal > 0 && maxVal > minVal) {
         let unit = rawUnit;
         if (/lbs?|pounds?/i.test(rawUnit)) unit = 'lb';
         else if (/fl(?:uid)?\.?\s*oz|oz|ounces?/i.test(rawUnit)) unit = 'oz';
@@ -66,7 +91,7 @@ export function extractPackageRange(text) {
     return null;
 }
 
-export function extractPackageSizeAndUnit(text) {
+export function extractPackageSizeAndUnit(text, targetUnit = null) {
     if (!text) return { size: null, unit: null };
 
     // 0. Check weight/count ranges first (e.g. 10-16 lbs -> midpoint 13.0 lbs)
@@ -76,6 +101,15 @@ export function extractPackageSizeAndUnit(text) {
     }
 
     const t = text.toLowerCase();
+
+    // If target unit is count (ct), prioritize extracting count/pack to avoid shadowing by ounce descriptors
+    // (e.g., "Cascade Platinum Plus 12 pk 12 oz" -> extracts 12 ct when targetUnit is ct)
+    if (targetUnit === 'ct') {
+        const mCtDirect = t.match(/(\d+)\s*(?:-| )?(?:ct|count|pods?|pacs?|tabs?|capsules?)\b/i);
+        if (mCtDirect) return { size: parseInt(mCtDirect[1], 10), unit: 'ct' };
+        const mPkDirect = t.match(/(\d+)\s*(?:-| )?(?:pk|pack)\b/i);
+        if (mPkDirect) return { size: parseInt(mPkDirect[1], 10), unit: 'ct' };
+    }
 
     // Gallon / Half Gallon / Quart
     if (t.includes('half gallon') || t.includes('1/2 gallon') || t.includes('1/2 gal') || t.includes('0.5 gal')) {
@@ -119,7 +153,7 @@ export function extractBogoInfo(text) {
     if (!text) return { isBogo: false, regPrice: null, is1Cent: false };
     const t = text.toLowerCase();
     const is1Cent = /buy\s*1\s*get\s*1\s*(?:for\s*)?(?:1\s*¢|1\s*cent|0\.01|\.01)/i.test(t);
-    const isFree = /buy\s*1\s*get\s*1\s*free|bogo|b1g1/i.test(t);
+    const isFree = /buy\s*1\s*get\s*1\s*free|\bbogo\b|\bb1g1\b/i.test(t);
 
     if (!is1Cent && !isFree) return { isBogo: false, regPrice: null, is1Cent: false };
 
@@ -134,7 +168,10 @@ export function extractBogoInfo(text) {
     // Reg. $X.XX
     const mReg = t.match(/reg(?:ular)?\.?\s*\$?(\d+(?:\.\d+)?)/i);
     if (mReg) {
-        return { isBogo: true, regPrice: parseFloat(mReg[1]), is1Cent };
+        const regVal = parseFloat(mReg[1]);
+        if (Number.isFinite(regVal) && regVal > 0) {
+            return { isBogo: true, regPrice: regVal, is1Cent };
+        }
     }
 
     return { isBogo: true, regPrice: null, is1Cent };
@@ -176,30 +213,32 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     const multibuy = extractMultiBuy(allText);
     if (multibuy) {
         const unitFromMb = multibuy.total / multibuy.qty;
-        if (basePrice === null || unitFromMb < basePrice) {
-            basePrice = unitFromMb;
+        if (basePrice === null || unitFromMb <= basePrice + 0.005) {
+            basePrice = basePrice !== null ? Math.min(basePrice, unitFromMb) : unitFromMb;
             const mustBuy = /must\s+buy/i.test(allText) ? ` (Must buy ${multibuy.qty})` : '';
             notes.push(`${multibuy.qty}/$${multibuy.total}${mustBuy}`);
         }
     }
 
-    // BOGO
+    // BOGO (Buy 1 Get 1 Free or Buy 1 Get 1 for 1¢)
     const bogo = extractBogoInfo(allText);
     let isEstimatedBogo = false;
 
     if (bogo.isBogo) {
         const bogoLabel = bogo.is1Cent ? "BOGO 1¢" : "BOGO Free";
-        if (bogo.regPrice) {
-            basePrice = parseFloat((bogo.regPrice / 2.0).toFixed(4));
+        const extraCent = bogo.is1Cent ? 0.01 : 0.0;
+
+        if (bogo.regPrice && bogo.regPrice > 0) {
+            basePrice = parseFloat(((bogo.regPrice + extraCent) / 2.0).toFixed(4));
             notes.push(`${bogoLabel} (Reg. $${bogo.regPrice.toFixed(2)})`);
-        } else if (origPrice) {
-            basePrice = parseFloat((origPrice / 2.0).toFixed(4));
+        } else if (origPrice && origPrice > 0) {
+            basePrice = parseFloat(((origPrice + extraCent) / 2.0).toFixed(4));
             notes.push(`${bogoLabel} (Reg. $${origPrice.toFixed(2)})`);
         } else if (basePrice && basePrice > 0) {
-            basePrice = parseFloat((basePrice / 2.0).toFixed(4));
+            basePrice = parseFloat(((basePrice + extraCent) / 2.0).toFixed(4));
             notes.push(`${bogoLabel} (Half of listed pack price)`);
-        } else if (baselinePrice) {
-            basePrice = parseFloat((baselinePrice / 2.0).toFixed(4));
+        } else if (baselinePrice && baselinePrice > 0) {
+            basePrice = parseFloat(((baselinePrice + extraCent) / 2.0).toFixed(4));
             isEstimatedBogo = true;
             notes.push(`${bogoLabel} (Est. from baseline - verify reg price)`);
         } else {
@@ -210,7 +249,7 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     // Extracted size & unit
     const fullDesc = `${rawItem.description || ''} ${rawItem.name || ''}`;
     const rangeInfo = extractPackageRange(fullDesc);
-    const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullDesc);
+    const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullDesc, targetUnit);
     const isRange = !!rangeInfo;
     const rangeNote = rangeInfo ? rangeInfo.note : null;
 
@@ -219,7 +258,7 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     let normalizedUnitPrice = null;
     const finalUnit = targetUnit || extractedUnit || 'ea';
 
-    if (basePrice !== null) {
+    if (basePrice !== null && Number.isFinite(basePrice) && basePrice > 0) {
         if (targetUnit === 'lb') {
             if (isPerLbAd && (extractedUnit !== 'lb' || !extractedSize || extractedSize === 1.0)) {
                 normalizedUnitPrice = basePrice;
@@ -231,11 +270,18 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
                     notes.push(`${extractedSize} lb pack`);
                 }
             } else if (extractedUnit === 'oz' && extractedSize && extractedSize > 0) {
-                normalizedUnitPrice = (basePrice / extractedSize) * 16.0;
+                normalizedUnitPrice = (basePrice / extractedSize) * OZ_PER_LB;
                 if (isRange && rangeNote) {
                     notes.push(rangeNote);
                 } else {
                     notes.push(`${extractedSize} oz pack`);
+                }
+            } else if (extractedUnit === 'g' && extractedSize && extractedSize > 0) {
+                normalizedUnitPrice = (basePrice / extractedSize) * GRAMS_PER_LB;
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} g pack`);
                 }
             } else if (defaultPackSize && defaultPackSize > 0) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
@@ -252,11 +298,18 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
                     notes.push(`${extractedSize} oz`);
                 }
             } else if (extractedUnit === 'lb' && extractedSize && extractedSize > 0) {
-                normalizedUnitPrice = basePrice / (extractedSize * 16.0);
+                normalizedUnitPrice = basePrice / (extractedSize * OZ_PER_LB);
                 if (isRange && rangeNote) {
                     notes.push(rangeNote);
                 } else {
                     notes.push(`${extractedSize} lb (${extractedSize * 16} oz)`);
+                }
+            } else if (extractedUnit === 'g' && extractedSize && extractedSize > 0) {
+                normalizedUnitPrice = (basePrice / extractedSize) * GRAMS_PER_OZ;
+                if (isRange && rangeNote) {
+                    notes.push(rangeNote);
+                } else {
+                    notes.push(`${extractedSize} g`);
                 }
             } else if (defaultPackSize && defaultPackSize > 0) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
@@ -283,7 +336,7 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
                 normalizedUnitPrice = basePrice / extractedSize;
                 if (extractedSize !== 1.0) notes.push(`${extractedSize} gal`);
             } else if (extractedUnit === 'oz' && extractedSize && extractedSize >= 120.0) {
-                normalizedUnitPrice = (basePrice / extractedSize) * 128.0;
+                normalizedUnitPrice = (basePrice / extractedSize) * FL_OZ_PER_GAL;
                 notes.push(`${extractedSize} fl oz`);
             } else if (defaultPackSize && defaultPackSize > 0 && (!extractedUnit || extractedUnit === 'gal')) {
                 normalizedUnitPrice = basePrice / defaultPackSize;
@@ -305,13 +358,13 @@ export function normalizeDeal(rawItem, watchlistItem = null) {
     }
 
     if (normalizedUnitPrice !== null) {
-        normalizedUnitPrice = parseFloat(normalizedUnitPrice.toFixed(4));
+        normalizedUnitPrice = Number.isFinite(normalizedUnitPrice) ? parseFloat(normalizedUnitPrice.toFixed(4)) : null;
     }
 
     return {
         normalized_unit_price: normalizedUnitPrice,
         target_unit: finalUnit,
-        effective_price: basePrice !== null ? parseFloat(basePrice.toFixed(2)) : null,
+        effective_price: basePrice !== null && Number.isFinite(basePrice) ? parseFloat(basePrice.toFixed(2)) : null,
         extracted_size: extractedSize,
         extracted_unit: extractedUnit,
         is_bogo: bogo.isBogo,

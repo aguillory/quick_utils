@@ -1,6 +1,14 @@
 // Client-side Two-Tier Watchlist Filtering & Brand Locking Engine
 import { normalizeDeal, extractPackageSizeAndUnit } from './normalizer.js';
 
+export function getLocalTodayStr(dateObj = new Date()) {
+    const d = dateObj instanceof Date && !isNaN(dateObj) ? dateObj : new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 export function cleanText(text) {
     if (!text) return '';
     return String(text).toLowerCase()
@@ -19,15 +27,21 @@ export function matchesKeyword(text, keyword) {
 }
 
 export function formatValidWindow(validFrom, validTo) {
-    if (!validFrom && !validTo) return { windowStr: null, isUpcoming: false };
-    const todayStr = new Date().toISOString().split('T')[0];
+    if (!validFrom && !validTo) return { windowStr: null, isUpcoming: false, isExpired: false };
+    const todayStr = getLocalTodayStr();
     const fromStr = validFrom ? String(validFrom).slice(0, 10) : null;
     const toStr = validTo ? String(validTo).slice(0, 10) : null;
 
     if (fromStr && fromStr > todayStr) {
         const parts = fromStr.split('-');
         const mmDd = parts.length === 3 ? `${parts[1]}/${parts[2]}` : fromStr;
-        return { windowStr: `Starts ${mmDd}`, isUpcoming: true };
+        return { windowStr: `Starts ${mmDd}`, isUpcoming: true, isExpired: false };
+    }
+
+    if (toStr && toStr < todayStr) {
+        const tParts = toStr.split('-');
+        const mmDd = tParts.length === 3 ? `${tParts[1]}/${tParts[2]}` : toStr;
+        return { windowStr: `Expired ${mmDd}`, isUpcoming: false, isExpired: true };
     }
 
     if (fromStr && toStr) {
@@ -36,17 +50,17 @@ export function formatValidWindow(validFrom, validTo) {
         const windowStr = (fParts.length === 3 && tParts.length === 3)
             ? `${fParts[1]}/${fParts[2]}–${tParts[1]}/${tParts[2]}`
             : `${fromStr}–${toStr}`;
-        return { windowStr, isUpcoming: false };
+        return { windowStr, isUpcoming: false, isExpired: false };
     } else if (toStr) {
         const tParts = toStr.split('-');
         const windowStr = tParts.length === 3 ? `Thru ${tParts[1]}/${tParts[2]}` : `Thru ${toStr}`;
-        return { windowStr, isUpcoming: false };
+        return { windowStr, isUpcoming: false, isExpired: false };
     } else if (fromStr) {
         const fParts = fromStr.split('-');
         const windowStr = fParts.length === 3 ? `From ${fParts[1]}/${fParts[2]}` : `From ${fromStr}`;
-        return { windowStr, isUpcoming: false };
+        return { windowStr, isUpcoming: false, isExpired: false };
     }
-    return { windowStr: null, isUpcoming: false };
+    return { windowStr: null, isUpcoming: false, isExpired: false };
 }
 
 export function itemMatchesWatchlist(rawItem, watchlistItem) {
@@ -88,7 +102,7 @@ export function itemMatchesWatchlist(rawItem, watchlistItem) {
     // 4. Container & Unit Guardrails for Target Units
     const targetUnit = (watchlistItem.target_unit || '').toLowerCase();
     if (targetUnit === 'gal') {
-        const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullText);
+        const { size: extractedSize, unit: extractedUnit } = extractPackageSizeAndUnit(fullText, targetUnit);
 
         // Reject dry weight measurements (lb, lbs, g)
         if (['lb', 'g'].includes(extractedUnit)) return false;
@@ -128,13 +142,13 @@ export function evaluateRawItem(rawItem, watchlist) {
             let savingsAmount = 0.0;
             let savingsPct = 0.0;
 
-            if (baseline && unitPrice !== null && unitPrice < baseline) {
+            if (baseline && baseline > 0 && unitPrice !== null && Number.isFinite(unitPrice) && unitPrice < baseline) {
                 beatsBaseline = true;
                 savingsAmount = parseFloat((baseline - unitPrice).toFixed(4));
                 savingsPct = parseFloat((((baseline - unitPrice) / baseline) * 100).toFixed(1));
             }
 
-            const { windowStr, isUpcoming } = formatValidWindow(rawItem.valid_from, rawItem.valid_to);
+            const { windowStr, isUpcoming, isExpired } = formatValidWindow(rawItem.valid_from, rawItem.valid_to);
             const notesList = [...(math.notes || [])];
             if (isUpcoming && windowStr) {
                 notesList.push(windowStr);
@@ -160,6 +174,7 @@ export function evaluateRawItem(rawItem, watchlist) {
                 valid_to: rawItem.valid_to,
                 date_window_str: windowStr,
                 is_upcoming: isUpcoming,
+                is_expired: isExpired,
                 target_unit: math.target_unit,
                 normalized_unit_price: unitPrice,
                 effective_price: math.effective_price,
@@ -178,4 +193,43 @@ export function evaluateRawItem(rawItem, watchlist) {
     }
 
     return matchedDeals;
+}
+
+export function computeWatchlistStatsFromDeals(deals, currentItem = {}) {
+    const validDeals = (deals || []).filter(d => 
+        d && 
+        d.normalized_unit_price !== null && 
+        Number.isFinite(d.normalized_unit_price) && 
+        d.normalized_unit_price > 0 &&
+        !d.is_upcoming
+    );
+
+    let histLowPrice = currentItem.historical_low_price !== undefined ? currentItem.historical_low_price : null;
+    let histLowStore = currentItem.historical_low_store || null;
+    let histLowDate = currentItem.historical_low_date || null;
+
+    if (validDeals.length > 0) {
+        const sorted = [...validDeals].sort((a, b) => a.normalized_unit_price - b.normalized_unit_price);
+        const bestDeal = sorted[0];
+
+        if (histLowPrice === null || bestDeal.normalized_unit_price < histLowPrice) {
+            histLowPrice = bestDeal.normalized_unit_price;
+            histLowStore = bestDeal.store || 'Unknown Store';
+            histLowDate = bestDeal.valid_from ? String(bestDeal.valid_from).slice(0, 10) : getLocalTodayStr();
+        }
+    }
+
+    const prices = validDeals.map(d => d.normalized_unit_price);
+    let rollingAvg = currentItem.rolling_avg_price !== undefined ? currentItem.rolling_avg_price : null;
+    if (prices.length > 0) {
+        const sum = prices.reduce((acc, p) => acc + p, 0);
+        rollingAvg = parseFloat((sum / prices.length).toFixed(4));
+    }
+
+    return {
+        historical_low_price: histLowPrice,
+        historical_low_store: histLowStore,
+        historical_low_date: histLowDate,
+        rolling_avg_price: rollingAvg
+    };
 }

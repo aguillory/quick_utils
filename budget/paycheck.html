@@ -31,7 +31,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, formatCurrency, escapeHtml } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -47,6 +47,8 @@
         };
 
         // --- State ---
+        let unsubPaycheck = null;
+
         const state = {
             user: null,
             isLoading: true,
@@ -64,20 +66,20 @@
         };
 
         // --- Helpers ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        // formatCurrency imported from connection.js
 
         // --- Logic ---
         const Logic = {
             calculateTotals: () => {
-                const totalPreTax = state.preTaxDeductions.reduce((sum, item) => sum + item.amount, 0);
-                const totalTaxes = state.taxes.reduce((sum, item) => sum + item.amount, 0);
-                const totalPostTax = state.postTaxDeductions.reduce((sum, item) => sum + item.amount, 0);
+                const totalPreTax = roundCents(state.preTaxDeductions.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0));
+                const totalTaxes = roundCents(state.taxes.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0));
+                const totalPostTax = roundCents(state.postTaxDeductions.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0));
 
                 let netPay = 0;
                 if (state.isHoliday) {
-                    netPay = state.grossPay - totalTaxes;
+                    netPay = roundCents(state.grossPay - totalTaxes);
                 } else {
-                    netPay = state.grossPay - totalPreTax - totalTaxes - totalPostTax;
+                    netPay = roundCents(state.grossPay - totalPreTax - totalTaxes - totalPostTax);
                 }
 
                 return { totalPreTax, totalTaxes, totalPostTax, netPay };
@@ -96,26 +98,66 @@
                     render();
                 }
             },
-            scheduleSave: () => {
+            updateStatusBadgeDOM: () => {
+                const badge = document.getElementById('save-status-badge');
+                if (!badge) return;
+                if (state.isSaving) {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-violet-700 text-violet-200';
+                    badge.textContent = 'Saving...';
+                } else if (state.hasUnsavedChanges) {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-yellow-600 text-yellow-100';
+                    badge.textContent = 'Unsaved changes...';
+                } else {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-violet-800 text-violet-200';
+                    badge.textContent = 'All changes saved';
+                }
+            },
+            updateTotalsDOM: () => {
+                const { totalPreTax, totalTaxes, totalPostTax, netPay } = Logic.calculateTotals();
+                const totalDeductions = state.isHoliday ? totalTaxes : roundCents(totalPreTax + totalTaxes + totalPostTax);
+
+                const elGross = document.getElementById('gross-pay-display');
+                if (elGross) elGross.textContent = formatCurrency(state.grossPay);
+
+                const elDed = document.getElementById('total-deductions-display');
+                if (elDed) elDed.textContent = formatCurrency(totalDeductions);
+
+                const elNet = document.getElementById('net-pay-display');
+                if (elNet) elNet.textContent = formatCurrency(netPay);
+
+                const elPre = document.getElementById('total-preTaxDeductions');
+                if (elPre) elPre.textContent = formatCurrency(totalPreTax);
+
+                const elTax = document.getElementById('total-taxes');
+                if (elTax) elTax.textContent = formatCurrency(totalTaxes);
+
+                const elPost = document.getElementById('total-postTaxDeductions');
+                if (elPost) elPost.textContent = formatCurrency(totalPostTax);
+            },
+            scheduleSave: (shouldRender = false) => {
                 state.hasUnsavedChanges = true;
-                render(); 
+                if (shouldRender) {
+                    render();
+                } else {
+                    Actions.updateStatusBadgeDOM();
+                }
 
                 if (state.saveTimer) clearTimeout(state.saveTimer);
                 
                 state.saveTimer = setTimeout(async () => {
                     if (!state.user) return;
                     state.isSaving = true;
-                    render();
+                    Actions.updateStatusBadgeDOM();
 
                     const currentData = { 
-                        grossPay: state.grossPay,
-                        preTaxDeductions: state.preTaxDeductions,
-                        taxes: state.taxes,
-                        postTaxDeductions: state.postTaxDeductions
+                        grossPay: roundCents(state.grossPay),
+                        preTaxDeductions: state.preTaxDeductions.map(i => ({ ...i, amount: roundCents(i.amount) })),
+                        taxes: state.taxes.map(i => ({ ...i, amount: roundCents(i.amount) })),
+                        postTaxDeductions: state.postTaxDeductions.map(i => ({ ...i, amount: roundCents(i.amount) }))
                     };
                     
                     try {
-                        await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), {
+                        await setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), {
                             ...currentData,
                             updatedAt: new Date()
                         }, { merge: true });
@@ -124,19 +166,15 @@
                         console.error("Save failed", e);
                     } finally {
                         state.isSaving = false;
-                        render();
+                        Actions.updateStatusBadgeDOM();
                     }
-                }, 2000);
+                }, 1500);
             },
             updateGrossPay: (val) => {
-                state.grossPay = parseFloat(val) || 0;
-                Actions.scheduleSave();
-                render();
-                // Restore focus to gross pay input
-                setTimeout(() => {
-                    const el = document.getElementById('gross-pay-input');
-                    if(el) { el.focus(); }
-                }, 0);
+                const num = parseFloat(val);
+                state.grossPay = isNaN(num) ? 0 : roundCents(num);
+                Actions.scheduleSave(false);
+                Actions.updateTotalsDOM();
             },
             toggleHoliday: () => {
                 state.isHoliday = !state.isHoliday;
@@ -145,25 +183,21 @@
             addItem: (listName) => {
                 const newItem = { id: Date.now().toString(), name: 'New Item', amount: 0 };
                 state[listName] = [...state[listName], newItem];
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             },
             updateItem: (listName, id, field, value) => {
-                if (field === 'amount') value = parseFloat(value) || 0;
+                const isText = field === 'name';
+                if (field === 'amount') value = roundCents(parseFloat(value) || 0);
                 state[listName] = state[listName].map(item => item.id === id ? { ...item, [field]: value } : item);
-                Actions.scheduleSave();
-                render();
-                // Restore focus logic
-                setTimeout(() => {
-                    const el = document.getElementById(`${listName}-${field}-${id}`);
-                    if(el) { el.focus(); }
-                }, 0);
+                Actions.scheduleSave(false);
+                if (!isText) {
+                    Actions.updateTotalsDOM();
+                }
             },
             deleteItem: (listName, id) => {
                 if(!confirm("Remove this item?")) return;
                 state[listName] = state[listName].filter(item => item.id !== id);
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             }
         };
 
@@ -191,7 +225,7 @@
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${disabled ? 'opacity-40 grayscale pointer-events-none transition-opacity duration-300' : ''}">
                 <div class="px-4 py-3 ${colorClass} flex justify-between items-center">
                     <h3 class="font-semibold text-white">${title}</h3>
-                    <span class="font-bold text-white bg-white/20 px-2 py-0.5 rounded text-sm">
+                    <span id="total-${listName}" class="font-bold text-white bg-white/20 px-2 py-0.5 rounded text-sm">
                         ${formatCurrency(total)}
                     </span>
                 </div>
@@ -202,7 +236,7 @@
                             <input
                                 id="${listName}-name-${item.id}"
                                 type="text"
-                                value="${item.name}"
+                                value="${escapeHtml(item.name)}"
                                 oninput="Paycheck.updateItem('${listName}', '${item.id}', 'name', this.value)"
                                 class="block w-1/2 rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-violet-600 sm:text-sm sm:leading-6 px-2"
                                 placeholder="Name"
@@ -242,7 +276,7 @@
                         <h1 class="text-2xl font-bold flex items-center gap-2">
                             ${Icons.Wallet} Paycheck Manager
                         </h1>
-                        <div class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${state.isSaving ? 'bg-violet-700 text-violet-200' : state.hasUnsavedChanges ? 'bg-yellow-600 text-yellow-100' : 'bg-violet-800 text-violet-200'}">
+                        <div id="save-status-badge" class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${state.isSaving ? 'bg-violet-700 text-violet-200' : state.hasUnsavedChanges ? 'bg-yellow-600 text-yellow-100' : 'bg-violet-800 text-violet-200'}">
                             ${state.isSaving ? 'Saving...' : state.hasUnsavedChanges ? 'Unsaved changes...' : 'All changes saved'}
                         </div>
                     </div>
@@ -250,17 +284,17 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
                             <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Gross Pay</div>
-                            <div class="text-3xl font-bold text-white">${formatCurrency(state.grossPay)}</div>
+                            <div id="gross-pay-display" class="text-3xl font-bold text-white">${formatCurrency(state.grossPay)}</div>
                             <div class="text-xs text-violet-400 mt-1">Bi-weekly</div>
                         </div>
                         <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
                             <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Total Deductions</div>
-                            <div class="text-3xl font-bold text-white">${formatCurrency(totalDeductions)}</div>
+                            <div id="total-deductions-display" class="text-3xl font-bold text-white">${formatCurrency(totalDeductions)}</div>
                             <div class="text-xs text-violet-400 mt-1">${state.isHoliday ? 'Taxes only (Holiday)' : 'Pre-tax + Taxes + Post-tax'}</div>
                         </div>
                         <div class="bg-violet-800/50 p-4 rounded-xl border border-violet-700/50">
                             <div class="text-violet-300 text-xs font-bold uppercase tracking-wider mb-1">Net Pay</div>
-                            <div class="text-3xl font-bold text-white">${formatCurrency(netPay)}</div>
+                            <div id="net-pay-display" class="text-3xl font-bold text-white">${formatCurrency(netPay)}</div>
                             <div class="text-xs text-violet-400 mt-1">Take-home amount</div>
                         </div>
                     </div>
@@ -360,18 +394,21 @@
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             state.isLoading = false;
-            
+            if (unsubPaycheck) {
+                unsubPaycheck();
+                unsubPaycheck = null;
+            }
             if (u) {
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
+                unsubPaycheck = onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
                         
                         // Only load if not unsaved to prevent overwrite race condition
                         if (!state.hasUnsavedChanges) {
-                            state.grossPay = d.grossPay || 0;
-                            state.preTaxDeductions = d.preTaxDeductions || [];
-                            state.taxes = d.taxes || [];
-                            state.postTaxDeductions = d.postTaxDeductions || [];
+                            state.grossPay = roundCents(d.grossPay || 0);
+                            state.preTaxDeductions = (d.preTaxDeductions || []).map(i => ({ ...i, amount: roundCents(i.amount) }));
+                            state.taxes = (d.taxes || []).map(i => ({ ...i, amount: roundCents(i.amount) }));
+                            state.postTaxDeductions = (d.postTaxDeductions || []).map(i => ({ ...i, amount: roundCents(i.amount) }));
                             render();
                         }
                     } else {

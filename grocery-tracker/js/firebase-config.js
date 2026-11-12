@@ -9,12 +9,17 @@ import {
     setDoc, 
     updateDoc, 
     deleteDoc, 
+    writeBatch,
     onSnapshot, 
     query, 
     where, 
     orderBy 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+    getAuth, 
+    signInAnonymously,
+    onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
 // Reusing project config from quick_utils/tracker/js/connection.js
 const firebaseConfig = {
@@ -30,14 +35,39 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// Singleton promise that resolves once anonymous auth is established
+let authInitPromise = null;
+
+function ensureAuthReady() {
+    if (auth.currentUser) {
+        return Promise.resolve(auth.currentUser);
+    }
+    if (!authInitPromise) {
+        authInitPromise = new Promise((resolve) => {
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    unsubscribe();
+                    resolve(user);
+                }
+            });
+
+            signInAnonymously(auth).catch((err) => {
+                console.warn("Anonymous auth note:", err.message);
+                unsubscribe();
+                resolve(null);
+            });
+        });
+    }
+    return authInitPromise;
+}
+
 // Sign in anonymously to guarantee authenticated Firestore reads & writes
-signInAnonymously(auth).catch(err => {
-    console.warn("Anonymous auth note:", err.message);
-});
+ensureAuthReady();
 
 export { 
     db, 
     auth, 
+    ensureAuthReady,
     doc, 
     collection, 
     getDoc,
@@ -45,6 +75,7 @@ export {
     setDoc, 
     updateDoc, 
     deleteDoc, 
+    writeBatch,
     onSnapshot, 
     query, 
     where, 

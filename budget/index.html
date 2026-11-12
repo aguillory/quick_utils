@@ -94,6 +94,8 @@
     </main>
 
     <script>
+        const ACTIVE_TAB_KEY = 'finance_dashboard_active_tab';
+
         function switchTab(tabName) {
             // 1. Hide all iframes
             document.querySelectorAll('iframe').forEach(frame => {
@@ -118,10 +120,21 @@
                 activeBtn.classList.remove('text-slate-400', 'border-transparent');
                 activeBtn.classList.add('text-indigo-400', 'border-indigo-500', 'bg-slate-800');
             }
+
+            try {
+                sessionStorage.setItem(ACTIVE_TAB_KEY, tabName);
+            } catch (e) {}
         }
 
-        // Initialize view
-        switchTab('planner');
+        // Initialize view from sessionStorage or default to 'planner'
+        let initialTab = 'planner';
+        try {
+            const savedTab = sessionStorage.getItem(ACTIVE_TAB_KEY);
+            if (savedTab && document.getElementById(`frame-${savedTab}`)) {
+                initialTab = savedTab;
+            }
+        } catch (e) {}
+        switchTab(initialTab);
     </script>
 </body>
 </html>

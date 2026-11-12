@@ -1,17 +1,26 @@
 // Monroe Grocery Tracker Frontend Application
 import { 
     db, 
+    auth,
+    ensureAuthReady,
     doc, 
     collection, 
     onSnapshot, 
     setDoc, 
     updateDoc, 
     deleteDoc, 
+    writeBatch,
     getDocs 
 } from './firebase-config.js';
 
 import { normalizeDeal } from './normalizer.js';
-import { itemMatchesWatchlist, evaluateRawItem, formatValidWindow } from './matcher.js';
+import { 
+    itemMatchesWatchlist, 
+    evaluateRawItem, 
+    formatValidWindow, 
+    getLocalTodayStr,
+    computeWatchlistStatsFromDeals 
+} from './matcher.js';
 
 // Application State
 const state = {
@@ -27,6 +36,7 @@ const state = {
     },
     expandedRows: new Set(),
     editingBaselineId: null,
+    unsubscribes: [],
     filters: {
         beatsBaselineOnly: false,
         priorityOnly: false,
@@ -46,11 +56,17 @@ const state = {
 const elements = {};
 
 // Initialize application
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     cacheDOMElements();
     setupTabNavigation();
     setupFilterListeners();
     setupSyncActionButtons();
+
+    try {
+        await ensureAuthReady();
+    } catch (err) {
+        console.warn("Auth initialization note:", err);
+    }
     initFirestoreListeners();
 });
 
@@ -67,8 +83,7 @@ function cacheDOMElements() {
     elements.statTotalTracked = document.getElementById('stat-total-tracked');
 
     // Controls
-    elements.btnScanNow = document.getElementById('btn-scan-now');
-    elements.btnRefreshBaselines = document.getElementById('btn-refresh-baselines');
+    elements.btnRematchNow = document.getElementById('btn-rematch-now');
     elements.btnExportCsv = document.getElementById('btn-export-csv');
 
     // Filter controls
@@ -84,45 +99,57 @@ function cacheDOMElements() {
     elements.rawFeedSearch = document.getElementById('raw-feed-search');
     elements.rawFeedStore = document.getElementById('raw-feed-store');
     elements.rawFeedCount = document.getElementById('raw-feed-count');
+    elements.rawFeedPagination = document.getElementById('raw-feed-pagination');
+    elements.btnLoadMoreRaw = document.getElementById('btn-load-more-raw');
     elements.watchlistBody = document.getElementById('watchlist-tbody');
 
     // Modals
     elements.trackModal = document.getElementById('track-item-modal');
     elements.trackForm = document.getElementById('track-item-form');
+    elements.modalTitle = document.getElementById('modal-title');
 }
 
 // ----------------------------------------------------
 // Firestore Real-Time Subscriptions
 // ----------------------------------------------------
 function initFirestoreListeners() {
+    // Clean up any existing listeners
+    state.unsubscribes.forEach(unsub => {
+        try { unsub(); } catch (_) {}
+    });
+    state.unsubscribes = [];
+
     // 1. Sync State Listener
-    onSnapshot(doc(db, 'grocery_sync_state', 'current'), (docSnap) => {
+    const unsubSync = onSnapshot(doc(db, 'grocery_sync_state', 'current'), (docSnap) => {
         if (docSnap.exists()) {
             state.syncState = { ...state.syncState, ...docSnap.data() };
             updateSyncUI();
         }
     }, (err) => console.warn("Sync state listener note:", err));
+    state.unsubscribes.push(unsubSync);
 
     // 2. Watchlist Listener
-    onSnapshot(collection(db, 'grocery_watchlist'), (snapshot) => {
+    const unsubWatchlist = onSnapshot(collection(db, 'grocery_watchlist'), (snapshot) => {
         state.watchlist = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Populate category filter options dynamically
         updateCategoryOptions();
         renderAll();
     }, (err) => console.error("Watchlist listener error:", err));
+    state.unsubscribes.push(unsubWatchlist);
 
     // 3. Current Ads Listener
-    onSnapshot(collection(db, 'grocery_ads_current'), (snapshot) => {
+    const unsubAds = onSnapshot(collection(db, 'grocery_ads_current'), (snapshot) => {
         state.currentAds = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateStoreOptions();
         renderAll();
     }, (err) => console.error("Current ads listener error:", err));
+    state.unsubscribes.push(unsubAds);
 
     // 4. Weekly Raw Feed Listener
-    onSnapshot(collection(db, 'grocery_weekly_raw_feed'), (snapshot) => {
+    const unsubRaw = onSnapshot(collection(db, 'grocery_weekly_raw_feed'), (snapshot) => {
         state.rawFeed = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         renderRawFeed();
     }, (err) => console.error("Raw feed listener error:", err));
+    state.unsubscribes.push(unsubRaw);
 }
 
 // ----------------------------------------------------
@@ -149,13 +176,6 @@ function updateSyncUI() {
     if (elements.lastScanTime && state.syncState.last_ad_scan) {
         const d = new Date(state.syncState.last_ad_scan);
         elements.lastScanTime.textContent = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    if (elements.btnScanNow) {
-        elements.btnScanNow.disabled = isScanning;
-        elements.btnScanNow.innerHTML = isScanning 
-            ? `<i class="fas fa-spinner fa-spin mr-1"></i> Scanning...` 
-            : `<i class="fas fa-satellite-dish mr-1"></i> Run Ad Scan Now`;
     }
 }
 
@@ -233,8 +253,7 @@ function renderPriceBook() {
     }
 
     let html = '';
-
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalTodayStr();
 
     for (const item of filteredItems) {
         const itemAds = adsByItem[item.id] || [];
@@ -281,10 +300,12 @@ function renderPriceBook() {
         // Date window & upcoming badge for best deal
         let dateBadgeHtml = '';
         if (bestDeal) {
-            const { windowStr, isUpcoming } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
+            const { windowStr, isUpcoming, isExpired } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
             const displayWindow = bestDeal.date_window_str || windowStr;
             if (bestDeal.is_upcoming || isUpcoming) {
                 dateBadgeHtml = `<span class="badge badge-upcoming" title="Upcoming Preview Deal"><i class="fas fa-clock"></i> ${displayWindow || 'Upcoming'}</span>`;
+            } else if (isExpired) {
+                dateBadgeHtml = `<span class="badge badge-date opacity-70" title="Expired"><i class="fas fa-history"></i> ${displayWindow || 'Expired'}</span>`;
             } else if (displayWindow) {
                 dateBadgeHtml = `<span class="badge badge-date" title="Sale Window"><i class="far fa-calendar-alt"></i> ${displayWindow}</span>`;
             }
@@ -323,7 +344,8 @@ function renderPriceBook() {
                 badges.push(`<span class="badge badge-upcoming"><i class="fas fa-clock"></i> ${bestDeal.date_window_str || windowStr || 'Upcoming'}</span>`);
             }
             if (bestDeal.is_bogo) {
-                badges.push(`<span class="badge badge-bogo"><i class="fas fa-tag"></i> ${bestDeal.notes_str.includes('BOGO 1¢') ? 'BOGO 1¢' : 'BOGO Free'}</span>`);
+                const bogoNote = bestDeal.notes_str && bestDeal.notes_str.includes('BOGO 1¢') ? 'BOGO 1¢' : 'BOGO Free';
+                badges.push(`<span class="badge badge-bogo"><i class="fas fa-tag"></i> ${bogoNote}</span>`);
             }
             if (bestDeal.is_digital_coupon) {
                 badges.push(`<span class="badge badge-coupon"><i class="fas fa-ticket-alt"></i> Coupon</span>`);
@@ -459,20 +481,20 @@ function renderRawFeed() {
         elements.rawFeedCount.textContent = `${items.length} circular items`;
     }
 
-    // Populate store filter dropdown if empty
     populateRawStoreFilter();
 
     if (items.length === 0) {
         elements.rawFeedContainer.innerHTML = `
             <div class="col-span-full p-12 text-center text-slate-400">
                 <i class="fas fa-newspaper text-4xl mb-3 text-slate-300"></i>
-                <p>No circular items match your search. Make sure a scan has completed!</p>
+                <p>No circular items match your search. Make sure a weekly scan has completed!</p>
             </div>`;
+        if (elements.rawFeedPagination) elements.rawFeedPagination.classList.add('hidden');
         return;
     }
 
-    const pageSize = state.rawFeedFilters.pageSize;
-    const paginated = items.slice(0, pageSize);
+    const totalVisible = state.rawFeedFilters.pageSize * state.rawFeedFilters.page;
+    const paginated = items.slice(0, totalVisible);
 
     elements.rawFeedContainer.innerHTML = paginated.map(it => {
         const priceDisplay = it.price ? `$${parseFloat(it.price).toFixed(2)}` : (it.price_text || 'See ad');
@@ -497,6 +519,15 @@ function renderRawFeed() {
             </div>
         `;
     }).join('');
+
+    // Pagination controls visibility
+    if (elements.rawFeedPagination) {
+        if (items.length > totalVisible) {
+            elements.rawFeedPagination.classList.remove('hidden');
+        } else {
+            elements.rawFeedPagination.classList.add('hidden');
+        }
+    }
 }
 
 function populateRawStoreFilter() {
@@ -511,7 +542,7 @@ function populateRawStoreFilter() {
 }
 
 // ----------------------------------------------------
-// Tab 3: Manage Watchlist & Sync Controls
+// Tab 3: Manage Watchlist Table
 // ----------------------------------------------------
 function renderWatchlistTable() {
     if (!elements.watchlistBody) return;
@@ -552,13 +583,29 @@ function renderWatchlistTable() {
 }
 
 // ----------------------------------------------------
-// 1-Click Track Modal Handlers
+// 1-Click Track & Custom Item Modal Handlers
 // ----------------------------------------------------
+window.openCustomItemModal = () => {
+    document.getElementById('modal-editing-id').value = '';
+    document.getElementById('modal-raw-id').value = '';
+    document.getElementById('modal-canonical-name').value = '';
+    document.getElementById('modal-category').value = 'Meat';
+    document.getElementById('modal-target-unit').value = 'lb';
+    document.getElementById('modal-baseline').value = '';
+    document.getElementById('modal-brand-mode').value = 'any';
+    document.getElementById('modal-required-brands').value = '';
+    document.getElementById('modal-priority').checked = false;
+    document.getElementById('modal-include-kw').value = '';
+    document.getElementById('modal-exclude-kw').value = '';
+
+    if (elements.modalTitle) elements.modalTitle.textContent = "Track Grocery Item";
+    elements.trackModal.classList.remove('hidden');
+};
+
 window.openTrackModalFromRaw = (rawId) => {
     const raw = state.rawFeed.find(r => r.id === rawId);
     if (!raw) return;
 
-    // Auto-detect unit and category
     let unit = 'ea';
     let cat = 'Cereal/Pantry';
     const text = `${raw.name || ''} ${raw.description || ''}`.toLowerCase();
@@ -580,17 +627,19 @@ window.openTrackModalFromRaw = (rawId) => {
     const price = raw.current_price !== undefined ? raw.current_price : raw.price;
     const numPrice = price ? parseFloat(price) : 0;
 
+    document.getElementById('modal-editing-id').value = '';
     document.getElementById('modal-raw-id').value = rawId;
     document.getElementById('modal-canonical-name').value = raw.name || '';
     document.getElementById('modal-category').value = cat;
     document.getElementById('modal-target-unit').value = unit;
-    document.getElementById('modal-baseline').value = (numPrice * 1.15).toFixed(2); // estimated baseline
+    document.getElementById('modal-baseline').value = (numPrice * 1.15).toFixed(2);
     document.getElementById('modal-brand-mode').value = 'any';
     document.getElementById('modal-required-brands').value = raw.brand || '';
     document.getElementById('modal-priority').checked = false;
     document.getElementById('modal-include-kw').value = raw.name || '';
     document.getElementById('modal-exclude-kw').value = '';
 
+    if (elements.modalTitle) elements.modalTitle.textContent = "Track Circular Item";
     elements.trackModal.classList.remove('hidden');
 };
 
@@ -598,13 +647,38 @@ window.closeTrackModal = () => {
     if (elements.trackModal) elements.trackModal.classList.add('hidden');
 };
 
+window.editWatchlistItem = (itemId) => {
+    if (!itemId) {
+        window.openCustomItemModal();
+        return;
+    }
+
+    const item = state.watchlist.find(w => w.id === itemId);
+    if (!item) return;
+
+    document.getElementById('modal-editing-id').value = item.id;
+    document.getElementById('modal-raw-id').value = '';
+    document.getElementById('modal-canonical-name').value = item.canonical_name || '';
+    document.getElementById('modal-category').value = item.category || 'Meat';
+    document.getElementById('modal-target-unit').value = item.target_unit || 'lb';
+    document.getElementById('modal-baseline').value = item.baseline_price_per_unit || '';
+    document.getElementById('modal-brand-mode').value = item.brand_mode || 'any';
+    document.getElementById('modal-required-brands').value = (item.required_brands || []).join(', ');
+    document.getElementById('modal-priority').checked = !!item.is_priority;
+    document.getElementById('modal-include-kw').value = (item.include_keywords || []).join(', ');
+    document.getElementById('modal-exclude-kw').value = (item.exclude_keywords || []).join(', ');
+
+    if (elements.modalTitle) elements.modalTitle.textContent = `Edit "${item.canonical_name}"`;
+    elements.trackModal.classList.remove('hidden');
+};
+
 window.saveTrackedItemFromModal = async (e) => {
     e.preventDefault();
 
+    const editingId = document.getElementById('modal-editing-id').value.trim();
     const name = document.getElementById('modal-canonical-name').value.trim();
     if (!name) return;
 
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const cat = document.getElementById('modal-category').value;
     const unit = document.getElementById('modal-target-unit').value;
     const baseline = parseFloat(document.getElementById('modal-baseline').value) || 0;
@@ -614,53 +688,71 @@ window.saveTrackedItemFromModal = async (e) => {
     const includeKw = document.getElementById('modal-include-kw').value.split(',').map(k => k.trim()).filter(Boolean);
     const excludeKw = document.getElementById('modal-exclude-kw').value.split(',').map(k => k.trim()).filter(Boolean);
 
-    const newItem = {
-        id: slug,
+    // Existing item vs new item ID and stats preservation
+    const existingItem = editingId ? state.watchlist.find(w => w.id === editingId) : null;
+    const docId = editingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+    const itemData = {
+        id: docId,
         canonical_name: name,
         category: cat,
         target_unit: unit,
         baseline_price_per_unit: baseline,
-        baseline_source: "Walmart",
+        baseline_source: existingItem?.baseline_source || "Walmart",
         baseline_updated_at: new Date().toISOString(),
         brand_mode: brandMode,
         required_brands: brands,
         is_priority: priority,
         include_keywords: includeKw,
         exclude_keywords: excludeKw,
-        default_package_size: 1.0,
-        historical_low_price: null,
-        historical_low_store: null,
-        historical_low_date: null,
-        rolling_avg_price: baseline
+        default_package_size: existingItem?.default_package_size || 1.0,
+        historical_low_price: existingItem?.historical_low_price !== undefined ? existingItem.historical_low_price : null,
+        historical_low_store: existingItem?.historical_low_store || null,
+        historical_low_date: existingItem?.historical_low_date || null,
+        rolling_avg_price: existingItem?.rolling_avg_price !== undefined ? existingItem.rolling_avg_price : baseline
     };
 
     try {
         // 1. Save to Firestore grocery_watchlist
-        await setDoc(doc(db, 'grocery_watchlist', slug), newItem);
-        console.log(`Saved new watchlist item: ${slug}`);
+        await setDoc(doc(db, 'grocery_watchlist', docId), itemData, { merge: true });
 
-        // 2. Immediately match against raw feed in memory!
+        // 2. Re-evaluate cached raw feed circulars for this item & batch-update grocery_ads_current
         const matchedDeals = [];
         for (const raw of state.rawFeed) {
-            const matches = evaluateRawItem(raw, [newItem]);
+            const matches = evaluateRawItem(raw, [itemData]);
             matchedDeals.push(...matches);
         }
 
-        // Save matched deals to grocery_ads_current so it pops straight into the Price Book!
+        const batch = writeBatch(db);
+        const newDealIds = new Set();
+
         for (const deal of matchedDeals) {
             const storeSlug = (deal.store || 'store').toLowerCase().replace(/[^a-z0-9]/g, '_');
-            const docId = `${deal.watchlist_id}_${storeSlug}_${deal.item_id}`;
-            await setDoc(doc(db, 'grocery_ads_current', docId), { ...deal, id: docId });
+            const dealDocId = `${deal.watchlist_id}_${storeSlug}_${deal.item_id}`;
+            newDealIds.add(dealDocId);
+            batch.set(doc(db, 'grocery_ads_current', dealDocId), { ...deal, id: dealDocId });
         }
 
+        // Clean up deals for this item that no longer match
+        const existingItemDeals = state.currentAds.filter(a => a.watchlist_id === docId);
+        for (const oldDeal of existingItemDeals) {
+            if (!newDealIds.has(oldDeal.id)) {
+                batch.delete(doc(db, 'grocery_ads_current', oldDeal.id));
+            }
+        }
+
+        await batch.commit();
+
+        // 3. Recompute historical stats and update watchlist doc
+        const computedStats = computeWatchlistStatsFromDeals(matchedDeals, itemData);
+        await updateDoc(doc(db, 'grocery_watchlist', docId), computedStats);
+
         closeTrackModal();
-        showToast(`Added "${name}" to Watchlist! Matched ${matchedDeals.length} current sales.`);
-        
-        // Switch to Price Book to see it immediately!
+        showToast(editingId ? `Updated "${name}" and re-synced ${matchedDeals.length} deals.` : `Added "${name}" to Watchlist! Matched ${matchedDeals.length} current sales.`);
         switchTab('pricebook');
     } catch (err) {
-        console.error("Error adding tracked item:", err);
-        alert("Error saving item: " + err.message);
+        console.error("Error saving tracked item:", err);
+        showToast("Error saving item: " + err.message);
     }
 };
 
@@ -695,10 +787,38 @@ window.saveInlineBaseline = async (itemId) => {
             baseline_price_per_unit: newPrice,
             baseline_updated_at: new Date().toISOString()
         });
+
+        // Active Deal Synchronization: update baseline and savings in grocery_ads_current
+        const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
+        if (itemDeals.length > 0) {
+            const batch = writeBatch(db);
+            for (const deal of itemDeals) {
+                const unitPrice = deal.normalized_unit_price;
+                let beatsBaseline = false;
+                let savingsAmount = 0.0;
+                let savingsPct = 0.0;
+
+                if (newPrice > 0 && unitPrice !== null && unitPrice < newPrice) {
+                    beatsBaseline = true;
+                    savingsAmount = parseFloat((newPrice - unitPrice).toFixed(4));
+                    savingsPct = parseFloat((((newPrice - unitPrice) / newPrice) * 100).toFixed(1));
+                }
+
+                batch.update(doc(db, 'grocery_ads_current', deal.id), {
+                    baseline_price_per_unit: newPrice,
+                    beats_baseline: beatsBaseline,
+                    savings_amount: savingsAmount,
+                    savings_pct: savingsPct
+                });
+            }
+            await batch.commit();
+        }
+
         state.editingBaselineId = null;
-        showToast("Baseline price updated!");
+        showToast("Baseline price and matching deals updated!");
     } catch (err) {
         console.error("Error updating baseline:", err);
+        showToast("Failed to update baseline: " + err.message);
     }
 };
 
@@ -710,9 +830,23 @@ window.togglePriority = async (itemId, newStatus) => {
         await updateDoc(doc(db, 'grocery_watchlist', itemId), {
             is_priority: newStatus
         });
+
+        // Active Deal Synchronization: batch update deal priority
+        const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
+        if (itemDeals.length > 0) {
+            const batch = writeBatch(db);
+            for (const deal of itemDeals) {
+                batch.update(doc(db, 'grocery_ads_current', deal.id), {
+                    is_priority: newStatus
+                });
+            }
+            await batch.commit();
+        }
+
         showToast(`Priority alert ${newStatus ? 'activated' : 'deactivated'}.`);
     } catch (err) {
         console.error("Error toggling priority:", err);
+        showToast("Failed to toggle priority: " + err.message);
     }
 };
 
@@ -735,62 +869,92 @@ window.deleteWatchlistItem = async (itemId) => {
     if (!confirm(`Are you sure you want to stop tracking "${itemId}"?`)) return;
     try {
         await deleteDoc(doc(db, 'grocery_watchlist', itemId));
-        showToast("Watchlist item deleted.");
+
+        // Active Deal Synchronization: clean up orphaned deals
+        const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
+        if (itemDeals.length > 0) {
+            const batch = writeBatch(db);
+            for (const deal of itemDeals) {
+                batch.delete(doc(db, 'grocery_ads_current', deal.id));
+            }
+            await batch.commit();
+        }
+
+        showToast("Watchlist item and active deals deleted.");
     } catch (err) {
         console.error("Error deleting item:", err);
+        showToast("Error deleting item: " + err.message);
     }
 };
 
-window.editWatchlistItem = (itemId) => {
-    const item = state.watchlist.find(w => w.id === itemId);
-    if (!item) return;
+// ----------------------------------------------------
+// Re-Match Raw Feed (Client-side)
+// ----------------------------------------------------
+window.rematchRawFeed = async () => {
+    if (elements.btnRematchNow) {
+        elements.btnRematchNow.disabled = true;
+        elements.btnRematchNow.innerHTML = `<i class="fas fa-spinner fa-spin mr-1 text-amber-500"></i> Matching...`;
+    }
 
-    document.getElementById('modal-raw-id').value = '';
-    document.getElementById('modal-canonical-name').value = item.canonical_name;
-    document.getElementById('modal-category').value = item.category || 'Meat';
-    document.getElementById('modal-target-unit').value = item.target_unit || 'lb';
-    document.getElementById('modal-baseline').value = item.baseline_price_per_unit || '';
-    document.getElementById('modal-brand-mode').value = item.brand_mode || 'any';
-    document.getElementById('modal-required-brands').value = (item.required_brands || []).join(', ');
-    document.getElementById('modal-priority').checked = !!item.is_priority;
-    document.getElementById('modal-include-kw').value = (item.include_keywords || []).join(', ');
-    document.getElementById('modal-exclude-kw').value = (item.exclude_keywords || []).join(', ');
+    try {
+        if (!state.rawFeed.length || !state.watchlist.length) {
+            showToast("Waiting for circulars or watchlist data to load...");
+            return;
+        }
 
-    elements.trackModal.classList.remove('hidden');
+        const matchedDeals = [];
+        for (const raw of state.rawFeed) {
+            const deals = evaluateRawItem(raw, state.watchlist);
+            matchedDeals.push(...deals);
+        }
+
+        const batch = writeBatch(db);
+        const existingDealIds = new Set(state.currentAds.map(d => d.id));
+        const newDealIds = new Set();
+
+        for (const deal of matchedDeals) {
+            const storeSlug = (deal.store || 'store').toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const docId = `${deal.watchlist_id}_${storeSlug}_${deal.item_id}`;
+            newDealIds.add(docId);
+            batch.set(doc(db, 'grocery_ads_current', docId), { ...deal, id: docId });
+        }
+
+        for (const oldId of existingDealIds) {
+            if (!newDealIds.has(oldId)) {
+                batch.delete(doc(db, 'grocery_ads_current', oldId));
+            }
+        }
+
+        await batch.commit();
+        showToast(`Re-matched ${state.rawFeed.length} circular items against ${state.watchlist.length} watchlist items (${matchedDeals.length} active deals found).`);
+    } catch (err) {
+        console.error("Error during re-matching:", err);
+        showToast("Error re-matching raw feed: " + err.message);
+    } finally {
+        if (elements.btnRematchNow) {
+            elements.btnRematchNow.disabled = false;
+            elements.btnRematchNow.innerHTML = `<i class="fas fa-bolt text-amber-500 mr-1"></i> Re-Match Raw Feed`;
+        }
+    }
 };
 
 // ----------------------------------------------------
 // Sync Action Controls
 // ----------------------------------------------------
 function setupSyncActionButtons() {
-    if (elements.btnScanNow) {
-        elements.btnScanNow.addEventListener('click', async () => {
-            try {
-                await setDoc(doc(db, 'grocery_sync_state', 'current'), {
-                    trigger_request: 'scan_ads'
-                }, { merge: true });
-                showToast("Ad scan requested! The local Windows worker will start scraping now.");
-            } catch (err) {
-                console.error("Error requesting ad scan:", err);
-            }
-        });
-    }
-
-    if (elements.btnRefreshBaselines) {
-        elements.btnRefreshBaselines.addEventListener('click', async () => {
-            try {
-                await setDoc(doc(db, 'grocery_sync_state', 'current'), {
-                    trigger_request: 'refresh_baselines'
-                }, { merge: true });
-                showToast("Baseline refresh requested!");
-            } catch (err) {
-                console.error("Error requesting baseline refresh:", err);
-            }
-        });
+    if (elements.btnRematchNow) {
+        elements.btnRematchNow.addEventListener('click', window.rematchRawFeed);
     }
 
     if (elements.btnExportCsv) {
         elements.btnExportCsv.addEventListener('click', exportPriceBookToCSV);
+    }
+
+    if (elements.btnLoadMoreRaw) {
+        elements.btnLoadMoreRaw.addEventListener('click', () => {
+            state.rawFeedFilters.page++;
+            renderRawFeed();
+        });
     }
 }
 
@@ -917,6 +1081,7 @@ function setupFilterListeners() {
     if (elements.rawFeedSearch) {
         elements.rawFeedSearch.addEventListener('input', (e) => {
             state.rawFeedFilters.searchQuery = e.target.value.trim();
+            state.rawFeedFilters.page = 1;
             renderRawFeed();
         });
     }
@@ -924,6 +1089,7 @@ function setupFilterListeners() {
     if (elements.rawFeedStore) {
         elements.rawFeedStore.addEventListener('change', (e) => {
             state.rawFeedFilters.store = e.target.value;
+            state.rawFeedFilters.page = 1;
             renderRawFeed();
         });
     }

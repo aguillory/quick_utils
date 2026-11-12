@@ -36,7 +36,7 @@
                 </a>
                 <div>
                     <h1 class="text-xl font-extrabold tracking-tight flex items-center gap-2">
-                        <span>🛒 Grocery Price Book</span>
+                        <span><i class="fas fa-shopping-cart text-emerald-300 mr-1"></i>Grocery Price Book</span>
                         <span class="text-xs bg-emerald-800/80 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-600">Monroe, LA</span>
                     </h1>
                     <p class="text-xs text-emerald-100 hidden sm:block">Flipp & Direct Circular Scraper • Walmart / Sam's Club Baseline</p>
@@ -49,8 +49,8 @@
                     <i class="fas fa-circle text-[8px] text-emerald-300 mr-1"></i>
                     <span id="status-text">Idle / Up to Date</span>
                 </div>
-                <button id="btn-scan-now" class="bg-white hover:bg-emerald-50 text-emerald-800 font-bold px-3 py-1.5 rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5 border border-emerald-100">
-                    <i class="fas fa-satellite-dish"></i> Run Ad Scan Now
+                <button id="btn-rematch-now" class="bg-white hover:bg-emerald-50 text-emerald-800 font-bold px-3 py-1.5 rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5 border border-emerald-100" title="Re-evaluate cached weekly circular items against your current Watchlist rules">
+                    <i class="fas fa-bolt text-amber-500"></i> Re-Match Raw Feed
                 </button>
             </div>
         </div>
@@ -143,12 +143,12 @@
                 <div class="flex items-center gap-4 flex-wrap">
                     <label class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 cursor-pointer select-none">
                         <input type="checkbox" id="filter-beats" class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" />
-                        <span>🔥 Beats Baseline Only</span>
+                        <span><i class="fas fa-fire text-amber-500 mr-1"></i>Beats Baseline Only</span>
                     </label>
 
                     <label class="flex items-center gap-1.5 text-xs font-bold text-amber-800 cursor-pointer select-none">
                         <input type="checkbox" id="filter-priority" class="w-4 h-4 text-amber-500 rounded border-slate-300 focus:ring-amber-400" />
-                        <span>⭐ Priority Staples Only</span>
+                        <span><i class="fas fa-star text-amber-500 mr-1"></i>Priority Staples Only</span>
                     </label>
 
                     <button id="btn-export-csv" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-300">
@@ -211,6 +211,13 @@
                     <i class="fas fa-spinner fa-spin mr-2"></i> Loading raw circular items...
                 </div>
             </div>
+
+            <!-- Raw Feed Pagination -->
+            <div id="raw-feed-pagination" class="flex justify-center pt-4 hidden">
+                <button id="btn-load-more-raw" class="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs border border-slate-200 shadow-xs transition-all flex items-center gap-2">
+                    <i class="fas fa-arrow-down"></i> Load More Circular Deals
+                </button>
+            </div>
         </div>
 
         <!-- ============================================================== -->
@@ -238,12 +245,9 @@
                     </div>
 
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <div class="text-xs text-slate-500 font-semibold uppercase">On-Demand Trigger</div>
-                        <div class="flex items-center gap-2 mt-2">
-                            <button id="btn-refresh-baselines" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-indigo-200">
-                                <i class="fas fa-arrows-rotate"></i> Refresh Baselines
-                            </button>
-                        </div>
+                        <div class="text-xs text-slate-500 font-semibold uppercase">Local Automation</div>
+                        <div class="text-sm font-bold text-slate-800 mt-1">Windows Scraper Launchers</div>
+                        <p class="text-xs text-slate-500 mt-1">Run <span class="code-pill">run_grocery_update.bat</span> or <span class="code-pill">.ps1</span> locally on your PC to scan circulars or refresh baselines using your residential IP.</p>
                     </div>
                 </div>
             </div>
@@ -255,7 +259,7 @@
                         <h3 class="font-bold text-slate-800">Watchlist Rules & Brand Locking</h3>
                         <p class="text-xs text-slate-500">Items monitored weekly against store circulars</p>
                     </div>
-                    <button onclick="window.editWatchlistItem('')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5">
+                    <button onclick="window.openCustomItemModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5">
                         <i class="fas fa-plus"></i> + Add Custom Item
                     </button>
                 </div>
@@ -299,6 +303,7 @@
             </div>
 
             <form id="track-item-form" onsubmit="saveTrackedItemFromModal(event)" class="space-y-4">
+                <input type="hidden" id="modal-editing-id" value="" />
                 <input type="hidden" id="modal-raw-id" value="" />
 
                 <div>

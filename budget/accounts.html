@@ -32,7 +32,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, formatCurrency, getLocalDateStr, escapeHtml } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -49,6 +49,8 @@
         };
 
         // --- State ---
+        let unsubAccounts = null;
+
         const state = {
             user: null,
             isLoading: true,
@@ -64,26 +66,26 @@
         };
 
         // --- Helpers ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        // formatCurrency imported from connection.js
 
         // --- Logic ---
         const Logic = {
             calculateTotals: () => {
                 const consumerDebts = state.debts.filter(d => d.type !== 'Mortgage');
                 
-                const totalDebt = consumerDebts.reduce((acc, d) => acc + d.balance, 0);
-                const totalMinPayments = consumerDebts.reduce((acc, d) => acc + d.minPayment, 0);
-                const totalMonthlyInterest = consumerDebts.reduce((acc, d) => {
+                const totalDebt = roundCents(consumerDebts.reduce((acc, d) => acc + (parseFloat(d.balance) || 0), 0));
+                const totalMinPayments = roundCents(consumerDebts.reduce((acc, d) => acc + (parseFloat(d.minPayment) || 0), 0));
+                const totalMonthlyInterest = roundCents(consumerDebts.reduce((acc, d) => {
                     const apr = parseFloat(d.apr) || 0;
-                    return acc + ((d.balance * (apr / 100)) / 12);
-                }, 0);
+                    return acc + (((parseFloat(d.balance) || 0) * (apr / 100)) / 12);
+                }, 0));
 
                 const revolvingDebts = state.debts.filter(d => d.type === 'Card');
-                const totalRevolvingDebt = revolvingDebts.reduce((acc, d) => acc + d.balance, 0);
-                const totalRevolvingLimit = revolvingDebts.reduce((acc, d) => acc + d.limit, 0);
+                const totalRevolvingDebt = roundCents(revolvingDebts.reduce((acc, d) => acc + (parseFloat(d.balance) || 0), 0));
+                const totalRevolvingLimit = roundCents(revolvingDebts.reduce((acc, d) => acc + (parseFloat(d.limit) || 0), 0));
                 const totalUtilization = totalRevolvingLimit > 0 ? (totalRevolvingDebt / totalRevolvingLimit) * 100 : 0;
                 
-                const totalMonthlyBills = state.bills.reduce((acc, b) => acc + b.amount, 0);
+                const totalMonthlyBills = roundCents(state.bills.reduce((acc, b) => acc + (parseFloat(b.amount) || 0), 0));
                 
                 return { totalDebt, totalUtilization, totalRevolvingLimit, totalMonthlyBills, totalMinPayments, totalMonthlyInterest };
             },
@@ -92,8 +94,10 @@
                 const isMortgage = debt.type === 'Mortgage';
                 const isConsumer = !isMortgage;
                 const limitLabel = (isLoan || isMortgage) ? "Orig Amt" : "Limit";
-                const utilization = debt.limit > 0 ? (debt.balance / debt.limit) * 100 : 0;
-                const monthlyInterest = ((debt.balance * (parseFloat(debt.apr) || 0)) / 100) / 12;
+                const curBalance = roundCents(parseFloat(debt.balance) || 0);
+                const curLimit = roundCents(parseFloat(debt.limit) || 0);
+                const utilization = curLimit > 0 ? (curBalance / curLimit) * 100 : 0;
+                const monthlyInterest = roundCents(((curBalance * (parseFloat(debt.apr) || 0)) / 100) / 12);
 
                 let barColor = "bg-emerald-500";
                 let textColor = "text-slate-400";
@@ -113,14 +117,14 @@
                 return { isLoan, isMortgage, isConsumer, limitLabel, utilization, barColor, textColor, warningText, monthlyInterest };
             },
             simulatePayoff: (debts, extraPaymentAmount, strategy) => {
-                let simDebts = debts.filter(d => d.type !== 'Mortgage' && d.balance > 0).map(d => ({ ...d }));
+                let simDebts = debts.filter(d => d.type !== 'Mortgage' && (parseFloat(d.balance) || 0) > 0).map(d => ({ ...d, balance: roundCents(d.balance) }));
                 if (simDebts.length === 0) return { months: 0, totalInterestPaid: 0 };
 
                 let months = 0;
                 let totalInterestPaid = 0;
                 
                 const initialMinPayments = simDebts.reduce((sum, d) => sum + (parseFloat(d.minPayment) || 0), 0);
-                const monthlyCommitment = initialMinPayments + Math.max(0, parseFloat(extraPaymentAmount) || 0);
+                const monthlyCommitment = roundCents(initialMinPayments + Math.max(0, parseFloat(extraPaymentAmount) || 0));
 
                 while (simDebts.some(d => d.balance > 0) && months < 600) { 
                     months++;
@@ -129,22 +133,22 @@
                     if (strategy === 'snowball') {
                         simDebts.sort((a, b) => a.balance - b.balance); 
                     } else {
-                        simDebts.sort((a, b) => b.apr - a.apr); 
+                        simDebts.sort((a, b) => (parseFloat(b.apr) || 0) - (parseFloat(a.apr) || 0)); 
                     }
 
                     for (let d of simDebts) {
                         if (d.balance <= 0) continue;
                         
-                        let interest = (d.balance * ((parseFloat(d.apr) || 0) / 100)) / 12;
-                        d.balance += interest;
-                        totalInterestPaid += interest;
+                        let interest = roundCents((d.balance * ((parseFloat(d.apr) || 0) / 100)) / 12);
+                        d.balance = roundCents(d.balance + interest);
+                        totalInterestPaid = roundCents(totalInterestPaid + interest);
 
-                        let minPay = Math.min(d.balance, parseFloat(d.minPayment) || 0);
+                        let minPay = Math.min(d.balance, roundCents(parseFloat(d.minPayment) || 0));
                         if (availableCash >= minPay) {
-                            d.balance -= minPay;
-                            availableCash -= minPay;
+                            d.balance = roundCents(d.balance - minPay);
+                            availableCash = roundCents(availableCash - minPay);
                         } else {
-                            d.balance -= availableCash;
+                            d.balance = roundCents(d.balance - availableCash);
                             availableCash = 0;
                         }
                     }
@@ -152,12 +156,12 @@
                     for (let d of simDebts) {
                         if (d.balance > 0 && availableCash > 0) {
                             let extraPay = Math.min(d.balance, availableCash);
-                            d.balance -= extraPay;
-                            availableCash -= extraPay;
+                            d.balance = roundCents(d.balance - extraPay);
+                            availableCash = roundCents(availableCash - extraPay);
                         }
                     }
                 }
-                return { months, totalInterestPaid };
+                return { months, totalInterestPaid: roundCents(totalInterestPaid) };
             }
         };
 
@@ -176,19 +180,21 @@
                 state.isHistoryModalOpen = false;
                 render();
             },
-            saveHistory: () => {
+            saveHistory: async () => {
                 try {
                     const val = document.getElementById('historyInput').value;
                     const parsed = JSON.parse(val);
                     if (!Array.isArray(parsed)) throw new Error("Must be an array");
                     state.history = parsed;
                     state.isHistoryModalOpen = false;
-                    setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), {
+                    await setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), {
                         bills: state.bills,
                         debts: state.debts,
                         history: state.history,
-                        extraPayment: state.extraPayment
-                    });
+                        extraPayment: state.extraPayment,
+                        updatedAt: new Date()
+                    }, { merge: true });
+                    render();
                 } catch (e) {
                     alert('Invalid JSON: ' + e.message);
                 }
@@ -204,15 +210,29 @@
                     render();
                 }
             },
-            scheduleSave: () => {
+            updateStatusBadgeDOM: () => {
+                const badge = document.getElementById('save-status-badge');
+                if (!badge) return;
+                if (state.isSaving) {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-emerald-700 text-emerald-200';
+                    badge.textContent = 'Saving...';
+                } else if (state.hasUnsavedChanges) {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-yellow-600 text-yellow-100';
+                    badge.textContent = 'Unsaved changes...';
+                } else {
+                    badge.className = 'flex items-center gap-2 text-xs py-1 px-3 rounded-full bg-emerald-800 text-emerald-200';
+                    badge.textContent = 'All changes saved';
+                }
+            },
+            scheduleSave: (shouldRender = false) => {
                 state.hasUnsavedChanges = true;
                 
                 // --- Burn Down History Snapshot Logic ---
-                const currentDateStr = new Date().toISOString().slice(0, 10); // Format: YYYY-MM-DD
+                const currentDateStr = getLocalDateStr(); // Format: YYYY-MM-DD
                 const currentTotalDebt = Logic.calculateTotals().totalDebt;
                 
                 const accountBalances = {};
-                state.debts.forEach(d => { accountBalances[d.id || d.name] = d.balance; });
+                state.debts.forEach(d => { accountBalances[d.id || d.name] = roundCents(d.balance); });
 
                 let updatedHistory = [...(state.history || [])];
                 
@@ -224,24 +244,39 @@
                 }
                 state.history = updatedHistory;
                 
-                render(); 
+                if (shouldRender) {
+                    render();
+                } else {
+                    Actions.updateStatusBadgeDOM();
+                }
                 
                 if (state.saveTimer) clearTimeout(state.saveTimer);
                 
                 state.saveTimer = setTimeout(async () => {
                     if (!state.user) return;
                     state.isSaving = true;
-                    render(); 
+                    Actions.updateStatusBadgeDOM();
 
                     const currentData = { 
-                        debts: state.debts, 
-                        bills: state.bills, 
-                        extraPayment: state.extraPayment,
+                        debts: state.debts.map(d => ({
+                            ...d,
+                            balance: roundCents(d.balance),
+                            limit: roundCents(d.limit),
+                            minPayment: roundCents(d.minPayment),
+                            apr: parseFloat(d.apr) || 0,
+                            dueDay: parseInt(d.dueDay) || 1
+                        })), 
+                        bills: state.bills.map(b => ({
+                            ...b,
+                            amount: roundCents(b.amount),
+                            dueDay: parseInt(b.dueDay) || 1
+                        })), 
+                        extraPayment: roundCents(state.extraPayment),
                         history: state.history 
                     };
 
                     try {
-                        await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), {
+                        await setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), {
                             ...currentData,
                             updatedAt: new Date()
                         }, { merge: true });
@@ -252,66 +287,47 @@
                         console.error("Save failed", e);
                     } finally {
                         state.isSaving = false;
-                        render();
+                        Actions.updateStatusBadgeDOM();
                     }
                 }, 1500);
             },
             updateExtraPayment: (value) => {
-                state.extraPayment = parseFloat(value) || 0;
-                Actions.scheduleSave();
-                render();
-                setTimeout(() => { const el = document.getElementById('extraPaymentInput'); if(el) { el.focus(); const val = el.value; el.value = ''; el.value = val; } }, 0);
+                state.extraPayment = roundCents(parseFloat(value) || 0);
+                Actions.scheduleSave(true);
             },
             addDebt: () => {
                 state.debts = [{ id: Date.now().toString(), name: 'New Card', balance: 0, limit: 1000, apr: 0, minPayment: 0, dueDay: 1, type: 'Card' }, ...state.debts];
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             },
             updateDebt: (id, field, value) => {
+                const isText = field === 'name';
                 if (['balance', 'limit', 'apr', 'minPayment', 'dueDay'].includes(field)) {
-                    value = parseFloat(value) || 0;
+                    value = roundCents(parseFloat(value) || 0);
                 }
                 state.debts = state.debts.map(d => d.id === id ? { ...d, [field]: value } : d);
-                Actions.scheduleSave();
-                render(); 
-                setTimeout(() => {
-                    const el = document.getElementById(`${field}-${id}`);
-                    if(el) {
-                        el.focus();
-                        if(el.type === 'text' || el.type === 'number') {
-                            const val = el.value; el.value = ''; el.value = val; 
-                        }
-                    }
-                }, 0);
+                Actions.scheduleSave(!isText);
             },
             quickPay: (id, amount) => {
                 const debt = state.debts.find(d => d.id === id);
                 if (!debt) return;
-                const newBalance = Math.max(0, debt.balance - amount); 
+                const newBalance = Math.max(0, roundCents(debt.balance - amount)); 
                 state.debts = state.debts.map(d => d.id === id ? { ...d, balance: newBalance } : d);
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             },
             deleteDebt: (id) => {
                 if(!confirm("Delete this account?")) return;
                 state.debts = state.debts.filter(d => d.id !== id);
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             },
             addBill: () => {
                 state.bills = [{ id: Date.now().toString(), name: 'New Bill', amount: 0, dueDay: 1, type: 'Fixed' }, ...state.bills];
-                Actions.scheduleSave();
-                render();
+                Actions.scheduleSave(true);
             },
             updateBill: (id, field, value) => {
-                if (['amount', 'dueDay'].includes(field)) value = parseFloat(value) || 0;
+                const isText = field === 'name';
+                if (['amount', 'dueDay'].includes(field)) value = roundCents(parseFloat(value) || 0);
                 state.bills = state.bills.map(b => b.id === id ? { ...b, [field]: value } : b);
-                Actions.scheduleSave();
-                render();
-                setTimeout(() => {
-                    const el = document.getElementById(`bill-${field}-${id}`);
-                    if(el) { el.focus(); const val = el.value; el.value = ''; el.value = val; }
-                }, 0);
+                Actions.scheduleSave(!isText);
             },
             toggleBillType: (id) => {
                 state.bills = state.bills.map(b => b.id === id ? { ...b, type: b.type === 'Fixed' ? 'Variable' : 'Fixed' } : b);
@@ -357,7 +373,9 @@
                         ${Icons.ChartLine || ''}
                         Debt Burn-Down History
                     </h2>
-                    
+                    <button onclick="Accounts.editHistory()" class="text-xs text-slate-500 hover:text-emerald-600 font-medium px-2.5 py-1 rounded-md border border-slate-200 hover:border-emerald-300 transition">
+                        Edit History
+                    </button>
                 </div>
                 
                 
@@ -389,7 +407,7 @@ const renderDebtRow = (item) => {
                         <input 
                             id="name-${item.id}"
                             type="text" 
-                            value="${item.name}" 
+                            value="${escapeHtml(item.name)}" 
                             oninput="Accounts.updateDebt('${item.id}', 'name', this.value)"
                             class="w-full font-medium text-slate-800 border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none pb-1"
                         />
@@ -518,7 +536,7 @@ const renderDebtRow = (item) => {
                         <input 
                         id="bill-name-${item.id}"
                         type="text" 
-                        value="${item.name}" 
+                        value="${escapeHtml(item.name)}" 
                         oninput="Accounts.updateBill('${item.id}', 'name', this.value)"
                         class="w-full font-medium text-slate-800 bg-transparent focus:outline-none"
                     />
@@ -557,7 +575,7 @@ const renderDebtRow = (item) => {
                         <h1 class="text-2xl font-bold flex items-center gap-2">
                             ${Icons.CreditCard} Accounts & Liabilities
                         </h1>
-                        <div class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
+                        <div id="save-status-badge" class="flex items-center gap-2 text-xs py-1 px-3 rounded-full ${
                             state.isSaving ? 'bg-emerald-700 text-emerald-200' : 
                             state.hasUnsavedChanges ? 'bg-yellow-600 text-yellow-100' : 'bg-emerald-800 text-emerald-200'
                         }">
@@ -766,7 +784,27 @@ const renderDebtRow = (item) => {
             });
         };
 
-        const renderHistoryModal = () => { return ''; };
+        const renderHistoryModal = () => {
+            if (!state.isHistoryModalOpen) return '';
+            const jsonStr = escapeHtml(JSON.stringify(state.history || [], null, 2));
+            return `
+            <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm px-4">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div class="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                        <h3 class="text-lg font-bold text-white">Edit Burn-Down History (JSON)</h3>
+                        <button onclick="Accounts.closeHistoryModal()" class="text-slate-400 hover:text-white transition">${Icons.X}</button>
+                    </div>
+                    <div class="p-6 flex-1 flex flex-col gap-4 overflow-hidden">
+                        <p class="text-xs text-slate-500">Each entry contains a <code class="bg-slate-100 px-1 rounded">month</code> (YYYY-MM-DD), <code class="bg-slate-100 px-1 rounded">balance</code>, and <code class="bg-slate-100 px-1 rounded">balances</code> map.</p>
+                        <textarea id="historyInput" class="w-full flex-1 min-h-[300px] font-mono text-xs p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">${jsonStr}</textarea>
+                        <div class="flex gap-3 justify-end">
+                            <button type="button" onclick="Accounts.closeHistoryModal()" class="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition">Cancel</button>
+                            <button type="button" onclick="Accounts.saveHistory()" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition">Save History</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        };
 
         const render = () => {
             const app = document.getElementById('app');
@@ -788,25 +826,37 @@ const renderDebtRow = (item) => {
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             state.isLoading = false;
-            
+            if (unsubAccounts) {
+                unsubAccounts();
+                unsubAccounts = null;
+            }
             if (u) {
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
+                unsubAccounts = onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         const d = snap.data();
                         const isInitial = state.debts.length === 0 && state.bills.length === 0;
 
-                        let loadedDebts = (d.debts || []).map(debt => ({ ...debt, type: debt.type || 'Card' }));
-                        let loadedBills = d.bills || [];
+                        let loadedDebts = (d.debts || []).map(debt => ({
+                            ...debt,
+                            type: debt.type || 'Card',
+                            balance: roundCents(debt.balance),
+                            limit: roundCents(debt.limit),
+                            minPayment: roundCents(debt.minPayment)
+                        }));
+                        let loadedBills = (d.bills || []).map(bill => ({
+                            ...bill,
+                            amount: roundCents(bill.amount)
+                        }));
 
                         if (isInitial) {
-                            loadedDebts.sort((a, b) => a.dueDay - b.dueDay);
-                            loadedBills.sort((a, b) => a.dueDay - b.dueDay);
+                            loadedDebts.sort((a, b) => (a.dueDay || 1) - (b.dueDay || 1));
+                            loadedBills.sort((a, b) => (a.dueDay || 1) - (b.dueDay || 1));
                         }
                         
                         if (!state.hasUnsavedChanges) {
                              state.debts = loadedDebts;
                              state.bills = loadedBills;
-                             state.extraPayment = d.extraPayment || 0;
+                             state.extraPayment = roundCents(d.extraPayment || 0);
                              state.history = d.history || [];
                              render();
                         }

@@ -33,7 +33,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, formatCurrency, getLocalDateStr, getLocalMonthStr, parseLocalDate, addDaysLocal, escapeHtml } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -55,6 +55,8 @@
         };
 
         // --- State Management ---
+        let unsubs = [];
+
         const state = {
             user: null,
             isLoading: true,
@@ -71,7 +73,7 @@
         };
 
         // --- Helpers ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        // formatCurrency imported from connection.js
         const formatDate = (dateStr) => {
             if (!dateStr) return 'TBD';
             const date = new Date(dateStr + 'T00:00:00'); 
@@ -118,9 +120,7 @@
                     if (index < uniqueDates.length - 1) {
                         nextDateStr = uniqueDates[index + 1];
                     } else {
-                        const d = new Date(dateStr + 'T00:00:00');
-                        d.setDate(d.getDate() + 14);
-                        nextDateStr = d.toISOString().split('T')[0];
+                        nextDateStr = addDaysLocal(dateStr, 14);
                     }
                     const monthKey = dateStr.substring(0, 7);
                     const checksInThisMonth = uniqueDates.filter(d => d.startsWith(monthKey)).sort();
@@ -139,7 +139,7 @@
                     state.selectedPeriodId = newSchedule[0].id;
                 }
                 
-                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: newSchedule });
+                await setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: newSchedule }, { merge: true });
                 state.isEditorOpen = false;
                 render();
             },
@@ -154,30 +154,36 @@
             instantiatePeriod: async (periodId) => {
                 if (!state.masterAccounts) return;
                 const period = state.schedule.find(p => p.id === periodId);
-                const pStart = new Date(period.date + 'T00:00:00');
-                const pEnd = new Date(period.nextDate + 'T00:00:00');
+                const pStart = parseLocalDate(period.date);
+                const pEnd = parseLocalDate(period.nextDate);
                 
                 const existingCustomBills = period.bills.filter(b => b.type === 'custom');
                 let newBills = [...existingCustomBills];
                 
                 const checkDateMatch = (dueDay) => {
-                    for (let d = new Date(pStart); d < pEnd; d.setDate(d.getDate() + 1)) {
-                        if (d.getDate() === dueDay) return true;
+                    const targetDue = parseInt(dueDay) || 1;
+                    const cur = new Date(pStart.getTime());
+                    while (cur < pEnd) {
+                        const day = cur.getDate();
+                        const lastDayOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+                        const effectiveDue = Math.min(targetDue, lastDayOfMonth);
+                        if (day === effectiveDue) return true;
+                        cur.setDate(cur.getDate() + 1);
                     }
                     return false;
                 };
 
                 (state.masterAccounts.bills || []).forEach(b => {
-                    if (checkDateMatch(b.dueDay)) newBills.push({ ...b, id: `bill-${b.id}`, type: 'bill', isPaid: false, note: '' });
+                    if (checkDateMatch(b.dueDay)) newBills.push({ ...b, id: `bill-${b.id}`, amount: roundCents(b.amount), type: 'bill', isPaid: false, note: '' });
                 });
                 (state.masterAccounts.debts || []).forEach(d => {
-                    if (checkDateMatch(d.dueDay)) newBills.push({ ...d, id: `debt-${d.id}`, amount: d.minPayment, type: 'debt', isPaid: false, note: '' });
+                    if (checkDateMatch(d.dueDay)) newBills.push({ ...d, id: `debt-${d.id}`, linkedDebtId: d.id, amount: roundCents(d.minPayment), type: 'debt', isPaid: false, note: '' });
                 });
 
                 const updatedSchedule = state.schedule.map(p => p.id === periodId ? { ...p, isSetup: true, bills: newBills } : p);
                 state.schedule = updatedSchedule; // Optimistic update
                 render();
-                await setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
+                await setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule }, { merge: true });
             },
             updateBill: (periodId, billId, field, value) => {
                 // Handle type conversion
@@ -193,21 +199,21 @@
                             const debtIndex = state.masterAccounts.debts.findIndex(d => d.id === bill.linkedDebtId);
                             if (debtIndex !== -1) {
                                 const debt = state.masterAccounts.debts[debtIndex];
-                                const currentMonth = new Date().toISOString().slice(0, 7);
+                                const currentMonth = getLocalMonthStr();
                                 const paidKey = 'paid_' + currentMonth;
                                 
                                 if (value === true && !bill.isPaid) {
-                                    debt.balance = Math.max(0, debt.balance - amount);
-                                    debt[paidKey] = (debt[paidKey] || 0) + amount;
+                                    debt.balance = Math.max(0, roundCents(debt.balance - amount));
+                                    debt[paidKey] = roundCents((debt[paidKey] || 0) + amount);
                                 } else if (value === false && bill.isPaid) {
-                                    debt.balance += amount;
-                                    debt[paidKey] = Math.max(0, (debt[paidKey] || 0) - amount);
+                                    debt.balance = roundCents(debt.balance + amount);
+                                    debt[paidKey] = Math.max(0, roundCents((debt[paidKey] || 0) - amount));
                                 }
                                 
                                 // Snapshot history for accounts page
-                                const currentDateStr = new Date().toISOString().slice(0, 10);
+                                const currentDateStr = getLocalDateStr();
                                 const consumerDebts = state.masterAccounts.debts.filter(d => d.type !== 'Mortgage');
-                                const currentTotalDebt = consumerDebts.reduce((acc, d) => acc + d.balance, 0);
+                                const currentTotalDebt = roundCents(consumerDebts.reduce((acc, d) => acc + (parseFloat(d.balance) || 0), 0));
                                 
                                 const accountBalances = {};
                                 state.masterAccounts.debts.forEach(d => { accountBalances[d.id || d.name] = d.balance; });
@@ -234,17 +240,17 @@
                 state.schedule = updatedSchedule;
                 render(); // Re-render immediately for responsiveness
                 // Debounce save in production, but for now direct save
-                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule }, { merge: true });
             },
             addCustomExpense: (periodId) => {
                 const updatedSchedule = state.schedule.map(p => {
                     if (p.id !== periodId) return p;
-                    const newExp = { id: 'custom-' + Date.now(), name: 'New Expense', amount: 0, dueDay: new Date(p.date).getDate(), isPaid: false, type: 'custom' };
+                    const newExp = { id: 'custom-' + Date.now(), name: 'New Expense', amount: 0, dueDay: parseLocalDate(p.date).getDate(), isPaid: false, type: 'custom' };
                     return { ...p, bills: [...p.bills, newExp] };
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule }, { merge: true });
             },
             deleteBill: (periodId, billId) => {
                 const updatedSchedule = state.schedule.map(p => {
@@ -253,7 +259,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule }, { merge: true });
             },
             moveBill: (billId, targetPeriodId) => {
                 const currentPeriod = state.schedule.find(p => p.id === state.selectedPeriodId);
@@ -272,7 +278,7 @@
                 });
                 state.schedule = updatedSchedule;
                 render();
-                setDoc(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule });
+                setDoc(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), { periods: updatedSchedule }, { merge: true });
             }
         };
 
@@ -284,37 +290,37 @@
             calculateIncome: (period) => {
                 if (!state.masterPay) return 0;
                 const { grossPay = 0, preTaxDeductions = [], taxes = [], postTaxDeductions = [] } = state.masterPay;
-                const totalTaxes = taxes.reduce((s, i) => s + i.amount, 0);
-                if (period.isHoliday) return grossPay - totalTaxes;
-                const totalPre = preTaxDeductions.reduce((s, i) => s + i.amount, 0);
-                const totalPost = postTaxDeductions.reduce((s, i) => s + i.amount, 0);
-                return grossPay - totalPre - totalTaxes - totalPost;
+                const totalTaxes = roundCents(taxes.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0));
+                if (period.isHoliday) return roundCents((parseFloat(grossPay) || 0) - totalTaxes);
+                const totalPre = roundCents(preTaxDeductions.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0));
+                const totalPost = roundCents(postTaxDeductions.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0));
+                return roundCents((parseFloat(grossPay) || 0) - totalPre - totalTaxes - totalPost);
             },
             calculateBudgetItems: () => {
                 if (!state.budgetItems || state.budgetItems.length === 0) return 0;
                 let total = 0;
                 state.budgetItems.forEach(item => {
-                    const yearlyTotal = item.cost * item.frequencyPerYear;
-                    total += yearlyTotal / PAY_PERIODS_PER_YEAR;
+                    const yearlyTotal = roundCents((parseFloat(item.cost) || 0) * (parseFloat(item.frequencyPerYear) || 12));
+                    total = roundCents(total + roundCents(yearlyTotal / PAY_PERIODS_PER_YEAR));
                 });
-                return total;
+                return roundCents(total);
             },
             calculateSavingsGoals: (currentPeriod) => {
                 if (!state.savingsGoals || state.savingsGoals.length === 0 || !currentPeriod) return 0;
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateStr();
                 let total = 0;
                 state.savingsGoals.forEach(goal => {
-                    const remaining = goal.targetAmount - (goal.currentAmount || 0);
+                    const remaining = roundCents((parseFloat(goal.targetAmount) || 0) - (parseFloat(goal.currentAmount) || 0));
                     if (remaining <= 0) return;
                     if (goal.dueDate && state.schedule.length > 0) {
                         const periodsLeft = state.schedule.filter(p => p.date >= today && p.date <= goal.dueDate).length;
-                        if (periodsLeft > 0) total += remaining / periodsLeft;
+                        if (periodsLeft > 0) total = roundCents(total + roundCents(remaining / periodsLeft));
                     }
                 });
-                return total;
+                return roundCents(total);
             },
             getCategorizedPeriods: () => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateStr();
                 const closed = [];
                 let priorPeriod = null;
                 let upcomingPeriod = null;
@@ -322,14 +328,11 @@
                 const future = [];
                 
                 state.schedule.forEach((period) => {
-                    const periodEnd = new Date(period.nextDate);
-                    const periodStart = new Date(period.date);
-                    const todayDate = new Date(today);
-                    if (periodEnd < todayDate) {
+                    if (period.nextDate <= today) {
                         closed.push(period);
-                    } else if (periodStart <= todayDate && periodEnd >= todayDate) {
+                    } else if (period.date <= today && period.nextDate > today) {
                         upcomingPeriod = period;
-                    } else if (!upcomingPeriod && periodStart > todayDate) {
+                    } else if (!upcomingPeriod && period.date > today) {
                         upcomingPeriod = period;
                     } else {
                         if (nextTwo.length < 2) {
@@ -463,7 +466,7 @@
                             <span class="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">ONE-TIME</span>
                             <input 
                                 type="text" 
-                                value="${bill.name}"
+                                value="${escapeHtml(bill.name)}"
                                 ${bill.isPaid ? 'disabled' : ''}
                                 onchange="Planner.updateBill('${currentPeriod.id}', '${bill.id}', 'name', this.value)"
                                 class="flex-1 font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none text-sm ${bill.isPaid ? 'text-slate-400 line-through' : ''}"
@@ -622,31 +625,33 @@
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             state.isLoading = false;
+            unsubs.forEach(fn => fn());
+            unsubs = [];
             
             if (u) {
                 // Initialize Listeners
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
+                unsubs.push(onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'paycheck_data', 'current_config'), (snap) => {
                     state.masterPay = snap.data() || {};
                     render();
-                });
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
+                }));
+                unsubs.push(onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'accounts_data', 'current_config'), (snap) => {
                     state.masterAccounts = snap.data() || { bills: [], debts: [] };
                     render();
-                });
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), (snap) => {
+                }));
+                unsubs.push(onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'budget_items_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.budgetItems = snap.data().items || [];
                     render();
-                });
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
+                }));
+                unsubs.push(onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) state.savingsGoals = snap.data().goals || [];
                     render();
-                });
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
+                }));
+                unsubs.push(onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods && snap.data().periods.length > 0) {
                         state.schedule = snap.data().periods;
                         // Auto select if first load
                         if (!state.selectedPeriodId) {
-                            const today = new Date().toISOString().split('T')[0];
+                            const today = getLocalDateStr();
                             const upcoming = snap.data().periods.find(p => p.date >= today);
                             state.selectedPeriodId = upcoming ? upcoming.id : snap.data().periods[snap.data().periods.length - 1].id;
                         }
@@ -655,7 +660,7 @@
                         state.isEditorOpen = true;
                     }
                     render();
-                });
+                }));
             } else {
                 render();
             }

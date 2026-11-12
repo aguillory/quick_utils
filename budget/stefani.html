@@ -30,12 +30,13 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, formatCurrency, getLocalDateStr, escapeHtml } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const USER_EMAIL = "default@user.com";
         const COLLECTION_NAME = "friend_debt_tracker";
+        let unsubscribeSnap = null;
 
         // --- Icons ---
         const Icons = {
@@ -58,7 +59,7 @@
         };
 
         // --- Helpers ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        // formatCurrency imported from connection.js
 
         // --- Actions ---
         const Actions = {
@@ -78,7 +79,7 @@
                 const dateInput = document.getElementById(dateInputId);
 
                 const desc = descInput.value || (type === 'charge' ? 'Charge' : 'Payment');
-                const amount = parseFloat(amountInput.value);
+                const amount = roundCents(Math.abs(parseFloat(amountInput.value) || 0));
                 const date = dateInput.value;
 
                 if (!amount) return alert("Please enter an amount");
@@ -97,7 +98,7 @@
                     descInput.value = "";
                     amountInput.value = "";
                     // Keep date as today
-                    dateInput.valueAsDate = new Date();
+                    dateInput.value = getLocalDateStr();
                 } catch (e) {
                     console.error("Error adding doc: ", e);
                     alert("Error saving transaction.");
@@ -144,7 +145,7 @@
                 return `
                 <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition px-2">
                     <div>
-                        <div class="font-medium text-slate-800 text-sm">${t.description}</div>
+                        <div class="font-medium text-slate-800 text-sm">${escapeHtml(t.description)}</div>
                         <div class="text-xs text-slate-400">${t.date}</div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -216,9 +217,9 @@
                     </div>
                     
                     <select id="cc-type" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-500">
-                        <option value="interest">📈 Interest/Fee (Increases Debt)</option>
-                        <option value="payment">💸 She Paid Me (Decreases Debt)</option>
-                        <option value="bank_payment">🏦 I Paid Bank (Tracking Only)</option>
+                        <option value="interest">&#x1F4C8; Interest/Fee (Increases Debt)</option>
+                        <option value="payment">&#x1F4B8; She Paid Me (Decreases Debt)</option>
+                        <option value="bank_payment">&#x1F3E6; I Paid Bank (Tracking Only)</option>
                     </select>
 
                     <div class="flex gap-2">
@@ -254,7 +255,7 @@
             // Set default dates to today after render
             setTimeout(() => {
                 document.querySelectorAll('input[type="date"]').forEach(input => {
-                    if(!input.value) input.valueAsDate = new Date();
+                    if(!input.value) input.value = getLocalDateStr();
                 });
             }, 0);
         };
@@ -263,29 +264,36 @@
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             state.isLoading = false;
+            if (unsubscribeSnap) {
+                unsubscribeSnap();
+                unsubscribeSnap = null;
+            }
             if (u) {
                 // Real-time listener
-                const q = query(getBudgetCollection( COLLECTION_NAME), orderBy("date", "desc"));
-                onSnapshot(q, (snapshot) => {
+                const q = query(getBudgetCollection(COLLECTION_NAME), orderBy("date", "desc"));
+                unsubscribeSnap = onSnapshot(q, (snapshot) => {
                     const d = { ledger: { b: 0, h: [] }, cc: { b: 0, paid: 0, interest: 0, stefaniPaid: 0, h: [] } };
                     
                     snapshot.forEach(doc => {
                         const t = doc.data(); t.id = doc.id;
+                        t.amount = roundCents(t.amount);
                         if (t.category === 'ledger') {
-                            if (t.type === 'charge') d.ledger.b += t.amount;
-                            if (t.type === 'payment') d.ledger.b -= t.amount;
+                            if (t.type === 'charge') d.ledger.b = roundCents(d.ledger.b + t.amount);
+                            if (t.type === 'payment') d.ledger.b = roundCents(d.ledger.b - t.amount);
                             d.ledger.h.push(t);
                         }
                         if (t.category === 'cc') {
                             if (t.type === 'interest' || t.type === 'charge') {
-                                d.cc.b += t.amount;
-                                if (t.type === 'interest') d.cc.interest += t.amount;
+                                d.cc.b = roundCents(d.cc.b + t.amount);
+                                if (t.type === 'interest') d.cc.interest = roundCents(d.cc.interest + t.amount);
                             }
                             else if (t.type === 'payment') {
-                                d.cc.b -= t.amount;
-                                d.cc.stefaniPaid += t.amount;
+                                d.cc.b = roundCents(d.cc.b - t.amount);
+                                d.cc.stefaniPaid = roundCents(d.cc.stefaniPaid + t.amount);
                             }
-                            else if (t.type === 'bank_payment') d.cc.paid += t.amount;
+                            else if (t.type === 'bank_payment') {
+                                d.cc.paid = roundCents(d.cc.paid + t.amount);
+                            }
                             d.cc.h.push(t);
                         }
                     });

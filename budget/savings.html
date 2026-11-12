@@ -31,7 +31,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, formatCurrency, getLocalDateStr, parseLocalDate, escapeHtml } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -53,6 +53,9 @@
         };
 
         // --- State ---
+        let unsubGoals = null;
+        let unsubSchedule = null;
+
         const state = {
             user: null,
             isLoading: true,
@@ -76,7 +79,7 @@
         };
 
         // --- Helpers ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        // formatCurrency imported from connection.js
         const formatDate = (dateStr) => {
             if (!dateStr) return '';
             const date = new Date(dateStr + 'T00:00:00');
@@ -86,23 +89,23 @@
         // --- Logic ---
         const Logic = {
             calculateStats: () => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateStr();
                 
-                const activeGoals = state.goals.filter(g => (g.targetAmount - (g.currentAmount || 0)) > 0);
-                const completedGoals = state.goals.filter(g => (g.targetAmount - (g.currentAmount || 0)) <= 0);
+                const activeGoals = state.goals.filter(g => roundCents((parseFloat(g.targetAmount) || 0) - (parseFloat(g.currentAmount) || 0)) > 0);
+                const completedGoals = state.goals.filter(g => roundCents((parseFloat(g.targetAmount) || 0) - (parseFloat(g.currentAmount) || 0)) <= 0);
                 const overdueGoals = activeGoals.filter(g => g.dueDate && g.dueDate < today);
 
-                const totalTargeted = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
-                const totalSaved = activeGoals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
-                const totalRemaining = totalTargeted - totalSaved;
+                const totalTargeted = roundCents(activeGoals.reduce((sum, g) => sum + (parseFloat(g.targetAmount) || 0), 0));
+                const totalSaved = roundCents(activeGoals.reduce((sum, g) => sum + (parseFloat(g.currentAmount) || 0), 0));
+                const totalRemaining = roundCents(totalTargeted - totalSaved);
 
                 let totalPerPayPeriod = 0;
                 activeGoals.forEach(g => {
                     if (g.dueDate && state.payPeriods.length > 0) {
-                        const remaining = g.targetAmount - (g.currentAmount || 0);
+                        const remaining = roundCents((parseFloat(g.targetAmount) || 0) - (parseFloat(g.currentAmount) || 0));
                         const periodsLeft = state.payPeriods.filter(p => p.date >= today && p.date <= g.dueDate).length;
                         if (periodsLeft > 0) {
-                            totalPerPayPeriod += remaining / periodsLeft;
+                            totalPerPayPeriod = roundCents(totalPerPayPeriod + roundCents(remaining / periodsLeft));
                         }
                     }
                 });
@@ -119,7 +122,7 @@
             },
             getFilteredGoals: () => {
                 return state.goals.filter(g => {
-                    const isComplete = (g.targetAmount - (g.currentAmount || 0)) <= 0;
+                    const isComplete = roundCents((parseFloat(g.currentAmount) || 0) - (parseFloat(g.targetAmount) || 0)) >= 0;
                     if (state.filterStatus === 'active') return !isComplete;
                     if (state.filterStatus === 'completed') return isComplete;
                     return true;
@@ -127,19 +130,21 @@
                     if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
                     if (a.dueDate) return -1;
                     if (b.dueDate) return 1;
-                    return a.name.localeCompare(b.name);
+                    return (a.name || '').localeCompare(b.name || '');
                 });
             },
             getGoalCalculations: (goal) => {
-                const today = new Date().toISOString().split('T')[0];
-                const amountRemaining = goal.targetAmount - (goal.currentAmount || 0);
+                const today = getLocalDateStr();
+                const targetAmt = roundCents(parseFloat(goal.targetAmount) || 0);
+                const curAmt = roundCents(parseFloat(goal.currentAmount) || 0);
+                const amountRemaining = roundCents(Math.max(0, targetAmt - curAmt));
                 
                 let remainingPayPeriods = 0;
                 if (goal.dueDate && state.payPeriods.length > 0) {
                     remainingPayPeriods = state.payPeriods.filter(p => p.date >= today && p.date <= goal.dueDate).length;
                 }
 
-                const perPayPeriod = remainingPayPeriods > 0 ? amountRemaining / remainingPayPeriods : amountRemaining;
+                const perPayPeriod = remainingPayPeriods > 0 ? roundCents(amountRemaining / remainingPayPeriods) : amountRemaining;
                 
                 const isComplete = amountRemaining <= 0;
                 const isOverdue = goal.dueDate && goal.dueDate < today && !isComplete;
@@ -150,7 +155,7 @@
                 else if (isOverdue) progressColor = 'red';
                 else if (isUrgent) progressColor = 'yellow';
 
-                const progressPercentage = goal.targetAmount > 0 ? ((goal.currentAmount || 0) / goal.targetAmount) * 100 : 0;
+                const progressPercentage = targetAmt > 0 ? (curAmt / targetAmt) * 100 : 0;
 
                 return { amountRemaining, remainingPayPeriods, perPayPeriod, isComplete, isOverdue, isUrgent, progressColor, progressPercentage };
             }
@@ -208,7 +213,7 @@
                 const newGoal = {
                     id: `goal-${Date.now()}`,
                     name: name.trim(),
-                    targetAmount: parseFloat(targetAmount),
+                    targetAmount: roundCents(parseFloat(targetAmount) || 0),
                     currentAmount: 0,
                     dueDate: dueDate || null,
                     notes: notes.trim() || null,
@@ -226,9 +231,18 @@
                 if (state.expandedGoalId !== id) state.editingGoalId = null;
                 render();
             },
-            startEditing: (goal) => {
+            startEditing: (goalOrId) => {
+                const goal = typeof goalOrId === 'string' ? state.goals.find(g => g.id === goalOrId) : goalOrId;
+                if (!goal) return;
                 state.editingGoalId = goal.id;
-                state.editForm = { ...goal, currentAmount: goal.currentAmount || 0, dueDate: goal.dueDate || '', notes: goal.notes || '' };
+                state.editForm = {
+                    id: goal.id,
+                    name: goal.name,
+                    targetAmount: roundCents(goal.targetAmount),
+                    currentAmount: roundCents(goal.currentAmount || 0),
+                    dueDate: goal.dueDate || '',
+                    notes: goal.notes || ''
+                };
                 render();
             },
             cancelEditing: () => {
@@ -241,8 +255,11 @@
             submitEditForm: () => {
                 const updated = {
                     ...state.editForm,
-                    targetAmount: parseFloat(state.editForm.targetAmount) || 0,
-                    currentAmount: parseFloat(state.editForm.currentAmount) || 0
+                    name: (state.editForm.name || '').trim(),
+                    targetAmount: roundCents(parseFloat(state.editForm.targetAmount) || 0),
+                    currentAmount: roundCents(parseFloat(state.editForm.currentAmount) || 0),
+                    dueDate: state.editForm.dueDate || null,
+                    notes: (state.editForm.notes || '').trim() || null
                 };
                 state.goals = state.goals.map(g => g.id === updated.id ? updated : g);
                 state.editingGoalId = null;
@@ -252,7 +269,9 @@
             quickPay: (id, amount) => {
                 const goal = state.goals.find(g => g.id === id);
                 if (!goal) return;
-                const newAmount = Math.min((goal.currentAmount || 0) + amount, goal.targetAmount);
+                const targetAmt = roundCents(parseFloat(goal.targetAmount) || 0);
+                const curAmt = roundCents(parseFloat(goal.currentAmount) || 0);
+                const newAmount = roundCents(Math.min(curAmt + amount, targetAmt));
                 state.goals = state.goals.map(g => g.id === id ? { ...g, currentAmount: newAmount } : g);
                 Actions.scheduleSave();
                 render();
@@ -359,7 +378,7 @@
                         <div class="flex-grow">
                             <div class="flex items-center gap-2 mb-1">
                                 ${statusIcon}
-                                <h3 class="font-bold text-slate-800">${goal.name}</h3>
+                                <h3 class="font-bold text-slate-800">${escapeHtml(goal.name)}</h3>
                             </div>
                             
                             <div class="flex items-center gap-4 text-sm text-slate-500 mb-3">
@@ -437,7 +456,7 @@
                                 </div>
 
                                 <div class="flex gap-2 pt-2 border-t border-slate-200">
-                                    <button onclick="Savings.startEditing({id: '${goal.id}', name: '${goal.name.replace(/'/g, "\\'")}', targetAmount: ${goal.targetAmount}, currentAmount: ${goal.currentAmount || 0}, dueDate: '${goal.dueDate || ''}', notes: '${(goal.notes || '').replace(/'/g, "\\'").replace(/\n/g, ' ')}'})" class="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">
+                                    <button onclick="Savings.startEditing('${goal.id}')" class="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">
                                         ${Icons.Edit} Edit
                                     </button>
                                     <button onclick="Savings.deleteGoal('${goal.id}')" class="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg">
@@ -512,7 +531,7 @@
                         <div class="bg-blue-800/50 p-4 rounded-xl border border-blue-700/50">
                             <div class="text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">Completed</div>
                             <div class="text-3xl font-bold text-white">${stats.completedCount}</div>
-                            <div class="text-xs text-green-400 mt-1">Goals reached! 🎉</div>
+                            <div class="text-xs text-green-400 mt-1">Goals reached! &#x1F389;</div>
                         </div>
                     </div>
                     ${state.payPeriods.length === 0 ? `<div class="mt-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3 text-yellow-200 text-sm">${Icons.AlertCircle} No pay period schedule found. Set up your pay schedule in the Planner to see per-pay-period calculations.</div>` : ''}
@@ -558,13 +577,25 @@
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             state.isLoading = false;
+            if (unsubGoals) {
+                unsubGoals();
+                unsubGoals = null;
+            }
+            if (unsubSchedule) {
+                unsubSchedule();
+                unsubSchedule = null;
+            }
             
             if (u) {
                 // Load Goals
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
+                unsubGoals = onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'savings_goals_data', 'current_config'), (snap) => {
                     if (snap.exists()) {
                         if (!state.hasUnsavedChanges) {
-                            state.goals = snap.data().goals || [];
+                            state.goals = (snap.data().goals || []).map(g => ({
+                                ...g,
+                                targetAmount: roundCents(g.targetAmount),
+                                currentAmount: roundCents(g.currentAmount || 0)
+                            }));
                             render();
                         }
                     } else {
@@ -573,7 +604,7 @@
                     }
                 });
                 // Load Schedule (Read-only for calculations)
-                onSnapshot(getBudgetDoc( 'users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
+                unsubSchedule = onSnapshot(getBudgetDoc('users', 'He35YiePGFeHK298DTrtvvv2ujj1', 'planner_data', 'schedule'), (snap) => {
                     if (snap.exists() && snap.data().periods) {
                         state.payPeriods = snap.data().periods;
                         render();

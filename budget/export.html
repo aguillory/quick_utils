@@ -43,7 +43,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection } from './scripts/connection.js'; 
+        import { db, auth, getEnv, getBudgetDoc, getBudgetCollection, roundCents, getLocalDateStr } from './scripts/connection.js'; 
         import { onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -69,7 +69,7 @@
         });
 
         // Handle Login
-        loginBtn.addEventListener('click', async () => {
+        const handleLogin = async () => {
             const pw = document.getElementById('login-password').value;
             errorMsg.classList.add('hidden');
             try { 
@@ -77,6 +77,10 @@
             } catch(err) { 
                 errorMsg.classList.remove('hidden');
             }
+        };
+        loginBtn.addEventListener('click', handleLogin);
+        document.getElementById('login-password').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleLogin();
         });
 
         // Trigger CSV Generation and Download
@@ -96,23 +100,30 @@
                     return;
                 }
 
+                const escapeCsvField = (val) => {
+                    if (val === null || val === undefined) return '""';
+                    let str = String(val).replace(/\r\n|\r|\n/g, ' ');
+                    if (/^[=+\-@\t\r]/.test(str)) {
+                        str = "'" + str;
+                    }
+                    return `"${str.replace(/"/g, '""')}"`;
+                };
+
                 // Initialize CSV headers
                 let csvContent = "Category,Type,Description,Amount,Date,CreatedAt\n";
                 
                 // Process each document
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    
-                    // Escape quotes and wrap the description in quotes to prevent breaking CSV structure on commas
-                    const safeDescription = `"${(data.description || "").replace(/"/g, '""')}"`;
+                    const amountStr = roundCents(data.amount).toFixed(2);
                     
                     const row = [
-                        data.category || "",
-                        data.type || "",
-                        safeDescription,
-                        data.amount || 0,
-                        data.date || "",
-                        data.createdAt || ""
+                        escapeCsvField(data.category || ""),
+                        escapeCsvField(data.type || ""),
+                        escapeCsvField(data.description || ""),
+                        amountStr,
+                        escapeCsvField(data.date || ""),
+                        escapeCsvField(data.createdAt || "")
                     ].join(",");
                     
                     csvContent += row + "\n";
@@ -123,7 +134,7 @@
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
                 link.setAttribute("href", url);
-                link.setAttribute("download", "stefani_ledger_export.csv");
+                link.setAttribute("download", `stefani_ledger_${getEnv()}_${getLocalDateStr()}.csv`);
                 
                 document.body.appendChild(link);
                 link.click();
