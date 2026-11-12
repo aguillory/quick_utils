@@ -290,18 +290,46 @@ export function renderTasks() {
     if (!container) return;
     container.innerHTML = '';
 
+    const activeUserObj = ALL_USERS.find(u => u.uid === state.activeUsers[0]);
+    const activeUserName = activeUserObj ? activeUserObj.name : 'this user';
+
     let visibleTasks = [];
+    let isShowingFallbackAll = false;
+
     if (state.isEditMode || state.isViewAllMode) {
         visibleTasks = state.tasks;
     } else {
         visibleTasks = state.tasks.filter(t =>
             state.activeUsers.some(uid => t.dashboardUsers && t.dashboardUsers.includes(uid))
         );
+        // Sensible fallback: if a user has 0 tasks selected on their dashboard, show all non-generic chores
+        // along with a helpful banner so they can immediately log chores or customize with the Pencil icon.
+        if (visibleTasks.length === 0 && state.tasks.length > 0) {
+            visibleTasks = state.tasks.filter(t => !(t.name && t.name.toLowerCase().startsWith('assigned task')));
+            if (visibleTasks.length === 0) visibleTasks = state.tasks;
+            isShowingFallbackAll = true;
+        }
     }
 
     if (visibleTasks.length === 0 && !state.isEditMode) {
-        container.innerHTML = '<div class="empty-dashboard-msg">Your dashboard is empty. Click the pencil icon to add tasks!</div>';
+        container.innerHTML = `
+            <div class="empty-dashboard-msg">
+                Your dashboard is empty. Click the <strong>&#x270F;&#xFE0F; Edit Dashboard</strong> button above to select your chores!
+                <div style="margin-top: 12px;">
+                    <button type="button" class="action-btn" onclick="toggleEditMode()">&#x270F;&#xFE0F; Customize My Dashboard</button>
+                </div>
+            </div>`;
         return;
+    }
+
+    if (isShowingFallbackAll && !state.isEditMode) {
+        const banner = document.createElement('div');
+        banner.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 16px; border-radius: 8px; background: rgba(79, 70, 229, 0.08); border: 1px solid var(--primary); font-size: 13px; color: var(--text-main);';
+        banner.innerHTML = `
+            <span>&#x1F4A1; <strong>${activeUserName}</strong> doesn't have a custom chore filter saved yet &mdash; showing all household chores below.</span>
+            <button type="button" class="action-btn" onclick="toggleEditMode()" style="padding: 5px 10px; font-size: 12px;">&#x270F;&#xFE0F; Customize ${activeUserName}'s Dashboard</button>
+        `;
+        container.appendChild(banner);
     }
 
     const groupedTasks = visibleTasks.reduce((acc, task) => {
@@ -325,19 +353,21 @@ export function renderTasks() {
     keys.forEach(category => {
         const section = document.createElement('div');
         section.className = 'category-section';
+        section.setAttribute('data-category', category);
 
         const isCatCollapsed = state.userPrefs.collapsed && state.userPrefs.collapsed[`nipto_${category}`] === true;
+        const safeCatAttr = String(category).replace(/'/g, "\\'");
 
         const orderControls = `
         <span class="drag-handle" style="cursor: grab; font-size: 18px; margin-left: 10px; padding: 0 8px; opacity: 0.6;" title="Drag to reorder">&#x2630;</span>
         <span class="sort-controls" style="font-size: 14px; opacity: 0.5;">
-        <button onclick="moveCategory('${category}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">▲</button>
-        <button onclick="moveCategory('${category}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">▼</button>
+        <button onclick="moveCategory('${safeCatAttr}', -1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Up">&#x25B2;</button>
+        <button onclick="moveCategory('${safeCatAttr}', 1, 'nipto', event)" style="cursor:pointer; background:none; border:none;" title="Move Down">&#x25BC;</button>
         </span>`;
 
         const header = document.createElement('h3');
         header.className = 'category-header collapsible-header';
-        header.innerHTML = `${category} ${orderControls} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}" style="margin-left: auto;">▼</span>`;
+        header.innerHTML = `${category} ${orderControls} <span class="toggle-icon ${isCatCollapsed ? 'collapsed' : ''}" style="margin-left: auto;">&#x25BC;</span>`;
         header.style.display = 'flex';
         header.style.alignItems = 'center';
 
@@ -399,6 +429,189 @@ export function renderTasks() {
         container.appendChild(section);
     });
     enableDragSort('mainContainer', (order) => saveCloudPreference('niptoSortOrder', order));
+}
+
+// Reorders categories up/down and saves the sort order to Firestore user_preferences.
+export function moveCategory(category, direction, type = 'nipto', event = null) {
+    if (event) event.stopPropagation();
+    const container = document.getElementById('mainContainer');
+    if (!container) return;
+
+    const headers = Array.from(container.querySelectorAll('.category-header'));
+    const currentOrder = headers.map(h => {
+        const clone = h.cloneNode(true);
+        clone.querySelectorAll('span, button').forEach(el => el.remove());
+        return clone.textContent.trim();
+    });
+
+    const idx = currentOrder.indexOf(category);
+    if (idx === -1) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= currentOrder.length) return;
+
+    const temp = currentOrder[idx];
+    currentOrder[idx] = currentOrder[targetIdx];
+    currentOrder[targetIdx] = temp;
+
+    saveCloudPreference('niptoSortOrder', currentOrder);
+    renderTasks();
+}
+
+// Toggles "View All Tasks" vs. the active user's customized dashboard.
+export function toggleViewAllMode() {
+    if (state.isEditMode) return;
+    state.isViewAllMode = !state.isViewAllMode;
+    const btn = document.getElementById('viewAllBtn');
+    if (btn) {
+        if (state.isViewAllMode) {
+            btn.innerHTML = "&#x1F3E0; View My Dashboard";
+            btn.style.backgroundColor = "var(--primary)";
+            btn.style.color = "#ffffff";
+        } else {
+            btn.innerHTML = "&#x1F441;&#xFE0F; View All Tasks";
+            btn.style.backgroundColor = "";
+            btn.style.color = "";
+        }
+    }
+    renderTasks();
+}
+
+export const toggleViewAll = toggleViewAllMode;
+
+function getCurrentUserDashboardTaskSet() {
+    const prefs = new Set();
+    const targetUid = state.activeUsers[0];
+    if (!targetUid) return prefs;
+    state.tasks.forEach(t => {
+        if (t.dashboardUsers && t.dashboardUsers.includes(targetUid)) {
+            prefs.add(t.uid);
+        }
+    });
+    return prefs;
+}
+
+// Enters or exits Nipto Chores dashboard Edit Mode.
+export async function toggleEditMode() {
+    if (state.isTogetherMode) {
+        alert("Please select a single person at the top before editing their dashboard.");
+        return;
+    }
+
+    if (state.isEditMode) {
+        await saveEditMode();
+        return;
+    }
+
+    state.isEditMode = true;
+    state.tempEditPrefs = getCurrentUserDashboardTaskSet();
+
+    const editBtn = document.getElementById('editBtn');
+    const saveBtn = document.getElementById('saveEditBtn');
+    const viewAllBtn = document.getElementById('viewAllBtn');
+    const statusDiv = document.getElementById('status');
+
+    if (editBtn) editBtn.style.display = 'none';
+    if (saveBtn) {
+        saveBtn.style.display = 'inline-flex';
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = "&#x2714; Save Changes";
+    }
+    if (viewAllBtn) viewAllBtn.style.display = 'none';
+
+    const userName = ALL_USERS.find(u => u.uid === state.activeUsers[0])?.name || 'User';
+    if (statusDiv) {
+        statusDiv.innerText = `EDIT MODE: Tap chores below to show/hide them on ${userName}'s dashboard, then click Save Changes.`;
+        statusDiv.style.color = "var(--primary)";
+    }
+
+    if (state.isViewAllMode) {
+        state.isViewAllMode = false;
+        if (viewAllBtn) {
+            viewAllBtn.innerHTML = "&#x1F441;&#xFE0F; View All Tasks";
+            viewAllBtn.style.backgroundColor = "";
+            viewAllBtn.style.color = "";
+        }
+    }
+
+    renderTasks();
+}
+
+// Saves the active user's shown/hidden Nipto chores to Firestore (both nipto_tasks and user_preferences).
+export async function saveEditMode() {
+    if (!state.isEditMode) return;
+
+    const targetUid = state.activeUsers[0];
+    const editBtn = document.getElementById('editBtn');
+    const saveBtn = document.getElementById('saveEditBtn');
+    const viewAllBtn = document.getElementById('viewAllBtn');
+    const statusDiv = document.getElementById('status');
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = "&#x23F3; Saving...";
+    }
+
+    try {
+        if (targetUid && window.db) {
+            const batch = window.db.batch();
+            let hasTaskChanges = false;
+
+            state.tasks.forEach(task => {
+                const wantsItOnDash = state.tempEditPrefs.has(task.uid);
+                const hasItCurrently = Array.isArray(task.dashboardUsers) && task.dashboardUsers.includes(targetUid);
+
+                if (wantsItOnDash !== hasItCurrently) {
+                    hasTaskChanges = true;
+                    let newUsersList = Array.isArray(task.dashboardUsers) ? [...task.dashboardUsers] : [];
+                    if (wantsItOnDash && !newUsersList.includes(targetUid)) {
+                        newUsersList.push(targetUid);
+                    } else if (!wantsItOnDash) {
+                        newUsersList = newUsersList.filter(id => id !== targetUid);
+                    }
+                    task.dashboardUsers = newUsersList;
+                    const docRef = window.getNiptoCollection('nipto_tasks').doc(task.uid);
+                    batch.update(docRef, { dashboardUsers: newUsersList });
+                }
+            });
+
+            if (hasTaskChanges) {
+                await batch.commit();
+            }
+
+            // Also persist the full list of selected task UIDs in user_preferences/{targetUid}
+            const selectedTaskUids = Array.from(state.tempEditPrefs);
+            saveCloudPreference('dashboardTaskUids', selectedTaskUids);
+        }
+
+        const userName = ALL_USERS.find(u => u.uid === targetUid)?.name || 'User';
+        showToast("prefs_saved", `Saved ${userName}'s dashboard preferences!`, 0, "");
+    } catch (error) {
+        console.error("Error saving dashboard preferences:", error);
+        alert("Failed to save dashboard preferences: " + error.message);
+    } finally {
+        state.isEditMode = false;
+        state.hasEnteredTaskPin = false;
+
+        if (saveBtn) {
+            saveBtn.style.display = 'none';
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = "&#x2714; Save Changes";
+        }
+        if (editBtn) {
+            editBtn.style.display = 'inline-flex';
+            editBtn.disabled = false;
+            editBtn.innerHTML = "&#x270F;&#xFE0F; Edit Dashboard";
+        }
+        if (viewAllBtn) {
+            viewAllBtn.style.display = 'inline-flex';
+        }
+        if (statusDiv) {
+            statusDiv.innerText = "";
+            statusDiv.style.color = "var(--text-main)";
+        }
+
+        renderTasks();
+    }
 }
 
 export function renderPinnedTasks() {

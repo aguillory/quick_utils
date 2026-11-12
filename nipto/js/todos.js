@@ -1070,29 +1070,62 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
 
     const nextCompleted = !currentCompleted;
     const nowIso = new Date().toISOString();
-    const doerUid = state.activeUsers[0] || ALL_USERS[0].uid;
-    const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'Someone';
+    const doerUids = (state.activeUsers && state.activeUsers.length > 0)
+        ? [...state.activeUsers]
+        : [ALL_USERS[0]?.uid || ''];
+    const doerUid = doerUids[0];
+    const doerName = doerUids.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Someone').join(', ');
+
+    const prevActivityUids = Array.isArray(todo.completedActivityUids)
+        ? [...todo.completedActivityUids]
+        : (todo.completedActivityUid ? [todo.completedActivityUid] : []);
+    const prevBy = Array.isArray(todo.completedBy) && todo.completedBy.length > 0
+        ? [...todo.completedBy]
+        : [doerUid];
+    const prevCompletedAt = todo.completedAt;
 
     todo.completed = nextCompleted;
     todo.completedAt = nextCompleted ? nowIso : null;
-    todo.completedBy = nextCompleted ? [doerUid] : [];
+    todo.completedBy = nextCompleted ? doerUids : [];
     todo.lastReviewedAt = nowIso;
     todo.updatedAt = nowIso;
 
     try {
-        await api.updateFirestoreDocument('custom_tasks', taskId, {
-            completed: nextCompleted,
-            completedAt: nextCompleted ? nowIso : null,
-            completedBy: nextCompleted ? [doerUid] : [],
-            lastReviewedAt: nowIso,
-            updatedAt: nowIso
-        });
-
         if (nextCompleted) {
-            const pts = todo.points || 5;
+            const pts = Number(todo.points) || 5;
+            let activityUids = [];
+            try {
+                activityUids = await api.logCustomPointsToNipto(
+                    pts,
+                    todo.name,
+                    doerUids,
+                    nowIso,
+                    todo.linkedNiptoTask || null
+                );
+            } catch (niptoErr) {
+                console.warn("Could not log To-Do points to Nipto API:", niptoErr);
+            }
+
+            todo.completedActivityUids = activityUids;
+            todo.completedActivityUid = activityUids[0] || null;
+
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                completed: true,
+                completedAt: nowIso,
+                completedBy: doerUids,
+                completedActivityUids: activityUids,
+                completedActivityUid: activityUids[0] || null,
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+
             showToast("todo_done", `Completed "${todo.name}"!`, pts, doerName);
-            if (pts > 0) {
-                api.awardAllowancePoints(doerUid, pts);
+            // Note: logActivityToNipto inside logCustomPointsToNipto already awards allowance points when activityUids.length > 0.
+            // Only award directly here as fallback if Nipto API logging did not run.
+            if (pts > 0 && activityUids.length === 0) {
+                for (const uid of doerUids) {
+                    await api.awardAllowancePoints(uid, Math.ceil(pts / Math.max(1, doerUids.length)));
+                }
             }
             await api.recordDailyCompletion({
                 id: `todo_${taskId}`,
@@ -1106,7 +1139,46 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 dateKey: getLocalTodayKey()
             });
         } else {
+            todo.completedActivityUids = [];
+            todo.completedActivityUid = null;
+
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                completed: false,
+                completedAt: null,
+                completedBy: [],
+                completedActivityUids: [],
+                completedActivityUid: null,
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+
+            if (prevActivityUids.length > 0) {
+                for (const actUid of prevActivityUids) {
+                    try {
+                        await api.deleteActivityFromNipto(actUid);
+                        await api.removeDailyCompletion(`nipto_${actUid}`, getLocalTodayKey());
+                    } catch (delErr) {
+                        console.warn(`Could not delete Nipto activity ${actUid}:`, delErr);
+                    }
+                }
+            } else {
+                const pts = Number(todo.points) || 5;
+                if (pts > 0) {
+                    const splitPts = Math.ceil(pts / Math.max(1, prevBy.length));
+                    for (const uid of prevBy) {
+                        await api.revokeAllowancePoints(uid, splitPts);
+                    }
+                }
+            }
+
             await api.removeDailyCompletion(`todo_${taskId}`, getLocalTodayKey());
+            if (prevCompletedAt) {
+                const prevDateKey = getLocalTodayKey(new Date(prevCompletedAt));
+                if (prevDateKey !== getLocalTodayKey()) {
+                    await api.removeDailyCompletion(`todo_${taskId}`, prevDateKey);
+                }
+            }
+            showToast("todo_undo", `Unchecked "${todo.name}"`, 0, "");
         }
 
         rebuildCompletedToday();

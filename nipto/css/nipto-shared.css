@@ -21,17 +21,24 @@
     --user-kenny: #F59E0B;   /* Amber / Gold */
 }
 
+html, body {
+    max-width: 100%;
+    width: 100%;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    margin: 0;
     background-color: var(--bg-color);
     color: var(--text-main);
     display: flex;
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    padding: 0;
-    box-sizing: border-box;
+    min-height: 100dvh;
 }
 
 h1, h2, h3, h4 {
@@ -42,19 +49,22 @@ h1, h2, h3, h4 {
 h2 { font-size: 24px; margin-bottom: 5px; }
 
 /* ==========================================
-   COMPACT SINGLE-ROW NAVBAR (MAX-HEIGHT: 56PX)
+   RESPONSIVE TOP NAVBAR (1 ROW DESKTOP / 2 ROWS MOBILE)
    ========================================== */
 .top-nav-bar {
     width: 100%;
-    max-height: 56px;
-    height: 56px;
+    max-width: 100%;
+    min-height: 56px;
+    height: auto;
     background: var(--card-bg);
     border-bottom: 1px solid var(--border-color);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 16px;
     box-sizing: border-box;
     position: sticky;
     top: 0;
@@ -64,7 +74,9 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 .nav-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
+    flex-shrink: 0;
 }
 
 .active-user-pill {
@@ -78,6 +90,8 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     cursor: pointer;
     user-select: none;
     transition: all 0.15s ease;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .active-user-pill:hover {
@@ -87,13 +101,14 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 .user-dropdown-menu {
     position: absolute;
     top: 52px;
-    left: 16px;
+    left: 12px;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.15);
     z-index: 1100;
     min-width: 200px;
+    max-width: calc(100vw - 24px);
     display: none;
     overflow: hidden;
 }
@@ -102,6 +117,9 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    min-width: 0;
 }
 
 .nav-tab {
@@ -117,8 +135,10 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     transition: all 0.15s ease;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     white-space: nowrap;
+    box-sizing: border-box;
 }
 
 .nav-tab:hover {
@@ -135,7 +155,10 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 .nav-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
 }
 
 .nav-icon-btn {
@@ -152,6 +175,8 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    white-space: nowrap;
+    box-sizing: border-box;
 }
 
 .nav-icon-btn:hover {
@@ -179,10 +204,15 @@ h2 { font-size: 24px; margin-bottom: 5px; }
     flex-direction: column;
     gap: 24px;
     min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .household-hub-sidebar {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -195,7 +225,7 @@ h2 { font-size: 24px; margin-bottom: 5px; }
 
 @media (max-width: 1024px) {
     .app-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         padding: 12px 10px 30px;
     }
     .household-hub-sidebar {
@@ -209,8 +239,102 @@ h2 { font-size: 24px; margin-bottom: 5px; }
         display: inline-flex !important;
     }
     .nav-tab {
-        padding: 6px 8px;
+        padding: 6px 10px;
         font-size: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-nav-bar {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+    .nav-left {
+        order: 1;
+        flex: 0 1 auto;
+    }
+    .nav-right {
+        order: 2;
+        flex: 1 1 auto;
+        justify-content: flex-end;
+        gap: 4px;
+    }
+    .nav-icon-btn {
+        padding: 5px 8px;
+        font-size: 11px;
+        border-radius: 6px;
+    }
+    .active-user-pill {
+        padding: 3px 8px;
+        gap: 5px;
+    }
+    .nav-center {
+        order: 3;
+        width: 100%;
+        flex: 0 0 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 5px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border-color);
+    }
+    .nav-tab {
+        width: 100%;
+        padding: 7px 6px;
+        font-size: 12px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .app-layout {
+        padding: 10px 8px 28px;
+        gap: 14px;
+    }
+    .card, .widget-panel {
+        padding: 14px 12px !important;
+        border-radius: 10px !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .todo-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px;
+    }
+    .task-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+        gap: 10px !important;
+    }
+    .task-btn {
+        padding: 12px 8px !important;
+        font-size: 13px !important;
+        min-height: 48px;
+        word-break: break-word;
+    }
+    .todo-toolbar-row {
+        padding: 8px 10px;
+        gap: 8px;
+    }
+    .todo-secondary-filters {
+        width: 100%;
+    }
+    .todo-compact-select {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        max-width: 100%;
+    }
+    .todo-badges-row,
+    .todo-subtasks-wrapper,
+    .todo-desc-box,
+    .bulk-row-meta {
+        margin-left: 0 !important;
+    }
+    .category-combobox-wrapper.is-compact {
+        width: 110px;
+        max-width: 100%;
+    }
+    .sticky-bulk-bar {
+        bottom: 10px;
+        padding: 8px 10px;
     }
 }
 
@@ -1628,4 +1752,75 @@ input[list]:focus {
 }
 .category-accordion-header:hover {
     background: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* ==========================================
+   BULK TRIAGE SELECTION & COMPLETION ACTION PILLS
+   ========================================== */
+.bulk-select-cb-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 5px;
+    border: 1px dashed var(--border-color);
+    background: var(--bg-color);
+    cursor: pointer;
+    user-select: none;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bulk-select-cb-wrap:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.bulk-select-cb {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.bulk-select-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.btn-row-complete {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--success, #10B981);
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success, #10B981);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.btn-row-complete:hover {
+    background: var(--success, #10B981);
+    color: #ffffff;
+}
+
+.btn-row-complete.is-done {
+    background: var(--success, #10B981);
+    border-color: var(--success, #10B981);
+    color: #ffffff;
+}
+
+.btn-row-complete.is-done:hover {
+    opacity: 0.85;
 }

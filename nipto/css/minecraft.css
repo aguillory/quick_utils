@@ -16,6 +16,12 @@
     --border-color: #312011;  /* Very Dark Wood Outline */
 }
 
+html, body {
+    max-width: 100%;
+    width: 100%;
+    overflow-x: hidden;
+}
+
 body { 
     font-family: 'VT323', monospace; /* Pixelated Font */
     margin: 0; 
@@ -25,7 +31,7 @@ body {
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    padding: 40px 20px;
+    padding: 0;
     box-sizing: border-box;
     /* Optional: Add a subtle block pattern to the background */
     background-image: 
@@ -42,22 +48,63 @@ h1, h2, h3 {
     letter-spacing: 1px;
 }
 
-h2 { font-size: 36px; margin-bottom: 5px; }
+h2 { font-size: 32px; margin-bottom: 5px; }
 p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 
 /* ==========================================
    CONTAINERS & LAYOUT (BLOCKY)
    ========================================== */
-/* Swapped .right-sidebar for .widget-panel below */
-.dashboard-container, .header, .widget-panel, .sidebar, .modal-content {
+.top-nav-bar {
     background: var(--card-bg);
-    padding: 30px;
+    border-bottom: 4px solid var(--border-color);
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.nav-tab {
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+    border-radius: 0px;
+    border: 2px solid transparent;
+    color: var(--text-main);
+}
+
+.nav-tab.active {
+    background: var(--primary);
+    color: #000000;
+    border-color: var(--border-color);
+    box-shadow: inset -2px -2px 0 rgba(0,0,0,0.25), inset 2px 2px 0 rgba(255,255,255,0.4);
+}
+
+.nav-icon-btn {
+    font-family: 'VT323', monospace;
+    font-size: 16px;
+    border-radius: 0px;
+    border: 2px solid var(--border-color);
+    background: #9E9E9E;
+    color: var(--text-main);
+}
+
+.dashboard-container, .header, .widget-panel, .sidebar, .modal-content, .card {
+    background: var(--card-bg) !important;
+    padding: 20px;
     /* No border radius for blocks! */
-    border-radius: 0px; 
-    border: 6px solid var(--border-color);
+    border-radius: 0px !important; 
+    border: 4px solid var(--border-color) !important;
     /* Hard blocky shadow */
-    box-shadow: 10px 10px 0px rgba(0, 0, 0, 0.4);
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.35);
     box-sizing: border-box;
+}
+
+.todo-card, .routine-board-row {
+    background: #E4C094 !important;
+    border: 3px solid var(--border-color) !important;
+    border-radius: 0px !important;
+}
+
+.routine-board-col {
+    background: #B37D49 !important;
+    border: 3px solid var(--border-color) !important;
+    border-radius: 0px !important;
 }
 
 /* Force the right sidebar container to stay invisible */
@@ -68,7 +115,7 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 }
 
 .dashboard-container {
-    max-width: 600px;
+    max-width: 100%;
     width: 100%;
     text-align: center;
     position: relative;
@@ -76,16 +123,16 @@ p.subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 20px; }
 
 .header {
     width: 100%;
-    max-width: 800px;
-    margin-bottom: 30px;
+    max-width: 100%;
+    margin-bottom: 20px;
 }
 
 #mainContainer {
     width: 100%;
-    max-width: 800px;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 30px;
+    gap: 24px;
 }
 
 #status:empty { display: none; }
@@ -273,4 +320,32 @@ input[list] {
     border-radius: 0px;
     box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.6);
     padding: 15px 20px;
+}
+
+@media (max-width: 768px) {
+    .dashboard-container, .header, .widget-panel, .sidebar, .modal-content, .card {
+        padding: 12px !important;
+        border-width: 3px !important;
+        box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.35);
+    }
+    .time-btn, .task-btn, .qt-btn, .action-btn, .ht-btn, .mode-btn, .modal-content button {
+        font-size: 16px;
+        border-width: 2px;
+        padding: 6px 10px;
+    }
+    select, input[type="datetime-local"], .modal-content input {
+        font-size: 16px;
+        padding: 6px 8px;
+        border-width: 2px;
+    }
+    .nav-tab {
+        font-size: 15px;
+        padding: 5px 4px;
+    }
+    .nav-icon-btn {
+        font-size: 14px;
+        padding: 4px 6px;
+    }
+    h2 { font-size: 24px; }
+    h3 { font-size: 20px; }
 }

@@ -43,7 +43,7 @@ export const state = {
         bulkCollapsedSections: {}
     },
 
-    // Boys' Allowance Ledger (1 pt = $0.01)
+    // Boys' Allowance Ledger (1 pt = $0.05 / 5 pts = $0.25)
     allowanceLedger: {
         ayden: { unpaidPoints: 0, payoutHistory: [] },
         dj: { unpaidPoints: 0, payoutHistory: [] }

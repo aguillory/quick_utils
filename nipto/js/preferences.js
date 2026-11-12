@@ -30,7 +30,7 @@ export async function loadCloudPreferences(uid) {
         if (cached) {
             const parsed = JSON.parse(cached);
             state.userPrefs = { ...state.userPrefs, ...parsed };
-            applyPrefsToState();
+            applyPrefsToState(uid);
         }
     } catch (e) {
         // non-blocking cache error
@@ -42,7 +42,7 @@ export async function loadCloudPreferences(uid) {
             state.userPrefs = { ...state.userPrefs, ...doc.data() };
             // Update local cache
             localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
-            applyPrefsToState();
+            applyPrefsToState(uid);
         }
     } catch (e) {
         console.error("Error loading cloud prefs:", e);
@@ -50,7 +50,7 @@ export async function loadCloudPreferences(uid) {
 }
 
 // Applies stored preferences to the reactive state
-function applyPrefsToState() {
+function applyPrefsToState(uid) {
     if (state.userPrefs.todoSort) state.todoSort = state.userPrefs.todoSort;
     if (state.userPrefs.todoGroupBy) state.todoGroupBy = state.userPrefs.todoGroupBy;
     if (state.userPrefs.todoTypeFilter) state.todoTypeFilter = state.userPrefs.todoTypeFilter;
@@ -60,6 +60,22 @@ function applyPrefsToState() {
     if (state.userPrefs.todoBucketFilter) state.todoBucketFilter = state.userPrefs.todoBucketFilter;
     if (state.userPrefs.todoFrictionFilter) state.todoFrictionFilter = state.userPrefs.todoFrictionFilter;
     if (state.userPrefs.todoView) state.todoView = state.userPrefs.todoView;
+
+    // Reconcile per-user shown/hidden Nipto dashboard tasks if saved in user_preferences
+    if (uid && Array.isArray(state.userPrefs.dashboardTaskUids) && state.userPrefs.dashboardTaskUids.length > 0 && Array.isArray(state.tasks)) {
+        const allowedSet = new Set(state.userPrefs.dashboardTaskUids);
+        state.tasks.forEach(task => {
+            const users = Array.isArray(task.dashboardUsers) ? [...task.dashboardUsers] : [];
+            const hasUid = users.includes(uid);
+            const shouldHaveUid = allowedSet.has(task.uid);
+            if (shouldHaveUid && !hasUid) {
+                users.push(uid);
+                task.dashboardUsers = users;
+            } else if (!shouldHaveUid && hasUid) {
+                task.dashboardUsers = users.filter(id => id !== uid);
+            }
+        });
+    }
 }
 
 // Saves a single preference key/value to Firestore, local state, and local cache.

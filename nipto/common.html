@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unified Nipto Dashboard</title>
-    <link rel="stylesheet" href="css/nipto-shared.css">
+    <link rel="stylesheet" href="css/nipto-shared.css?v=20261112a">
 </head>
 <body>
 
@@ -193,8 +193,8 @@
                                 View, search, individually edit, or batch triage household To-Dos, Projects, and Routines.
                             </div>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="manageSearchInput" placeholder="Filter / search..." oninput="filterManageList(this.value)" style="width: 200px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; box-sizing: border-box;">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="manageSearchInput" placeholder="Filter / search..." oninput="filterManageList(this.value)" style="flex: 1 1 140px; min-width: 120px; max-width: 220px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; box-sizing: border-box;">
                             <button type="button" class="action-btn save-mode" onclick="openTaskModal();" style="font-size: 12px; padding: 6px 12px;">
                                 + Add New
                             </button>
@@ -227,12 +227,23 @@
             <!-- TAB 3: NIPTO CHORES -->
             <section id="pane-nipto" style="display: none;">
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
                         <div>
                             <h3 style="margin: 0; font-size: 18px;">&#x1F535; Nipto Chores (Point-Earning Tasks)</h3>
                             <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                                 Generic repeatable point-earning chores loaded from Firestore cache.
                             </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" id="viewAllBtn" class="action-btn" onclick="toggleViewAllMode()" style="font-size: 12px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;" title="Toggle viewing all household chores vs. your personal dashboard">
+                                &#x1F441;&#xFE0F; View All Tasks
+                            </button>
+                            <button type="button" id="editBtn" class="action-btn" onclick="toggleEditMode()" style="font-size: 12px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;" title="Select which chores appear on your dashboard">
+                                &#x270F;&#xFE0F; Edit Dashboard
+                            </button>
+                            <button type="button" id="saveEditBtn" class="action-btn save-mode" onclick="saveEditMode()" style="display: none; font-size: 12px; padding: 6px 12px; align-items: center; gap: 5px;" title="Save your dashboard chore selections to Firestore">
+                                &#x2714; Save Changes
+                            </button>
                         </div>
                     </div>
 
@@ -792,7 +803,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="js/firebase-config.js"></script>
-    <script type="module" src="js/dashboard.js?v=20261111a"></script>
+    <script type="module" src="js/dashboard.js?v=20261112a"></script>
 
 </body>
 </html>

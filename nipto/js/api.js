@@ -340,6 +340,11 @@ export async function deleteActivityFromNipto(activityUid) {
     await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
 
     if (state.allWeekActivities) {
+        const removed = state.allWeekActivities.find(a => a.uid === activityUid);
+        if (removed && removed.user?.uid && removed.awardedPts) {
+            state.currentWeekScores[removed.user.uid] = Math.max(0, (state.currentWeekScores[removed.user.uid] || 0) - removed.awardedPts);
+            await revokeAllowancePoints(removed.user.uid, removed.awardedPts);
+        }
         state.allWeekActivities = state.allWeekActivities.filter(a => a.uid !== activityUid);
     }
     if (state.weeklyActivitiesForDone) {
@@ -356,6 +361,86 @@ export async function deleteActivityFromNipto(activityUid) {
     } catch (e) { /* ignore */ }
 
     pingActivitySignal();
+}
+
+/**
+ * Finds the best matching generic point-value task(s) in state.tasks for a given points value
+ * (or uses linkedNiptoTaskUid if provided), logs the activity to Nipto via GraphQL,
+ * saves the To-Do's title to saveActivityLabels(activityUids, taskTitle),
+ * and returns the array of created Nipto activity UIDs.
+ */
+export async function logCustomPointsToNipto(points, taskTitle, doerUids = null, dateIso = null, linkedNiptoTaskUid = null) {
+    if (!state.apiToken) return [];
+    const pts = Math.max(0, Math.round(Number(points) || 0));
+    if (pts <= 0) return [];
+
+    const activeDoers = (Array.isArray(doerUids) && doerUids.length > 0)
+        ? doerUids
+        : (state.activeUsers && state.activeUsers.length > 0 ? state.activeUsers : []);
+    if (activeDoers.length === 0) return [];
+
+    const targetIso = dateIso || new Date().toISOString();
+    const tasksPool = state.tasks || [];
+
+    // 1. If explicit linkedNiptoTaskUid is provided and exists in state.tasks, use it directly
+    if (linkedNiptoTaskUid && tasksPool.some(t => t.uid === linkedNiptoTaskUid)) {
+        const uids = await logActivityToNipto(linkedNiptoTaskUid, targetIso, activeDoers);
+        if (uids.length > 0 && taskTitle) {
+            await saveActivityLabels(uids, taskTitle);
+        }
+        return uids;
+    }
+
+    // 2. Gather generic "Assigned task..." entries (fallback to all tasks with value > 0)
+    let pointTasks = tasksPool.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task') && Number(t.value) > 0);
+    if (pointTasks.length === 0) {
+        pointTasks = tasksPool.filter(t => Number(t.value) > 0);
+    }
+    if (pointTasks.length === 0) return [];
+
+    // Sort descending by value for greedy decomposition if > 100 pts, or exact/nearest match
+    const byValueDesc = pointTasks.slice().sort((a, b) => Number(b.value) - Number(a.value));
+
+    const chosenTasks = [];
+    const exactMatch = byValueDesc.find(t => Number(t.value) === pts);
+    if (exactMatch) {
+        chosenTasks.push(exactMatch);
+    } else if (pts > 100) {
+        let remaining = pts;
+        while (remaining > 0) {
+            const fit = byValueDesc.find(t => Number(t.value) <= remaining) || byValueDesc[byValueDesc.length - 1];
+            if (!fit) break;
+            chosenTasks.push(fit);
+            remaining -= Number(fit.value);
+            if (chosenTasks.length >= 6) break; // safety cap
+        }
+    } else {
+        // Nearest generic point task by absolute difference
+        let nearest = byValueDesc[0];
+        let minDiff = Math.abs(Number(nearest.value) - pts);
+        for (const cand of byValueDesc) {
+            const diff = Math.abs(Number(cand.value) - pts);
+            if (diff < minDiff) {
+                minDiff = diff;
+                nearest = cand;
+            }
+        }
+        if (nearest) chosenTasks.push(nearest);
+    }
+
+    const allCreatedUids = [];
+    for (const chosen of chosenTasks) {
+        const uids = await logActivityToNipto(chosen.uid, targetIso, activeDoers);
+        if (uids && uids.length > 0) {
+            allCreatedUids.push(...uids);
+        }
+    }
+
+    if (allCreatedUids.length > 0 && taskTitle) {
+        await saveActivityLabels(allCreatedUids, taskTitle);
+    }
+
+    return allCreatedUids;
 }
 
 export async function updateFirestoreDocument(collection, docId, data) {
@@ -515,7 +600,7 @@ export async function saveActivityLabels(activityUids, name) {
 }
 
 // ==========================================
-// ALLOWANCE LEDGER (AYDEN & DJ: 1 PT = $0.01)
+// ALLOWANCE LEDGER (AYDEN & DJ: 1 PT = $0.05 / 5 PTS = $0.25)
 // ==========================================
 const AYDEN_UID = "NMRQaRQbvCwBaJbiMFId";
 const DJ_UID = "RMNUTP8VOHD9PDzNjf0g";
@@ -566,11 +651,27 @@ export async function awardAllowancePoints(userUid, points) {
     }
 }
 
+export async function revokeAllowancePoints(userUid, points) {
+    if (!points || points <= 0) return;
+    let modified = false;
+    if (userUid === AYDEN_UID) {
+        state.allowanceLedger.ayden.unpaidPoints = Math.max(0, (state.allowanceLedger.ayden.unpaidPoints || 0) - points);
+        modified = true;
+    } else if (userUid === DJ_UID) {
+        state.allowanceLedger.dj.unpaidPoints = Math.max(0, (state.allowanceLedger.dj.unpaidPoints || 0) - points);
+        modified = true;
+    }
+    if (modified) {
+        await saveAllowanceLedgerToFirestore();
+        if (window.renderAllowanceUI) window.renderAllowanceUI();
+    }
+}
+
 export async function payoutAllowance(boyKey, paidByName = "Admin") {
     const boy = state.allowanceLedger[boyKey];
     if (!boy || boy.unpaidPoints <= 0) return;
     const unpaid = boy.unpaidPoints;
-    const dollars = (unpaid * 0.01).toFixed(2);
+    const dollars = (unpaid * 0.05).toFixed(2);
     const entry = {
         id: "payout_" + Date.now(),
         timestamp: new Date().toISOString(),

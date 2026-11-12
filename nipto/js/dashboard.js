@@ -20,7 +20,8 @@ import {
 } from './leaderboard.js';
 import {
     deleteTaskActivity, populateTaskPointsSelect,
-    renderTasks, openQuickAddModal, closeQuickAddModal, submitQuickAdd
+    renderTasks, openQuickAddModal, closeQuickAddModal, submitQuickAdd,
+    toggleEditMode, saveEditMode, toggleViewAllMode, toggleViewAll, moveCategory
 } from './niptoTasks.js';
 import {
     renderTodoTasks, renderSidebarTodos, openTaskModal, editTask, saveTask,
@@ -146,6 +147,7 @@ Object.assign(window, {
     setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill,
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
+    toggleEditMode, saveEditMode, toggleViewAllMode, toggleViewAll, moveCategory,
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
     renderTodoTasks, renderSidebarTodos,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter,

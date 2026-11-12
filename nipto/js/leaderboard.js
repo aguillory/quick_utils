@@ -1,5 +1,5 @@
 // leaderboard.js
-// Weekly leaderboard, Boys' Allowance Bank (Ayden & DJ: 1 pt = $0.01),
+// Weekly leaderboard, Boys' Allowance Bank (Ayden & DJ: 5 pts = $0.25 / 1 pt = $0.05),
 // and "Done This Week" live + historical weekly completion feed.
 
 import { state, ALL_USERS } from './state.js';
@@ -65,14 +65,14 @@ export function renderAllowanceUI() {
     const ledger = state.allowanceLedger || { ayden: { unpaidPoints: 0, payoutHistory: [] }, dj: { unpaidPoints: 0, payoutHistory: [] } };
     const aydenUnpaid = ledger.ayden?.unpaidPoints || 0;
     const djUnpaid = ledger.dj?.unpaidPoints || 0;
-    const aydenDollars = (aydenUnpaid * 0.01).toFixed(2);
-    const djDollars = (djUnpaid * 0.01).toFixed(2);
+    const aydenDollars = (aydenUnpaid * 0.05).toFixed(2);
+    const djDollars = (djUnpaid * 0.05).toFixed(2);
 
     const html = `
     <div class="allowance-bank-box" style="margin-top: 15px; padding: 12px; border-radius: 10px; background: rgba(37, 99, 235, 0.04); border: 1px solid rgba(37, 99, 235, 0.2);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
             <h4 style="margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--primary);">
-                &#x1F4B0; Boys' Allowance Bank (1 pt = $0.01)
+                &#x1F4B0; Boys' Allowance Bank (5 pts = $0.25)
             </h4>
             <button class="action-btn" onclick="togglePayoutHistory()" style="padding: 2px 8px; font-size: 11px;">
                 History &#x25BC;
@@ -175,7 +175,7 @@ export async function payoutBoy(boyKey) {
         return;
     }
 
-    const dollars = (boy.unpaidPoints * 0.01).toFixed(2);
+    const dollars = (boy.unpaidPoints * 0.05).toFixed(2);
     if (!confirm(`Mark ${boyName} as paid up for $${dollars} (${boy.unpaidPoints} pts)?`)) return;
 
     const currentUserName = ALL_USERS.find(u => u.uid === state.activeUsers[0])?.name || 'Admin';

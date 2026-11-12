@@ -874,20 +874,37 @@ export async function applyUnifiedStagingToFirestore() {
                     });
                 }
             } else if (id) {
+                const existingTodo = state.todoTasksData?.find(t => t.id === id);
+                const pts = item.points || existingTodo?.points || 5;
+                let activityUids = [];
+                try {
+                    activityUids = await api.logCustomPointsToNipto(
+                        pts,
+                        item.title || existingTodo?.name || 'To-Do',
+                        [doerUid],
+                        nowIso,
+                        existingTodo?.linkedNiptoTask || null
+                    );
+                } catch (niptoErr) {
+                    console.warn("Could not log Brain Dump To-Do points to Nipto API:", niptoErr);
+                }
                 batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                     completed: true,
                     completedAt: nowIso,
                     completedBy: [doerUid],
+                    completedActivityUids: activityUids,
+                    completedActivityUid: activityUids[0] || null,
                     lastReviewedAt: nowIso,
                     updatedAt: nowIso
                 });
-                const pts = item.points || 5;
-                if (pts > 0) api.awardAllowancePoints(doerUid, pts);
+                if (pts > 0 && activityUids.length === 0) {
+                    api.awardAllowancePoints(doerUid, pts);
+                }
                 await api.recordDailyCompletion({
                     id: `todo_${id}`,
                     itemId: id,
                     sourceType: 'todo',
-                    title: item.title,
+                    title: item.title || existingTodo?.name || 'To-Do',
                     user: doerName,
                     userUid: doerUid,
                     points: pts,
@@ -975,6 +992,7 @@ export async function applyUnifiedStagingToFirestore() {
         renderTodoTasks();
         renderRollingSchedule();
         renderBulkTriageList();
+        updateLeaderboardUI();
     } catch (err) {
         console.error("Batch update error:", err);
         alert("Failed to apply changes: " + err.message);
@@ -1220,23 +1238,25 @@ export function renderBulkTriageList() {
         });
 
         return `
-        <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isCompleted ? 'var(--bg-color)' : 'transparent')}; opacity: ${isCompleted ? 0.6 : 1};">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)" title="Select for bulk action">
-
-                <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
-                    ${isCompleted ? '&#x2714;' : ''}
-                </button>
+        <div class="bulk-triage-row" style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isCompleted ? 'var(--bg-color)' : 'transparent')}; opacity: ${isCompleted ? 0.65 : 1};">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <label class="bulk-select-cb-wrap" title="Select item for batch editing">
+                    <input type="checkbox" class="bulk-select-cb" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('todo', '${t.id}', this.checked)">
+                    <span class="bulk-select-label">Select</span>
+                </label>
 
                 <input type="text" value="${escapeHtml(t.name)}" onchange="updateInlineTaskField('todo', '${t.id}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); text-decoration: ${isCompleted ? 'line-through' : 'none'}; box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
 
-                <div style="display: flex; gap: 6px; align-items: center;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
+                    <button type="button" class="btn-row-complete ${isCompleted ? 'is-done' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark chore complete and award points'}">
+                        ${isCompleted ? '&#x2714; Done (Undo)' : '&#x2714; Mark Done'}
+                    </button>
                     <button type="button" class="action-btn" onclick="editTask('${t.id}')" title="Full Edit Modal" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
                     <button type="button" class="action-btn" onclick="deleteTask('${t.id}')" title="Delete Task" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
                 </div>
             </div>
 
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
+            <div class="bulk-row-meta" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 58px; font-size: 12px;">
                 <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
                     Type:
                     <select onchange="updateInlineTaskField('todo', '${t.id}', 'type', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
@@ -1269,7 +1289,7 @@ export function renderBulkTriageList() {
                 </button>
             </div>
 
-            <div id="bulk-desc-${t.id}" style="display: none; margin-left: 56px; margin-top: 4px;">
+            <div id="bulk-desc-${t.id}" class="bulk-row-meta" style="display: none; margin-left: 58px; margin-top: 4px;">
                 <input type="text" value="${escapeHtml(t.description || '')}" placeholder="Optional details/description..." onchange="updateInlineTaskField('todo', '${t.id}', 'description', this.value)" style="width: 100%; padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
             </div>
         </div>
@@ -1296,23 +1316,25 @@ export function renderBulkTriageList() {
         });
 
         return `
-        <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isDoneToday ? 'var(--bg-color)' : 'transparent')}; opacity: ${isDoneToday ? 0.7 : 1};">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)" title="Select for bulk action">
-
-                <button type="button" class="item-checkbox ${isDoneToday ? 'checked' : ''}" onclick="${toggleRoutineCall}" title="${isDoneToday ? 'Completed today - click to undo' : 'Mark done today'}" style="margin: 0; width: 18px; height: 18px; font-size: 11px;">
-                    ${isDoneToday ? '&#x2714;' : ''}
-                </button>
+        <div class="bulk-triage-row" style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; border-bottom: 1px solid var(--border-color); background: ${isChecked ? 'rgba(37, 99, 235, 0.05)' : (isDoneToday ? 'var(--bg-color)' : 'transparent')}; opacity: ${isDoneToday ? 0.7 : 1};">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <label class="bulk-select-cb-wrap" title="Select routine for batch editing">
+                    <input type="checkbox" class="bulk-select-cb" ${isChecked ? 'checked' : ''} onchange="toggleBulkItem('routine', '${r.uid}', this.checked)">
+                    <span class="bulk-select-label">Select</span>
+                </label>
 
                 <input type="text" value="${escapeHtml(r.name)}" onchange="updateInlineTaskField('routine', '${r.uid}', 'name', this.value)" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); text-decoration: ${isDoneToday ? 'line-through' : 'none'}; box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">
 
-                <div style="display: flex; gap: 6px; align-items: center;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
+                    <button type="button" class="btn-row-complete ${isDoneToday ? 'is-done' : ''}" onclick="${toggleRoutineCall}" title="${isDoneToday ? 'Completed today - click to undo' : 'Mark routine done today'}">
+                        ${isDoneToday ? '&#x2714; Done (Undo)' : '&#x2714; Mark Done'}
+                    </button>
                     <button type="button" class="action-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="padding: 4px 8px; font-size: 11px;">&#x270E;</button>
                     <button type="button" class="action-btn" onclick="deleteRoutine('${r.uid}')" title="Delete Routine" style="padding: 4px 8px; font-size: 11px; color: var(--danger);">&#x1F5D1;</button>
                 </div>
             </div>
 
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 56px; font-size: 12px;">
+            <div class="bulk-row-meta" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 58px; font-size: 12px;">
                 <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
                     Schedule:
                     <select onchange="updateRoutineScheduleInline('${r.uid}', this.value)" style="padding: 2px 5px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color);">
@@ -1612,18 +1634,39 @@ export async function executeBulkAction(actionType) {
         const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
 
         for (const id of todoIds) {
+            const t = state.todoTasksData?.find(item => item.id === id);
+            const pts = t ? (Number(t.points) || 5) : 5;
+            let activityUids = [];
+            try {
+                activityUids = await api.logCustomPointsToNipto(
+                    pts,
+                    t ? t.name : 'To-Do',
+                    [doerUid],
+                    nowIso,
+                    t?.linkedNiptoTask || null
+                );
+            } catch (niptoErr) {
+                console.warn("Could not log bulk To-Do points to Nipto API:", niptoErr);
+            }
+
             batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                 completed: true,
                 completedAt: nowIso,
                 completedBy: [doerUid],
+                completedActivityUids: activityUids,
+                completedActivityUid: activityUids[0] || null,
                 lastReviewedAt: nowIso,
                 updatedAt: nowIso
             });
-            const t = state.todoTasksData?.find(item => item.id === id);
             if (t) {
                 t.completed = true;
                 t.completedAt = nowIso;
                 t.completedBy = [doerUid];
+                t.completedActivityUids = activityUids;
+                t.completedActivityUid = activityUids[0] || null;
+            }
+            if (pts > 0 && activityUids.length === 0) {
+                await api.awardAllowancePoints(doerUid, pts);
             }
             await api.recordDailyCompletion({
                 id: `todo_${id}`,
@@ -1632,7 +1675,7 @@ export async function executeBulkAction(actionType) {
                 title: t ? t.name : 'To-Do',
                 user: doerName,
                 userUid: doerUid,
-                points: t ? (t.points || 5) : 5,
+                points: pts,
                 completedAt: nowIso,
                 dateKey: todayKey
             });
@@ -1645,6 +1688,7 @@ export async function executeBulkAction(actionType) {
         renderDoneTodayFeed();
         renderBulkTriageList();
         renderTodoTasks();
+        updateLeaderboardUI();
     } else if (actionType === 'assign') {
         const userPrompt = prompt("Assign to which user? Enter name (Alyssa, Devyn, Carrina, Kenny, Ayden, DJ) or 'Anyone':", "Anyone");
         if (!userPrompt) return;
