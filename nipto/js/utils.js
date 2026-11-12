@@ -125,6 +125,22 @@ export function savePin(onSuccessCallback) {
     const pinModal = document.getElementById('pinModal');
     if (pinModal) pinModal.style.display = 'none';
     if (onSuccessCallback) onSuccessCallback();
+
+    // Trigger repair upon PIN unlock if any chores were pending points
+    import('./api.js').then(({ repairMissingNiptoPoints }) => {
+        repairMissingNiptoPoints().then(res => {
+            if (res && res.repairedCount > 0) {
+                import('./toast.js').then(({ showToast }) => {
+                    showToast("points_repair", `Repaired ${res.repairedCount} chores and restored ${res.totalPoints} points!`, res.totalPoints, "Nipto Repair");
+                });
+                import('./leaderboard.js').then(({ updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed }) => {
+                    updateLeaderboardUI();
+                    rebuildCompletedToday();
+                    renderDoneTodayFeed();
+                });
+            }
+        }).catch(e => console.warn("Repair on PIN unlock error:", e));
+    });
 }
 
 // Formats a Date for a datetime-local input.

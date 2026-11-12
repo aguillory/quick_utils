@@ -221,6 +221,18 @@ async function startDashboardData() {
         rebuildCompletedThisWeek();
         renderDoneThisWeekFeed();
 
+        // Automatically detect and repair any chores completed without Nipto API points
+        if (state.apiToken) {
+            api.repairMissingNiptoPoints().then(res => {
+                if (res && res.repairedCount > 0) {
+                    showToast("points_repair", `Repaired ${res.repairedCount} chores and restored ${res.totalPoints} points!`, res.totalPoints, "Nipto Repair");
+                    updateLeaderboardUI();
+                    rebuildCompletedToday();
+                    renderDoneTodayFeed();
+                }
+            }).catch(e => console.warn("Background points repair error:", e));
+        }
+
         handleUrlQuickActions();
     } catch (e) {
         console.error("Dashboard initialization error:", e);

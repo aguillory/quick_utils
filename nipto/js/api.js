@@ -443,6 +443,122 @@ export async function logCustomPointsToNipto(points, taskTitle, doerUids = null,
     return allCreatedUids;
 }
 
+// Scans completed custom_tasks and routines for items stored as completed without corresponding Nipto API activity,
+// and automatically logs them to Nipto and awards their points once unlocked.
+export async function repairMissingNiptoPoints() {
+    if (!state.apiToken) return { repairedCount: 0, totalPoints: 0 };
+
+    let repairedCount = 0;
+    let totalPoints = 0;
+    const nowIso = new Date().toISOString();
+
+    try {
+        // 1. Repair completed custom_tasks (To-Dos) lacking Nipto activity UIDs
+        const todoSnap = await window.getNiptoCollection('custom_tasks').where('completed', '==', true).get();
+        for (const doc of todoSnap.docs) {
+            const data = doc.data();
+            const actUids = Array.isArray(data.completedActivityUids) ? data.completedActivityUids : (data.completedActivityUid ? [data.completedActivityUid] : []);
+            if (actUids.length === 0) {
+                const pts = Number(data.points) || 5;
+                const doerUids = (Array.isArray(data.completedBy) && data.completedBy.length > 0)
+                    ? data.completedBy
+                    : (Array.isArray(data.assignees) && data.assignees.length > 0 ? data.assignees : [state.activeUsers[0] || ALL_USERS[0].uid]);
+                const compDateIso = data.completedAt || nowIso;
+
+                console.log(`[Points Repair] Logging missing To-Do to Nipto: "${data.name}" (${pts} pts) for [${doerUids.join(', ')}]`);
+                try {
+                    const createdUids = await logCustomPointsToNipto(pts, data.name, doerUids, compDateIso, data.linkedNiptoTask || null);
+                    if (createdUids && createdUids.length > 0) {
+                        await doc.ref.update({
+                            points: pts,
+                            completedActivityUids: createdUids,
+                            completedActivityUid: createdUids[0] || null,
+                            repairedAt: nowIso
+                        });
+                        repairedCount++;
+                        totalPoints += pts;
+
+                        // Also ensure daily_completions record exists and has non-zero points
+                        const dateKey = getLocalTodayKey(new Date(compDateIso));
+                        const doerName = doerUids.map(u => ALL_USERS.find(usr => usr.uid === u)?.name || 'Someone').join(', ');
+                        await recordDailyCompletion({
+                            id: `todo_${doc.id}`,
+                            itemId: doc.id,
+                            sourceType: 'todo',
+                            title: data.name,
+                            user: doerName,
+                            userUid: doerUids[0],
+                            points: pts,
+                            completedAt: compDateIso,
+                            dateKey: dateKey
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`[Points Repair] Failed to log To-Do "${data.name}":`, e);
+                }
+            }
+        }
+
+        // 2. Repair routine completions completed without points (or without Nipto activity)
+        const routineSnap = await window.getNiptoCollection('routines').get();
+        for (const rDoc of routineSnap.docs) {
+            const rData = rDoc.data();
+            const completions = rData.completionsByDate || {};
+            let routineModified = false;
+            const updatedCompletions = { ...completions };
+
+            for (const [dateKey, comp] of Object.entries(completions)) {
+                // Focus on completions from this week or current month that have a linked Nipto task but no activity logged
+                if (comp && comp.withoutPoints === false && rData.linkedNiptoTask && dateKey >= '2026-11-01') {
+                    // Check if an activity exists in activities_history for this routine + dateKey + user
+                    const doerUid = comp.completedByUid || (Array.isArray(rData.assignees) ? rData.assignees[0] : ALL_USERS[0].uid);
+                    const alreadyArchived = (state.allWeekActivities || []).some(a => {
+                        const aDateKey = a.date ? getLocalTodayKey(new Date(a.date)) : '';
+                        return aDateKey === dateKey && (a.task?.uid === rData.linkedNiptoTask || a.task?.name === rData.name);
+                    });
+
+                    if (!alreadyArchived && !comp.niptoActivityUid) {
+                        const pts = rData.points || 15;
+                        const compIso = comp.completedAt || new Date(`${dateKey}T12:00:00`).toISOString();
+                        console.log(`[Points Repair] Logging routine completion to Nipto: "${rData.name}" (${pts} pts) on ${dateKey}`);
+                        try {
+                            const uids = await logActivityToNipto(rData.linkedNiptoTask, compIso, [doerUid]);
+                            if (uids && uids.length > 0) {
+                                updatedCompletions[dateKey] = {
+                                    ...comp,
+                                    niptoActivityUid: uids[0],
+                                    repairedAt: nowIso
+                                };
+                                routineModified = true;
+                                repairedCount++;
+                                totalPoints += pts;
+                            }
+                        } catch (re) {
+                            console.warn(`[Points Repair] Failed to log routine "${rData.name}" on ${dateKey}:`, re);
+                        }
+                    }
+                }
+            }
+
+            if (routineModified) {
+                await rDoc.ref.update({
+                    completionsByDate: updatedCompletions,
+                    updatedAt: nowIso
+                });
+            }
+        }
+
+        if (repairedCount > 0) {
+            console.log(`[Points Repair Complete] Successfully repaired ${repairedCount} chores, awarding ${totalPoints} points.`);
+            pingActivitySignal();
+        }
+    } catch (err) {
+        console.error("[Points Repair] Error scanning/repairing missing points:", err);
+    }
+
+    return { repairedCount, totalPoints };
+}
+
 export async function updateFirestoreDocument(collection, docId, data) {
     await window.getNiptoCollection(collection).doc(docId).update(data);
 }
