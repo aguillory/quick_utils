@@ -559,6 +559,275 @@ export async function repairMissingNiptoPoints() {
     return { repairedCount, totalPoints };
 }
 
+let isReconcilingNipto = false;
+let lastReconcileTime = 0;
+
+/**
+ * Reconciles external chore completions from the official Nipto app into Firestore.
+ * Queries Nipto GraphQL for recent activities, cross-checks against Firestore activities_history,
+ * and backfills any missing activities into activities_history, daily_completions, and allowance ledger.
+ */
+export async function reconcileNiptoActivitiesToFirestore(force = false) {
+    if (isReconcilingNipto) {
+        console.log("[Nipto Reconcile] Sync already in progress, skipping.");
+        return { reconciledCount: 0, newPoints: 0 };
+    }
+
+    const now = Date.now();
+    if (!force && (now - lastReconcileTime < 45000)) {
+        return { reconciledCount: 0, newPoints: 0 };
+    }
+
+    const apiToken = localStorage.getItem("nipto_api_token") || state.apiToken;
+    if (!apiToken) {
+        console.warn("[Nipto Reconcile] Skipped: No API token available (unlock required).");
+        return { reconciledCount: 0, newPoints: 0 };
+    }
+
+    isReconcilingNipto = true;
+    lastReconcileTime = now;
+
+    let reconciledCount = 0;
+    let newPoints = 0;
+
+    try {
+        const QUERY = `
+            query GetRecentActivities {
+                activities {
+                    uid
+                    date
+                    draft
+                    user {
+                        uid
+                        name
+                    }
+                    task {
+                        uid
+                        name
+                        value
+                    }
+                }
+            }
+        `;
+
+        const data = await fetchNipto(QUERY);
+        const activities = (data && Array.isArray(data.activities)) ? data.activities : [];
+        const validActivities = activities.filter(act => act && act.uid && !act.draft);
+
+        if (validActivities.length === 0) {
+            isReconcilingNipto = false;
+            return { reconciledCount: 0, newPoints: 0 };
+        }
+
+        // Determine date range for single-pass lookup against Firestore activities_history
+        let oldestDate = new Date();
+        validActivities.forEach(a => {
+            if (a.date) {
+                const d = new Date(a.date);
+                if (!isNaN(d.getTime()) && d < oldestDate) oldestDate = d;
+            }
+        });
+        const minDateIso = new Date(oldestDate.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+        const existingSnap = await window.getNiptoCollection('activities_history')
+            .where('date', '>=', minDateIso)
+            .get();
+
+        const existingUids = new Set(existingSnap.docs.map(doc => doc.id));
+
+        // Filter activities that do not yet exist in Firestore
+        const missingActivities = validActivities.filter(act => !existingUids.has(act.uid));
+
+        if (missingActivities.length === 0) {
+            isReconcilingNipto = false;
+            return { reconciledCount: 0, newPoints: 0 };
+        }
+
+        console.log(`[Nipto Reconcile] Found ${missingActivities.length} activities in Nipto not yet recorded in Firestore.`);
+
+        const currentWeekBounds = getLocalWeekBounds(new Date(), 0);
+        const labels = state.activityLabels || {};
+        let batch = window.db.batch();
+        let opCount = 0;
+        const dailyItemsByDateKey = {};
+
+        for (const act of missingActivities) {
+            const actDate = act.date ? new Date(act.date) : new Date();
+            const dateKey = getLocalTodayKey(actDate);
+            const weekUid = getWeekUidForDate(actDate);
+            const pts = (act.task && act.task.value) ? act.task.value : 0;
+
+            let uName = (act.user && act.user.name) ? act.user.name : "Unknown";
+            if (uName === "Alyssa M") uName = "Alyssa";
+            const knownUser = ALL_USERS.find(u => (act.user && act.user.uid && u.uid === act.user.uid) || (uName && u.name.toLowerCase() === uName.toLowerCase()));
+            const userUid = (act.user && act.user.uid) ? act.user.uid : (knownUser ? knownUser.uid : "");
+            const userName = (knownUser ? knownUser.name : uName) || "Unknown";
+            const taskName = (act.task && act.task.name) ? act.task.name : "Activity";
+            const taskUid = (act.task && act.task.uid) ? act.task.uid : "";
+            const customLabel = labels[act.uid] || "";
+
+            // 1. Write to activities_history
+            const actDocRef = window.getNiptoCollection('activities_history').doc(act.uid);
+            const historyRecord = {
+                uid: act.uid,
+                date: actDate.toISOString(),
+                dateKey: dateKey,
+                userName: userName,
+                userUid: userUid,
+                taskName: taskName,
+                taskValue: pts,
+                awardedPts: pts,
+                label: customLabel,
+                weekUid: weekUid || "",
+                reconciledFromNipto: true
+            };
+            batch.set(actDocRef, historyRecord, { merge: true });
+            opCount++;
+
+            // 2. Queue for daily_completions
+            const dailyItemId = `nipto_${taskUid || 'act'}_${userUid}_${act.uid}`;
+            const dailyEntry = {
+                id: dailyItemId,
+                itemId: taskUid || act.uid,
+                sourceType: 'nipto',
+                title: taskName,
+                points: pts,
+                user: userName,
+                userUid: userUid,
+                completedAt: actDate.toISOString(),
+                dateKey: dateKey,
+                activityUid: act.uid
+            };
+
+            if (!dailyItemsByDateKey[dateKey]) dailyItemsByDateKey[dateKey] = {};
+            dailyItemsByDateKey[dateKey][dailyItemId] = dailyEntry;
+
+            // Update in-memory daily completions cache
+            if (!state.persistedDailyCompletions) state.persistedDailyCompletions = [];
+            const existingIdx = state.persistedDailyCompletions.findIndex(it => it.id === dailyItemId);
+            if (existingIdx !== -1) {
+                state.persistedDailyCompletions[existingIdx] = { ...state.persistedDailyCompletions[existingIdx], ...dailyEntry };
+            } else {
+                state.persistedDailyCompletions.unshift(dailyEntry);
+            }
+
+            // 3. Award allowance points if this is current week and user is Ayden or DJ
+            if (pts > 0 && isDateInLocalWeek(actDate, currentWeekBounds)) {
+                if (userUid === AYDEN_UID || userUid === DJ_UID) {
+                    await awardAllowancePoints(userUid, pts);
+                }
+            }
+
+            // 4. Update in-memory week state if within current week
+            if (isDateInLocalWeek(actDate, currentWeekBounds)) {
+                if (!state.allWeekActivities.some(a => a.uid === act.uid)) {
+                    state.allWeekActivities.unshift({
+                        uid: act.uid,
+                        date: actDate.toISOString(),
+                        parsedDate: actDate,
+                        user: { uid: userUid, name: userName },
+                        task: { uid: taskUid, name: taskName, value: pts },
+                        awardedPts: pts,
+                        label: customLabel,
+                        weekUid: weekUid
+                    });
+                }
+                if (userUid) {
+                    state.currentWeekScores[userUid] = (state.currentWeekScores[userUid] || 0) + pts;
+                }
+            }
+
+            // 5. Check if this activity matches a linked routine
+            if (taskUid) {
+                const matchingRoutine = (state.routines || []).find(r => r.linkedNiptoTask === taskUid);
+                if (matchingRoutine) {
+                    matchingRoutine.completionsByDate = matchingRoutine.completionsByDate || {};
+                    if (!matchingRoutine.completionsByDate[dateKey]) {
+                        matchingRoutine.completionsByDate[dateKey] = {
+                            dateKey: dateKey,
+                            completedAt: actDate.toISOString(),
+                            completedBy: userName,
+                            completedByUid: userUid,
+                            points: pts,
+                            withoutPoints: false,
+                            niptoActivityUid: act.uid
+                        };
+                        window.getNiptoCollection('routines').doc(matchingRoutine.uid).update({
+                            [`completionsByDate.${dateKey}`]: matchingRoutine.completionsByDate[dateKey],
+                            updatedAt: new Date().toISOString()
+                        }).catch(e => console.warn(`Could not sync routine completion for ${matchingRoutine.name}:`, e));
+                    }
+                }
+
+                // Check if this activity matches a linked custom To-Do
+                const matchingTodo = (state.todoTasksData || []).find(t => t.linkedNiptoTask === taskUid && !t.completed);
+                if (matchingTodo) {
+                    matchingTodo.completed = true;
+                    matchingTodo.completedAt = actDate.toISOString();
+                    matchingTodo.completedBy = [userUid];
+                    matchingTodo.completedActivityUids = [act.uid];
+                    matchingTodo.completedActivityUid = act.uid;
+                    window.getNiptoCollection('custom_tasks').doc(matchingTodo.id).update({
+                        completed: true,
+                        completedAt: actDate.toISOString(),
+                        completedBy: [userUid],
+                        completedActivityUids: [act.uid],
+                        completedActivityUid: act.uid
+                    }).catch(e => console.warn(`Could not sync To-Do completion for ${matchingTodo.name}:`, e));
+                }
+            }
+
+            reconciledCount++;
+            newPoints += pts;
+
+            if (opCount >= 450) {
+                await batch.commit();
+                batch = window.db.batch();
+                opCount = 0;
+            }
+        }
+
+        // Commit queued daily_completions docs
+        for (const [dKey, itemsMap] of Object.entries(dailyItemsByDateKey)) {
+            const dailyDocRef = window.getNiptoCollection('daily_completions').doc(dKey);
+            batch.set(dailyDocRef, {
+                dateKey: dKey,
+                updatedAt: new Date().toISOString(),
+                items: itemsMap
+            }, { merge: true });
+            opCount++;
+            if (opCount >= 450) {
+                await batch.commit();
+                batch = window.db.batch();
+                opCount = 0;
+            }
+        }
+
+        if (opCount > 0) {
+            await batch.commit();
+        }
+
+        if (reconciledCount > 0) {
+            console.log(`[Nipto Reconcile Complete] Reconciled ${reconciledCount} activities (+${newPoints} pts) from Nipto into Firestore.`);
+            if (window.updateLeaderboardUI) window.updateLeaderboardUI();
+            if (window.rebuildCompletedToday) window.rebuildCompletedToday();
+            if (window.renderDoneTodayFeed) window.renderDoneTodayFeed();
+            if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();
+            if (window.renderDoneThisWeekFeed) window.renderDoneThisWeekFeed();
+            if (window.renderRollingSchedule) window.renderRollingSchedule();
+            if (window.renderTodoTasks) window.renderTodoTasks();
+            if (window.renderAllowanceUI) window.renderAllowanceUI();
+            pingActivitySignal();
+        }
+    } catch (err) {
+        console.warn("[Nipto Reconcile] Error reconciling activities from Nipto:", err);
+    } finally {
+        isReconcilingNipto = false;
+    }
+
+    return { reconciledCount, newPoints };
+}
+
 export async function updateFirestoreDocument(collection, docId, data) {
     await window.getNiptoCollection(collection).doc(docId).update(data);
 }

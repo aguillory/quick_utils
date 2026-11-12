@@ -126,8 +126,16 @@ export function savePin(onSuccessCallback) {
     if (pinModal) pinModal.style.display = 'none';
     if (onSuccessCallback) onSuccessCallback();
 
-    // Trigger repair upon PIN unlock if any chores were pending points
-    import('./api.js').then(({ repairMissingNiptoPoints }) => {
+    // Trigger repair and Nipto activity reconciliation upon PIN unlock
+    import('./api.js').then(({ repairMissingNiptoPoints, reconcileNiptoActivitiesToFirestore }) => {
+        reconcileNiptoActivitiesToFirestore(true).then(rRes => {
+            if (rRes && rRes.reconciledCount > 0) {
+                import('./toast.js').then(({ showToast }) => {
+                    showToast("reconcile_ok", `Reconciled ${rRes.reconciledCount} activities from Nipto (+${rRes.newPoints} pts)!`, rRes.newPoints, "Nipto Sync");
+                });
+            }
+        }).catch(e => console.warn("Reconcile on PIN unlock error:", e));
+
         repairMissingNiptoPoints().then(res => {
             if (res && res.repairedCount > 0) {
                 import('./toast.js').then(({ showToast }) => {

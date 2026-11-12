@@ -176,7 +176,8 @@ Object.assign(window, {
     setDoneTodayView, changeDoneWeekOffset, resetDoneWeekToCurrent,
     rebuildCompletedThisWeek, renderDoneThisWeekFeed,
     rebuildCompletedToday, renderDoneTodayFeed,
-    sendChatMessage, editChatMessage, deleteChatMessage
+    sendChatMessage, editChatMessage, deleteChatMessage,
+    reconcileNiptoActivitiesToFirestore: api.reconcileNiptoActivitiesToFirestore
 });
 
 window.submitPin = async () => {
@@ -190,8 +191,13 @@ window.runSync = async () => {
     await api.syncNiptoTasks();
     await api.loadTasksFromFirestore();
     renderTasks();
+    const reconcileRes = await api.reconcileNiptoActivitiesToFirestore(true);
     if (statusText) statusText.innerText = "";
-    showToast("sync_ok", "Nipto tasks synchronized successfully!", 0, "");
+    if (reconcileRes && reconcileRes.reconciledCount > 0) {
+        showToast("sync_ok", `Synced Nipto tasks and reconciled ${reconcileRes.reconciledCount} external activities!`, reconcileRes.newPoints, "Nipto Sync");
+    } else {
+        showToast("sync_ok", "Nipto tasks synchronized successfully!", 0, "");
+    }
 };
 
 // ==========================================
@@ -221,8 +227,14 @@ async function startDashboardData() {
         rebuildCompletedThisWeek();
         renderDoneThisWeekFeed();
 
-        // Automatically detect and repair any chores completed without Nipto API points
+        // Automatically reconcile activities from Nipto and repair any chores completed without Nipto API points
         if (state.apiToken) {
+            api.reconcileNiptoActivitiesToFirestore().then(res => {
+                if (res && res.reconciledCount > 0) {
+                    showToast("reconcile_ok", `Reconciled ${res.reconciledCount} activities from Nipto (+${res.newPoints} pts)!`, res.newPoints, "Nipto Sync");
+                }
+            }).catch(e => console.warn("Background Nipto activity reconcile error:", e));
+
             api.repairMissingNiptoPoints().then(res => {
                 if (res && res.repairedCount > 0) {
                     showToast("points_repair", `Repaired ${res.repairedCount} chores and restored ${res.totalPoints} points!`, res.totalPoints, "Nipto Repair");
@@ -316,3 +328,16 @@ api.checkAuth(
     () => { document.getElementById('pinModal').style.display = 'flex'; },
     (err) => { console.error("Database Auth Failed:", err); }
 );
+
+// Periodic and visibility-based background reconciliation from Nipto -> Firestore
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && (state.apiToken || localStorage.getItem("nipto_api_token"))) {
+        api.reconcileNiptoActivitiesToFirestore().catch(e => console.warn("Visibility reconcile error:", e));
+    }
+});
+
+setInterval(() => {
+    if (state.apiToken || localStorage.getItem("nipto_api_token")) {
+        api.reconcileNiptoActivitiesToFirestore().catch(e => console.warn("Periodic reconcile error:", e));
+    }
+}, 4 * 60 * 1000);
