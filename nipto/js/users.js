@@ -188,3 +188,4 @@ window.toggleUserDropdown = toggleUserDropdown;
 window.selectUserFromDropdown = selectUserFromDropdown;
 window.toggleTogetherMode = toggleTogetherMode;
 window.renderActiveUserPill = renderActiveUserPill;
+window.renderUserDropdownMenu = renderUserDropdownMenu;

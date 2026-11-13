@@ -56,7 +56,7 @@ import {
 } from './braindump.js';
 import {
     initUsers, setActiveUser, toggleTogetherMode,
-    toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill
+    toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill, renderUserDropdownMenu
 } from './users.js';
 import {
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection
@@ -144,7 +144,7 @@ async function handleUrlQuickActions() {
 // Window bindings for inline HTML onclick/onchange/onfocus handlers
 Object.assign(window, {
     switchNavTab,
-    setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill,
+    setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill, renderUserDropdownMenu,
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
     toggleEditMode, saveEditMode, toggleViewAllMode, toggleViewAll, moveCategory,
@@ -273,7 +273,7 @@ async function startDashboardData() {
             api.loadAllowanceLedgerFromFirestore(),
             api.loadIntegrationsConfigFromFirestore(),
             api.loadNotificationPreferencesFromFirestore(),
-            api.loadWeeklyPointsFromFirestore()
+            api.loadWeeklyCompletionsFromFirestore(0)
         ]);
 
         await initUsers();
@@ -282,7 +282,9 @@ async function startDashboardData() {
         renderTasks();
         renderAllowanceUI();
         drawLeaderboard(state.currentWeekScores, false);
-        await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
+        if ((state.doneWeekOffset || 0) !== 0) {
+            await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset);
+        }
         rebuildCompletedThisWeek();
         renderDoneThisWeekFeed();
 

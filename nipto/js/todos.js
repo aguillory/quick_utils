@@ -1136,7 +1136,8 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 userUid: doerUid,
                 points: pts,
                 completedAt: nowIso,
-                dateKey: getLocalTodayKey()
+                dateKey: getLocalTodayKey(),
+                ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
             });
         } else {
             todo.completedActivityUids = [];
@@ -1152,11 +1153,15 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 updatedAt: nowIso
             });
 
+            const prevDateKey = prevCompletedAt ? getLocalTodayKey(new Date(prevCompletedAt)) : null;
             if (prevActivityUids.length > 0) {
                 for (const actUid of prevActivityUids) {
                     try {
                         await api.deleteActivityFromNipto(actUid);
                         await api.removeDailyCompletion(`nipto_${actUid}`, getLocalTodayKey());
+                        if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+                            await api.removeDailyCompletion(`nipto_${actUid}`, prevDateKey);
+                        }
                     } catch (delErr) {
                         console.warn(`Could not delete Nipto activity ${actUid}:`, delErr);
                     }
@@ -1172,11 +1177,8 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
             }
 
             await api.removeDailyCompletion(`todo_${taskId}`, getLocalTodayKey());
-            if (prevCompletedAt) {
-                const prevDateKey = getLocalTodayKey(new Date(prevCompletedAt));
-                if (prevDateKey !== getLocalTodayKey()) {
-                    await api.removeDailyCompletion(`todo_${taskId}`, prevDateKey);
-                }
+            if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+                await api.removeDailyCompletion(`todo_${taskId}`, prevDateKey);
             }
             showToast("todo_undo", `Unchecked "${todo.name}"`, 0, "");
         }

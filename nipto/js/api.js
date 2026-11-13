@@ -245,8 +245,10 @@ export async function archiveActivitiesToFirestore(activities) {
             const userUid = (act.user && act.user.uid) ? act.user.uid : (knownUser ? knownUser.uid : "");
             const userName = (knownUser ? knownUser.name : uName) || "Unknown";
 
+            const taskUid = (act.task && act.task.uid) ? act.task.uid : (act.taskUid || "");
             const dataToSave = {
                 uid: act.uid,
+                taskUid: taskUid,
                 date: actDate.toISOString(),
                 dateKey: getLocalTodayKey(actDate),
                 userName: userName,
@@ -265,10 +267,11 @@ export async function archiveActivitiesToFirestore(activities) {
                 const existingIdx = state.historicalActivitiesCache[weekUid].findIndex(a => a.uid === act.uid);
                 const cacheItem = {
                     uid: act.uid,
+                    taskUid: taskUid,
                     date: dataToSave.date,
                     parsedDate: actDate,
                     user: { uid: dataToSave.userUid, name: dataToSave.userName },
-                    task: { name: dataToSave.taskName, value: dataToSave.taskValue },
+                    task: { uid: taskUid, name: dataToSave.taskName, value: dataToSave.taskValue },
                     awardedPts: pts,
                     label: label,
                     weekUid: weekUid
@@ -313,8 +316,10 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
                 awardAllowancePoints(doerUid, ptsPerUser);
                 const actRecord = {
                     uid: uid,
+                    taskUid: taskUid,
                     date: targetDate.toISOString(),
                     parsedDate: targetDate,
+                    dateKey: getLocalTodayKey(targetDate),
                     user: { uid: doerUid, name: userObj ? userObj.name : "Unknown" },
                     task: { uid: taskUid, name: tObj ? tObj.name : "Task", value: ptsPerUser },
                     awardedPts: ptsPerUser,
@@ -323,6 +328,9 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
                 if (isDateInLocalWeek(targetDate, getLocalWeekBounds(new Date(), 0))) {
                     state.allWeekActivities.unshift(actRecord);
                     state.currentWeekScores[doerUid] = (state.currentWeekScores[doerUid] || 0) + ptsPerUser;
+                    if ((state.doneWeekOffset || 0) === 0 && state.weeklyActivitiesForDone) {
+                        state.weeklyActivitiesForDone.unshift(actRecord);
+                    }
                 }
                 return actRecord;
             });
@@ -364,15 +372,67 @@ export async function deleteActivityFromNipto(activityUid) {
 }
 
 /**
- * Finds the best matching generic point-value task(s) in state.tasks for a given points value
- * (or uses linkedNiptoTaskUid if provided), logs the activity to Nipto via GraphQL,
+ * Clamps and normalizes custom point values onto 5-point steps in [5..100].
+ */
+export function clampStep5Points(val, fallback = 5) {
+    const num = Number(val);
+    if (!Number.isFinite(num) || num <= 0) return fallback;
+    return Math.min(100, Math.max(5, Math.round(num / 5) * 5));
+}
+
+/**
+ * Returns true if a Nipto task entry is one of the generic "Assigned task #pts" buckets.
+ */
+export function isGenericAssignedTask(taskObj) {
+    if (!taskObj) return false;
+    if (taskObj.group === '\u2705' || taskObj.category === '\u2705') return true;
+    return /^assigned tasks?\b/i.test((taskObj.name || '').trim());
+}
+
+/**
+ * Resolves the canonical generic "Assigned task #pts" entry in state.tasks for a step-5 point value.
+ * Prefers uid 'UHWcbLzvgPQZTqWeAHOc' when pts === 55.
+ */
+export function findGenericAssignedTaskByPoints(pts) {
+    const targetPts = clampStep5Points(pts, 5);
+    const tasksPool = state.tasks || [];
+    let genericPool = tasksPool.filter(t => isGenericAssignedTask(t) && Number(t.value) > 0);
+    if (genericPool.length === 0) {
+        genericPool = tasksPool.filter(t => Number(t.value) > 0);
+    }
+    if (genericPool.length === 0) return null;
+
+    if (targetPts === 55) {
+        const preferred55 = genericPool.find(t => t.uid === 'UHWcbLzvgPQZTqWeAHOc');
+        if (preferred55) return preferred55;
+    }
+
+    const exact = genericPool.find(t => Number(t.value) === targetPts);
+    if (exact) return exact;
+
+    let nearest = genericPool[0];
+    let minDiff = Math.abs(Number(nearest.value) - targetPts);
+    for (const cand of genericPool) {
+        const diff = Math.abs(Number(cand.value) - targetPts);
+        if (diff < minDiff) {
+            minDiff = diff;
+            nearest = cand;
+        }
+    }
+    return nearest || null;
+}
+
+/**
+ * Finds the best matching generic point-value task in state.tasks for a given points value
+ * (or uses linkedNiptoTaskUid if non-generic and matching pts), logs the activity to Nipto via GraphQL,
  * saves the To-Do's title to saveActivityLabels(activityUids, taskTitle),
  * and returns the array of created Nipto activity UIDs.
  */
 export async function logCustomPointsToNipto(points, taskTitle, doerUids = null, dateIso = null, linkedNiptoTaskUid = null) {
     if (!state.apiToken) return [];
-    const pts = Math.max(0, Math.round(Number(points) || 0));
-    if (pts <= 0) return [];
+    const rawPoints = Number(points);
+    if (!Number.isFinite(rawPoints) || rawPoints <= 0) return [];
+    const pts = clampStep5Points(rawPoints, 5);
 
     const activeDoers = (Array.isArray(doerUids) && doerUids.length > 0)
         ? doerUids
@@ -382,65 +442,26 @@ export async function logCustomPointsToNipto(points, taskTitle, doerUids = null,
     const targetIso = dateIso || new Date().toISOString();
     const tasksPool = state.tasks || [];
 
-    // 1. If explicit linkedNiptoTaskUid is provided and exists in state.tasks, use it directly
-    if (linkedNiptoTaskUid && tasksPool.some(t => t.uid === linkedNiptoTaskUid)) {
-        const uids = await logActivityToNipto(linkedNiptoTaskUid, targetIso, activeDoers);
+    // 1. Only use explicit linkedNiptoTaskUid when it exists in state.tasks, matches pts, and is NOT a generic bucket
+    const linkedTask = linkedNiptoTaskUid ? tasksPool.find(t => t.uid === linkedNiptoTaskUid) : null;
+    if (linkedTask && Number(linkedTask.value) === pts && !isGenericAssignedTask(linkedTask)) {
+        const uids = await logActivityToNipto(linkedTask.uid, targetIso, activeDoers);
         if (uids.length > 0 && taskTitle) {
             await saveActivityLabels(uids, taskTitle);
         }
         return uids;
     }
 
-    // 2. Gather generic "Assigned task..." entries (fallback to all tasks with value > 0)
-    let pointTasks = tasksPool.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task') && Number(t.value) > 0);
-    if (pointTasks.length === 0) {
-        pointTasks = tasksPool.filter(t => Number(t.value) > 0);
-    }
-    if (pointTasks.length === 0) return [];
+    // 2. Otherwise resolve deterministically via generic "Assigned task #pts" buckets
+    const chosenTask = findGenericAssignedTaskByPoints(pts);
+    if (!chosenTask) return [];
 
-    // Sort descending by value for greedy decomposition if > 100 pts, or exact/nearest match
-    const byValueDesc = pointTasks.slice().sort((a, b) => Number(b.value) - Number(a.value));
-
-    const chosenTasks = [];
-    const exactMatch = byValueDesc.find(t => Number(t.value) === pts);
-    if (exactMatch) {
-        chosenTasks.push(exactMatch);
-    } else if (pts > 100) {
-        let remaining = pts;
-        while (remaining > 0) {
-            const fit = byValueDesc.find(t => Number(t.value) <= remaining) || byValueDesc[byValueDesc.length - 1];
-            if (!fit) break;
-            chosenTasks.push(fit);
-            remaining -= Number(fit.value);
-            if (chosenTasks.length >= 6) break; // safety cap
-        }
-    } else {
-        // Nearest generic point task by absolute difference
-        let nearest = byValueDesc[0];
-        let minDiff = Math.abs(Number(nearest.value) - pts);
-        for (const cand of byValueDesc) {
-            const diff = Math.abs(Number(cand.value) - pts);
-            if (diff < minDiff) {
-                minDiff = diff;
-                nearest = cand;
-            }
-        }
-        if (nearest) chosenTasks.push(nearest);
+    const createdUids = await logActivityToNipto(chosenTask.uid, targetIso, activeDoers);
+    if (createdUids && createdUids.length > 0 && taskTitle) {
+        await saveActivityLabels(createdUids, taskTitle);
     }
 
-    const allCreatedUids = [];
-    for (const chosen of chosenTasks) {
-        const uids = await logActivityToNipto(chosen.uid, targetIso, activeDoers);
-        if (uids && uids.length > 0) {
-            allCreatedUids.push(...uids);
-        }
-    }
-
-    if (allCreatedUids.length > 0 && taskTitle) {
-        await saveActivityLabels(allCreatedUids, taskTitle);
-    }
-
-    return allCreatedUids;
+    return createdUids || [];
 }
 
 // Scans completed custom_tasks and routines for items stored as completed without corresponding Nipto API activity,
@@ -675,6 +696,7 @@ export async function reconcileNiptoActivitiesToFirestore(force = false, lookbac
             const actDocRef = window.getNiptoCollection('activities_history').doc(act.uid);
             const historyRecord = {
                 uid: act.uid,
+                taskUid: taskUid,
                 date: actDate.toISOString(),
                 dateKey: dateKey,
                 userName: userName,
@@ -689,8 +711,8 @@ export async function reconcileNiptoActivitiesToFirestore(force = false, lookbac
             batch.set(actDocRef, historyRecord, { merge: true });
             opCount++;
 
-            // 2. Queue for daily_completions
-            const dailyItemId = `nipto_${taskUid || 'act'}_${userUid}_${act.uid}`;
+            // 2. Queue for daily_completions under canonical nipto_{actUid} key
+            const dailyItemId = `nipto_${act.uid}`;
             const dailyEntry = {
                 id: dailyItemId,
                 itemId: taskUid || act.uid,
@@ -725,17 +747,23 @@ export async function reconcileNiptoActivitiesToFirestore(force = false, lookbac
 
             // 4. Update in-memory week state if within current week
             if (isDateInLocalWeek(actDate, currentWeekBounds)) {
+                const inMemoryRecord = {
+                    uid: act.uid,
+                    taskUid: taskUid,
+                    date: actDate.toISOString(),
+                    parsedDate: actDate,
+                    dateKey: dateKey,
+                    user: { uid: userUid, name: userName },
+                    task: { uid: taskUid, name: taskName, value: pts },
+                    awardedPts: pts,
+                    label: customLabel,
+                    weekUid: weekUid
+                };
                 if (!state.allWeekActivities.some(a => a.uid === act.uid)) {
-                    state.allWeekActivities.unshift({
-                        uid: act.uid,
-                        date: actDate.toISOString(),
-                        parsedDate: actDate,
-                        user: { uid: userUid, name: userName },
-                        task: { uid: taskUid, name: taskName, value: pts },
-                        awardedPts: pts,
-                        label: customLabel,
-                        weekUid: weekUid
-                    });
+                    state.allWeekActivities.unshift(inMemoryRecord);
+                }
+                if ((state.doneWeekOffset || 0) === 0 && state.weeklyActivitiesForDone && !state.weeklyActivitiesForDone.some(a => a.uid === act.uid)) {
+                    state.weeklyActivitiesForDone.unshift(inMemoryRecord);
                 }
                 if (userUid) {
                     state.currentWeekScores[userUid] = (state.currentWeekScores[userUid] || 0) + pts;
@@ -1230,43 +1258,59 @@ export async function dispatchHomeAssistantNotification(payload) {
 // FIRESTORE-FIRST WEEKLY LEADERBOARD LOADER
 // Reset Boundary: Sunday 11:59:59.999 PM Local Time
 // ==========================================
-export async function loadWeeklyPointsFromFirestore() {
+function parseAndSumWeekActivities(snapshot, weekBounds) {
     const points = {};
     ALL_USERS.forEach(u => { points[u.uid] = 0; });
+
+    const activities = [];
+    snapshot.forEach(doc => {
+        const data = doc.data() || {};
+        const parsedDate = new Date(data.date);
+        if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
+
+        const uid = data.uid || doc.id;
+        const taskUid = data.taskUid || (data.task && data.task.uid) || '';
+        const pts = (data.awardedPts !== undefined) ? Number(data.awardedPts) : (Number(data.taskValue) || 0);
+        if (data.userUid && points[data.userUid] !== undefined) {
+            points[data.userUid] += pts;
+        }
+        activities.push({
+            uid,
+            taskUid,
+            date: data.date,
+            parsedDate,
+            dateKey: data.dateKey || getLocalTodayKey(parsedDate),
+            user: { uid: data.userUid || '', name: data.userName || 'Unknown' },
+            task: { uid: taskUid, name: data.taskName || 'Activity', value: pts },
+            awardedPts: pts,
+            label: (state.activityLabels && state.activityLabels[uid]) || data.label || ''
+        });
+    });
+
+    return { points, activities };
+}
+
+export async function loadWeeklyPointsFromFirestore() {
+    const fallbackPoints = {};
+    ALL_USERS.forEach(u => { fallbackPoints[u.uid] = 0; });
 
     const weekBounds = getLocalWeekBounds(new Date(), 0);
     try {
         const snapshot = await window.getNiptoCollection('activities_history')
             .where('date', '>=', weekBounds.startDate.toISOString())
+            .where('date', '<=', weekBounds.endDate.toISOString())
             .get();
 
-        const activities = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const parsedDate = new Date(data.date);
-            if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
-
-            const pts = data.awardedPts || data.taskValue || 0;
-            if (data.userUid && points[data.userUid] !== undefined) {
-                points[data.userUid] += pts;
-            }
-            activities.push({
-                uid: doc.id,
-                date: data.date,
-                parsedDate: parsedDate,
-                user: { uid: data.userUid, name: data.userName },
-                task: { name: data.taskName, value: pts },
-                awardedPts: pts,
-                label: data.label || ""
-            });
-        });
-
+        const { points, activities } = parseAndSumWeekActivities(snapshot, weekBounds);
         state.currentWeekScores = { ...points };
         state.allWeekActivities = activities;
+        if ((state.doneWeekOffset || 0) === 0) {
+            state.weeklyActivitiesForDone = activities;
+        }
         return { points, activities };
     } catch (e) {
         console.warn("Could not aggregate weekly points from Firestore cache:", e);
-        return { points, activities: [] };
+        return { points: fallbackPoints, activities: [] };
     }
 }
 
@@ -1357,28 +1401,18 @@ export async function loadWeeklyCompletionsFromFirestore(weekOffset = state.done
             });
         });
 
-        const weekActivities = [];
-        actSnap.forEach(doc => {
-            const data = doc.data() || {};
-            const parsedDate = new Date(data.date);
-            if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
-            const pts = (data.awardedPts !== undefined) ? data.awardedPts : (data.taskValue || 0);
-            weekActivities.push({
-                uid: data.uid || doc.id,
-                date: data.date,
-                parsedDate,
-                dateKey: getLocalTodayKey(parsedDate),
-                user: { uid: data.userUid || '', name: data.userName || 'Unknown' },
-                task: { name: data.taskName || 'Activity', value: pts },
-                awardedPts: pts,
-                label: (state.activityLabels && state.activityLabels[data.uid || doc.id]) || data.label || ''
-            });
-        });
+        const { points, activities: weekActivities } = parseAndSumWeekActivities(actSnap, weekBounds);
 
         state.weeklyCompletionsCache[weekKey] = {
             persistedItems,
             weekActivities
         };
+
+        // Week 0 is the single canonical source of truth for current week scores & activities
+        if (weekOffset === 0) {
+            state.currentWeekScores = { ...points };
+            state.allWeekActivities = weekActivities;
+        }
 
         if (weekOffset === (state.doneWeekOffset || 0)) {
             state.persistedDailyCompletions = persistedItems;
@@ -1386,8 +1420,10 @@ export async function loadWeeklyCompletionsFromFirestore(weekOffset = state.done
         }
     } catch (e) {
         console.error("Error loading weekly completions from Firestore:", e);
-        state.persistedDailyCompletions = [];
-        state.weeklyActivitiesForDone = [];
+        if (weekOffset === (state.doneWeekOffset || 0)) {
+            state.persistedDailyCompletions = [];
+            state.weeklyActivitiesForDone = [];
+        }
     }
 
     if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();

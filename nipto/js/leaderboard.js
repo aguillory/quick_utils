@@ -55,6 +55,10 @@ export function drawLeaderboard(points, isPriorWeek = false, weekTitle = '') {
 
     renderAllowanceUI();
     renderDoneThisWeekFeed();
+    if (!isPriorWeek && typeof window !== 'undefined') {
+        if (typeof window.renderActiveUserPill === 'function') window.renderActiveUserPill();
+        if (typeof window.renderUserDropdownMenu === 'function') window.renderUserDropdownMenu();
+    }
 }
 
 // Renders the Boys' Allowance Bank (Ayden & DJ only)
@@ -259,20 +263,69 @@ export async function resetDoneWeekToCurrent() {
     await api.loadWeeklyCompletionsFromFirestore(0);
 }
 
+function normCompTitle(str) {
+    return String(str || '').trim().toLowerCase();
+}
+
+function addClaimedUid(claimedSet, uid) {
+    if (uid && typeof uid === 'string') claimedSet.add(uid);
+}
+
 // Merges & deduplicates completed items across all 4 sources for the selected Monday-Sunday week
 export function rebuildCompletedThisWeek() {
     const weekOffset = state.doneWeekOffset || 0;
     const weekBounds = getLocalWeekBounds(new Date(), weekOffset);
     const { dateKeys, dateKeySet } = weekBounds;
     const compMap = new Map();
+    const claimedActivityUids = new Set();
+    const unlinkedMatchCounts = new Map();
+    const niptoPersistedQueue = [];
 
-    // 1. Persisted daily completions from Firestore for this week's 7 local date keys
+    const bumpUnlinkedMatch = (dKey, uUid, uName, title) => {
+        const t = normCompTitle(title);
+        if (!dKey || !t) return;
+        const primaryKey = `${dKey}|${uUid || ''}|${t}`;
+        unlinkedMatchCounts.set(primaryKey, (unlinkedMatchCounts.get(primaryKey) || 0) + 1);
+        if (!uUid && uName) {
+            const nameKey = `${dKey}|name:${normCompTitle(uName)}|${t}`;
+            unlinkedMatchCounts.set(nameKey, (unlinkedMatchCounts.get(nameKey) || 0) + 1);
+        }
+    };
+
+    const consumeUnlinkedMatch = (dKey, uUid, uName, title) => {
+        const t = normCompTitle(title);
+        if (!dKey || !t) return false;
+        const primaryKey = `${dKey}|${uUid || ''}|${t}`;
+        if ((unlinkedMatchCounts.get(primaryKey) || 0) > 0) {
+            unlinkedMatchCounts.set(primaryKey, unlinkedMatchCounts.get(primaryKey) - 1);
+            return true;
+        }
+        if (uName) {
+            const nameKey = `${dKey}|name:${normCompTitle(uName)}|${t}`;
+            if ((unlinkedMatchCounts.get(nameKey) || 0) > 0) {
+                unlinkedMatchCounts.set(nameKey, unlinkedMatchCounts.get(nameKey) - 1);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // 1. Persisted daily completions from Firestore: process non-nipto entries first, queue nipto_* entries
     (state.persistedDailyCompletions || []).forEach(it => {
         if (!it || !it.id) return;
         const dKey = it.dateKey || (it.completedAt ? getLocalTodayKey(new Date(it.completedAt)) : '');
-        if (dKey && dateKeySet.has(dKey)) {
-            compMap.set(it.id, { ...it, dateKey: dKey });
+        if (!dKey || !dateKeySet.has(dKey)) return;
+
+        if (it.id.startsWith('nipto_')) {
+            niptoPersistedQueue.push({ ...it, dateKey: dKey });
+            return;
         }
+
+        if (it.activityUid) addClaimedUid(claimedActivityUids, it.activityUid);
+        if (Array.isArray(it.activityUids)) {
+            it.activityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
+        }
+        compMap.set(it.id, { ...it, dateKey: dKey });
     });
 
     // 2. Routines completed on any of the 7 days in the selected week (excluding withoutPoints dismissals)
@@ -282,6 +335,10 @@ export function rebuildCompletedThisWeek() {
             const comp = r.completionsByDate[dKey];
             if (comp && !comp.withoutPoints) {
                 const compId = `routine_${r.uid}_${dKey}`;
+                if (comp.activityUid) addClaimedUid(claimedActivityUids, comp.activityUid);
+                if (Array.isArray(comp.activityUids)) {
+                    comp.activityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
+                }
                 if (!compMap.has(compId)) {
                     const linkedTask = (state.tasks || []).find(t => t.uid === r.linkedNiptoTask);
                     const routinePts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
@@ -298,7 +355,9 @@ export function rebuildCompletedThisWeek() {
                         userUid: doerUid,
                         points: routinePts,
                         completedAt: comp.completedAt || `${dKey}T12:00:00`,
-                        dateKey: dKey
+                        dateKey: dKey,
+                        ...(comp.activityUid ? { activityUid: comp.activityUid } : {}),
+                        ...(Array.isArray(comp.activityUids) ? { activityUids: comp.activityUids } : {})
                     });
                 }
             }
@@ -312,6 +371,10 @@ export function rebuildCompletedThisWeek() {
             if (isDateInLocalWeek(compDate, weekBounds)) {
                 const taskDateKey = getLocalTodayKey(compDate);
                 const compId = `todo_${t.id}`;
+                if (t.completedActivityUid) addClaimedUid(claimedActivityUids, t.completedActivityUid);
+                if (Array.isArray(t.completedActivityUids)) {
+                    t.completedActivityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
+                }
                 if (!compMap.has(compId)) {
                     const doerUid = t.completedBy?.[0] || t.assignees?.[0] || '';
                     const userObj = ALL_USERS.find(u => u.uid === doerUid);
@@ -324,7 +387,9 @@ export function rebuildCompletedThisWeek() {
                         userUid: doerUid,
                         points: t.points !== undefined ? Number(t.points) : 5,
                         completedAt: t.completedAt,
-                        dateKey: taskDateKey
+                        dateKey: taskDateKey,
+                        ...(t.completedActivityUid ? { activityUid: t.completedActivityUid } : {}),
+                        ...(Array.isArray(t.completedActivityUids) ? { activityUids: t.completedActivityUids } : {})
                     });
                 }
             }
@@ -357,30 +422,82 @@ export function rebuildCompletedThisWeek() {
         }
     });
 
-    // 4. Nipto Chore activities within the selected week
+    // Register legacy (unlinked) todo/routine/subtask items so unlinked Nipto activities do not duplicate them
+    compMap.forEach(item => {
+        const hasUid = Boolean(item.activityUid || (Array.isArray(item.activityUids) && item.activityUids.length > 0));
+        if (!hasUid) {
+            bumpUnlinkedMatch(item.dateKey, item.userUid, item.user, item.title);
+        }
+    });
+
+    // 4. Nipto Chore activities within the selected week (deduplicated by act.uid, skipping claimed/legacy matches)
     const activityPool = [
         ...(state.weeklyActivitiesForDone || []),
         ...(weekOffset === 0 ? (state.allWeekActivities || []) : [])
     ];
+    const seenActivityUids = new Set();
+    const poolLegacyMatchKeys = new Set();
+
     activityPool.forEach(act => {
-        if (!act || !act.uid) return;
+        if (!act || !act.uid || seenActivityUids.has(act.uid)) return;
+        seenActivityUids.add(act.uid);
+
         const actDate = act.parsedDate || (act.date ? new Date(act.date) : null);
-        if (actDate && isDateInLocalWeek(actDate, weekBounds)) {
-            const dKey = getLocalTodayKey(actDate);
-            const compId = `nipto_${act.uid}`;
-            if (!compMap.has(compId)) {
-                compMap.set(compId, {
-                    id: compId,
-                    itemId: act.uid,
-                    sourceType: 'nipto',
-                    title: (state.activityLabels && state.activityLabels[act.uid]) || act.label || act.task?.name || 'Activity',
-                    user: act.user?.name || 'Unknown',
-                    userUid: act.user?.uid || '',
-                    points: act.awardedPts || act.task?.value || 0,
-                    completedAt: act.date || actDate.toISOString(),
-                    dateKey: dKey
-                });
-            }
+        if (!actDate || !isDateInLocalWeek(actDate, weekBounds)) return;
+
+        const dKey = act.dateKey || getLocalTodayKey(actDate);
+        const uUid = act.user?.uid || '';
+        const uName = act.user?.name || 'Unknown';
+        const title = (state.activityLabels && state.activityLabels[act.uid]) || act.label || act.task?.name || 'Activity';
+        const taskUid = act.taskUid || act.task?.uid || '';
+
+        if (claimedActivityUids.has(act.uid)) return;
+        if (consumeUnlinkedMatch(dKey, uUid, uName, title)) {
+            claimedActivityUids.add(act.uid);
+            return;
+        }
+
+        const compId = `nipto_${act.uid}`;
+        if (!compMap.has(compId)) {
+            compMap.set(compId, {
+                id: compId,
+                itemId: taskUid || act.uid,
+                activityUid: act.uid,
+                sourceType: 'nipto',
+                title: title,
+                user: uName,
+                userUid: uUid,
+                points: (act.awardedPts !== undefined) ? act.awardedPts : (act.task?.value || 0),
+                completedAt: act.date || actDate.toISOString(),
+                dateKey: dKey
+            });
+        }
+        poolLegacyMatchKeys.add(`${dKey}|${uUid}|${normCompTitle(title)}`);
+        if (taskUid) poolLegacyMatchKeys.add(`${dKey}|${uUid}|task:${taskUid}`);
+    });
+
+    // 5. Fallback for any persisted nipto_* entries not already covered by claimedActivityUids or activityPool
+    niptoPersistedQueue.forEach(it => {
+        const suffix = it.id.slice(6);
+        const inferredActUid = it.activityUid || (!suffix.includes('_') ? suffix : '');
+        if (inferredActUid) {
+            if (claimedActivityUids.has(inferredActUid)) return;
+            const canonicalKey = `nipto_${inferredActUid}`;
+            if (compMap.has(canonicalKey)) return;
+            compMap.set(canonicalKey, { ...it, id: canonicalKey, activityUid: inferredActUid });
+            return;
+        }
+
+        const tKey = `${it.dateKey}|${it.userUid || ''}|${normCompTitle(it.title)}`;
+        const taskKey = it.itemId ? `${it.dateKey}|${it.userUid || ''}|task:${it.itemId}` : '';
+        if (poolLegacyMatchKeys.has(tKey) || (taskKey && poolLegacyMatchKeys.has(taskKey))) {
+            return;
+        }
+        if (consumeUnlinkedMatch(it.dateKey, it.userUid || '', it.user, it.title)) {
+            return;
+        }
+        if (!compMap.has(it.id)) {
+            compMap.set(it.id, it);
         }
     });
 
@@ -533,9 +650,8 @@ export const renderDoneTodayFeed = renderDoneThisWeekFeed;
 // Unified public updater
 export async function updateLeaderboardUI() {
     try {
-        const { points } = await api.loadWeeklyPointsFromFirestore();
-        state.currentWeekScores = { ...points };
-        drawLeaderboard(points, false);
+        await api.loadWeeklyPointsFromFirestore();
+        drawLeaderboard(state.currentWeekScores, false);
         rebuildCompletedThisWeek();
         renderDoneThisWeekFeed();
     } catch (e) {

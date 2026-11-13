@@ -38,7 +38,7 @@ export async function logTask(buttonElement, taskUid, taskName) {
     const targetDateKey = getLocalTodayKey(targetDate);
 
     try {
-        await api.logActivityToNipto(taskUid, targetDate.toISOString());
+        const activityUids = await api.logActivityToNipto(taskUid, targetDate.toISOString());
 
         buttonElement.style.border = '2px solid var(--success, #22c55e)';
         setTimeout(() => { buttonElement.style.border = ''; buttonElement.style.transform = 'scale(1)'; }, 250);
@@ -88,10 +88,12 @@ export async function logTask(buttonElement, taskUid, taskName) {
             if (requiresRoutineRender) { renderRoutines(); }
         }
 
-        // Record to daily_completions for the target date key so it appears in "Done This Week"
-        for (const uid of state.activeUsers) {
+        // Record to daily_completions for the target date key using canonical nipto_{actUid} key
+        for (let idx = 0; idx < state.activeUsers.length; idx++) {
+            const uid = state.activeUsers[idx];
             const uObj = ALL_USERS.find(u => u.uid === uid);
-            const actId = `nipto_${taskUid}_${uid}_${Date.now()}`;
+            const actUid = (activityUids && activityUids[idx]) || '';
+            const actId = actUid ? `nipto_${actUid}` : `nipto_${taskUid}_${uid}_${Date.now()}`;
             await api.recordDailyCompletion({
                 id: actId,
                 itemId: taskUid,
@@ -101,7 +103,8 @@ export async function logTask(buttonElement, taskUid, taskName) {
                 userUid: uid,
                 points: points,
                 completedAt: targetDate.toISOString(),
-                dateKey: targetDateKey
+                dateKey: targetDateKey,
+                ...(actUid ? { activityUid: actUid } : {})
             });
         }
 
@@ -768,7 +771,8 @@ export async function submitQuickAdd() {
         for (let i = 0; i < selectedUids.length; i++) {
             const uid = selectedUids[i];
             const u = ALL_USERS.find(user => user.uid === uid);
-            const actUid = activityUids[i] || `${linkedNiptoTask}_${uid}_${Date.now()}`;
+            const resolvedUid = activityUids[i] || '';
+            const actUid = resolvedUid || `${linkedNiptoTask}_${uid}_${Date.now()}`;
             await api.recordDailyCompletion({
                 id: `nipto_${actUid}`,
                 itemId: actUid,
@@ -778,7 +782,8 @@ export async function submitQuickAdd() {
                 userUid: uid,
                 points: pointsPerUser,
                 completedAt: targetDate.toISOString(),
-                dateKey: targetDateKey
+                dateKey: targetDateKey,
+                ...(resolvedUid ? { activityUid: resolvedUid } : {})
             });
         }
 
