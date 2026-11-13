@@ -252,7 +252,19 @@ export function populateTaskPointsSelect(selectedValue = '', elementId = 'taskPo
     select.innerHTML = '<option value="">-- Select Points --</option>';
     if (!state.tasks || state.tasks.length === 0) return;
 
-    let pointTasks = state.tasks.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task'));
+    let pointTasks = state.tasks.filter(t =>
+        t.name &&
+        t.name.toLowerCase().startsWith('assigned task') &&
+        Number(t.value) >= 5 &&
+        Number(t.value) <= 100 &&
+        Number(t.value) % 5 === 0
+    );
+    if (pointTasks.length === 0) {
+        pointTasks = state.tasks.filter(t => t.name && t.name.toLowerCase().startsWith('assigned task'));
+    }
+    if (pointTasks.length === 0) {
+        pointTasks = state.tasks.filter(t => Number(t.value) >= 5 && Number(t.value) <= 100 && Number(t.value) % 5 === 0);
+    }
     if (pointTasks.length === 0) {
         pointTasks = state.tasks.filter(t => t.value && t.value > 0);
     }

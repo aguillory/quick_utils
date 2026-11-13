@@ -7,13 +7,102 @@
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
+import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed, drawLeaderboard, rebuildCompletedThisWeek } from './leaderboard.js';
 import { getLocalTodayKey, registerCustomCategory } from './utils.js';
 import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
 import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate } from './routines.js';
 import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
 export { NIPTO_PUBLIC_URL };
+
+const inFlightSubTaskOps = new Set();
+let taskModalListenersInitialized = false;
+
+function snapStep5InputValue(inputEl, allowZeroWhenDisabled = false) {
+    if (!inputEl) return 5;
+    if (allowZeroWhenDisabled && inputEl.disabled) {
+        inputEl.value = '0';
+        return 0;
+    }
+    const clamped = api.clampStep5Points(inputEl.value, 5);
+    inputEl.value = String(clamped);
+    return clamped;
+}
+
+export function syncParentPointsContainerState() {
+    const container = document.getElementById('subTasksContainer');
+    const pointsEl = document.getElementById('taskPoints');
+    const noteEl = document.getElementById('taskPointsContainerNote');
+    if (!pointsEl) return;
+
+    const rows = container ? Array.from(container.querySelectorAll('.subtask-field-row')) : [];
+    if (rows.length > 0) {
+        if (!pointsEl.disabled) {
+            pointsEl.dataset.prevPoints = String(api.clampStep5Points(pointsEl.value, 5));
+        }
+        const totalSubPts = rows.reduce((sum, row) => {
+            const subPtsInp = row.querySelector('.subtask-points');
+            return sum + api.clampStep5Points(subPtsInp ? subPtsInp.value : 5, 5);
+        }, 0);
+        pointsEl.min = '0';
+        pointsEl.value = '0';
+        pointsEl.disabled = true;
+        if (noteEl) {
+            noteEl.textContent = `Container mode: points awarded per subtask (Total: ${totalSubPts} pts)`;
+            noteEl.style.display = 'block';
+        }
+    } else {
+        const restored = api.clampStep5Points(pointsEl.dataset.prevPoints || pointsEl.value, 5);
+        pointsEl.disabled = false;
+        pointsEl.min = '5';
+        pointsEl.max = '100';
+        pointsEl.step = '5';
+        pointsEl.value = String(restored);
+        if (noteEl) {
+            noteEl.textContent = '';
+            noteEl.style.display = 'none';
+        }
+    }
+}
+
+function ensureTaskModalListeners() {
+    if (taskModalListenersInitialized || typeof document === 'undefined') return;
+    taskModalListenersInitialized = true;
+
+    const typeEl = document.getElementById('taskType');
+    const priorityEl = document.getElementById('taskPriority');
+    const pointsEl = document.getElementById('taskPoints');
+    const routinePointsEl = document.getElementById('routinePoints');
+
+    if (priorityEl) {
+        priorityEl.addEventListener('change', () => {
+            priorityEl.dataset.userTouchedPriority = 'true';
+        });
+    }
+    if (typeEl && priorityEl) {
+        typeEl.addEventListener('change', () => {
+            if (priorityEl.dataset.userTouchedPriority !== 'true') {
+                priorityEl.value = (typeEl.value === 'project') ? 'low' : 'medium';
+            }
+        });
+    }
+    if (pointsEl) {
+        pointsEl.addEventListener('change', () => snapStep5InputValue(pointsEl, true));
+        pointsEl.addEventListener('blur', () => snapStep5InputValue(pointsEl, true));
+    }
+    if (routinePointsEl) {
+        routinePointsEl.addEventListener('change', () => snapStep5InputValue(routinePointsEl, false));
+        routinePointsEl.addEventListener('blur', () => snapStep5InputValue(routinePointsEl, false));
+    }
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', ensureTaskModalListeners);
+    } else {
+        ensureTaskModalListeners();
+    }
+}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -42,14 +131,18 @@ export function normalizeTask(t) {
         }
     }
 
-    // 2. Default points: default to 5
-    const points = (t.points !== undefined && t.points !== null && t.points !== '' && !isNaN(Number(t.points)))
+    // 2. Default points: 0 when container has subtasks; otherwise step-5 clamped (5-100)
+    const hasSubtasks = Array.isArray(t.subTasks) && t.subTasks.length > 0;
+    const rawPoints = (t.points !== undefined && t.points !== null && t.points !== '' && !isNaN(Number(t.points)))
         ? Number(t.points)
         : 5;
+    const points = hasSubtasks ? 0 : api.clampStep5Points(rawPoints, 5);
 
-    // 3. Priority: 'high' | 'medium' (default) | 'low'
+    // 3. Priority: 'high' | 'medium' | 'low' (projects default to 'low' when unset)
     const pri = (t.priority || '').toLowerCase();
-    const priority = ['high', 'medium', 'low'].includes(pri) ? pri : 'medium';
+    const priority = ['high', 'medium', 'low'].includes(pri)
+        ? pri
+        : (type === 'project' ? 'low' : 'medium');
 
     // 4. Description: support description, fallback to notes
     const description = (t.description !== undefined && t.description !== null)
@@ -484,8 +577,19 @@ export function renderTodoTasks() {
             categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
         }
 
-        const pts = t.points || 5;
-        const ptsDisplay = `<span class="pts-badge">+${pts} pts</span>`;
+        const hasSubtasks = Array.isArray(t.subTasks) && t.subTasks.length > 0;
+        let ptsDisplay = '';
+        if (hasSubtasks) {
+            const totalSubPts = t.subTasks.reduce((sum, st) => sum + api.clampStep5Points(st.points, 5), 0);
+            const earnedSubPts = t.subTasks.reduce((sum, st) => sum + (st.completed ? api.clampStep5Points(st.points, 5) : 0), 0);
+            const subPtsLabel = earnedSubPts > 0
+                ? `\u2211 ${earnedSubPts}/${totalSubPts} pts`
+                : `\u2211 ${totalSubPts} pts`;
+            ptsDisplay = `<span class="pts-badge" title="Points awarded per subtask">${subPtsLabel}</span>`;
+        } else {
+            const pts = api.clampStep5Points(t.points, 5);
+            ptsDisplay = `<span class="pts-badge">+${pts} pts</span>`;
+        }
 
         let descButton = '';
         let descBox = '';
@@ -503,20 +607,25 @@ export function renderTodoTasks() {
         }
 
         let subtasksSection = '';
-        if (t.subTasks && t.subTasks.length > 0) {
+        if (hasSubtasks) {
             const completedCount = t.subTasks.filter(st => st.completed).length;
+            const subtaskRowsHtml = t.subTasks.map(st => {
+                const stPts = api.clampStep5Points(st.points, 5);
+                return `
+                    <label class="todo-subtask-item">
+                        <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTask('${t.id}', '${st.id}', this.checked)">
+                        <span class="${st.completed ? 'completed-subtask' : ''}">${escapeHtml(st.name || st.text)}</span>
+                        <span class="subtask-pts-badge">+${stPts} pts</span>
+                    </label>
+                `;
+            }).join('');
             subtasksSection = `
             <div class="todo-subtasks-wrapper">
                 <button type="button" class="todo-subtasks-toggle" onclick="toggleSubtasksList('${t.id}')">
                     Subtasks (${completedCount}/${t.subTasks.length}) <span id="subtasks-arrow-${t.id}">&#x25BE;</span>
                 </button>
                 <div id="subtasks-list-${t.id}" class="todo-subtasks-list" style="display: none;">
-                    ${t.subTasks.map(st => `
-                        <label class="todo-subtask-item">
-                            <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTask('${t.id}', '${st.id}', this.checked)">
-                            <span class="${st.completed ? 'completed-subtask' : ''}">${escapeHtml(st.name || st.text)}</span>
-                        </label>
-                    `).join('')}
+                    ${subtaskRowsHtml}
                 </div>
             </div>
             `;
@@ -1084,6 +1193,8 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
         : [doerUid];
     const prevCompletedAt = todo.completedAt;
 
+    const isParentContainer = Array.isArray(todo.subTasks) && todo.subTasks.length > 0;
+
     todo.completed = nextCompleted;
     todo.completedAt = nextCompleted ? nowIso : null;
     todo.completedBy = nextCompleted ? doerUids : [];
@@ -1092,18 +1203,20 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
 
     try {
         if (nextCompleted) {
-            const pts = Number(todo.points) || 5;
+            const pts = isParentContainer ? 0 : api.clampStep5Points(todo.points, 5);
             let activityUids = [];
-            try {
-                activityUids = await api.logCustomPointsToNipto(
-                    pts,
-                    todo.name,
-                    doerUids,
-                    nowIso,
-                    todo.linkedNiptoTask || null
-                );
-            } catch (niptoErr) {
-                console.warn("Could not log To-Do points to Nipto API:", niptoErr);
+            if (!isParentContainer && pts > 0) {
+                try {
+                    activityUids = await api.logCustomPointsToNipto(
+                        pts,
+                        todo.name,
+                        doerUids,
+                        nowIso,
+                        todo.linkedNiptoTask || null
+                    );
+                } catch (niptoErr) {
+                    console.warn("Could not log To-Do points to Nipto API:", niptoErr);
+                }
             }
 
             todo.completedActivityUids = activityUids;
@@ -1127,18 +1240,20 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                     await api.awardAllowancePoints(uid, Math.ceil(pts / Math.max(1, doerUids.length)));
                 }
             }
-            await api.recordDailyCompletion({
-                id: `todo_${taskId}`,
-                itemId: taskId,
-                sourceType: 'todo',
-                title: todo.name,
-                user: doerName,
-                userUid: doerUid,
-                points: pts,
-                completedAt: nowIso,
-                dateKey: getLocalTodayKey(),
-                ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
-            });
+            if (!isParentContainer && pts > 0) {
+                await api.recordDailyCompletion({
+                    id: `todo_${taskId}`,
+                    itemId: taskId,
+                    sourceType: 'todo',
+                    title: todo.name,
+                    user: doerName,
+                    userUid: doerUid,
+                    points: pts,
+                    completedAt: nowIso,
+                    dateKey: getLocalTodayKey(),
+                    ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
+                });
+            }
         } else {
             todo.completedActivityUids = [];
             todo.completedActivityUid = null;
@@ -1167,7 +1282,7 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                     }
                 }
             } else {
-                const pts = Number(todo.points) || 5;
+                const pts = isParentContainer ? 0 : api.clampStep5Points(todo.points, 5);
                 if (pts > 0) {
                     const splitPts = Math.ceil(pts / Math.max(1, prevBy.length));
                     for (const uid of prevBy) {
@@ -1194,38 +1309,88 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
 }
 
 export async function toggleSubTask(taskId, subTaskId, isChecked) {
+    const opKey = `${taskId}_${subTaskId}`;
+    if (inFlightSubTaskOps.has(opKey)) return;
+
     const todo = state.todoTasksData?.find(t => t.id === taskId);
-    if (!todo || !todo.subTasks) return;
+    if (!todo || !Array.isArray(todo.subTasks)) return;
 
+    const existingSub = todo.subTasks.find(st => st.id === subTaskId);
+    if (!existingSub) return;
+    if (Boolean(existingSub.completed) === Boolean(isChecked)) return;
+
+    inFlightSubTaskOps.add(opKey);
     const nowIso = new Date().toISOString();
-    const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-    const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Someone';
+    const doerUids = (state.activeUsers && state.activeUsers.length > 0)
+        ? [...state.activeUsers]
+        : [ALL_USERS[0]?.uid || ''].filter(Boolean);
+    const activeUid = doerUids[0] || '';
+    const activeName = doerUids.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || 'Someone').join(', ') || 'Someone';
 
-    const updated = todo.subTasks.map(st => {
-        if (st.id === subTaskId) return {
-            ...st,
-            completed: isChecked,
-            completedAt: isChecked ? nowIso : null,
-            completedBy: isChecked ? activeName : null
-        };
-        return st;
-    });
-
-    todo.subTasks = updated;
-    todo.lastReviewedAt = nowIso;
-    todo.updatedAt = nowIso;
+    const subPts = api.clampStep5Points(existingSub.points, 5);
+    const subName = existingSub.name || existingSub.text || 'Subtask';
+    const prevActivityUids = Array.isArray(existingSub.completedActivityUids)
+        ? [...existingSub.completedActivityUids]
+        : (existingSub.completedActivityUid ? [existingSub.completedActivityUid] : []);
+    const prevCompletedAt = existingSub.completedAt;
+    const prevDateKey = prevCompletedAt ? getLocalTodayKey(new Date(prevCompletedAt)) : null;
+    const prevByUids = Array.isArray(existingSub.completedByUids) && existingSub.completedByUids.length > 0
+        ? [...existingSub.completedByUids]
+        : (() => {
+            const matched = existingSub.completedBy
+                ? ALL_USERS.find(u => u.uid === existingSub.completedBy || u.name.toLowerCase() === String(existingSub.completedBy).toLowerCase())
+                : null;
+            return [matched?.uid || activeUid].filter(Boolean);
+        })();
 
     try {
-        await api.updateFirestoreDocument('custom_tasks', taskId, {
-            subTasks: updated,
-            lastReviewedAt: nowIso,
-            updatedAt: nowIso
-        });
-
-        const subObj = todo.subTasks?.find(s => s.id === subTaskId);
-        const subName = subObj?.name || subObj?.text || 'Subtask';
-
         if (isChecked) {
+            let activityUids = [];
+            try {
+                activityUids = await api.logCustomPointsToNipto(
+                    subPts,
+                    `${todo.name}: ${subName}`,
+                    doerUids,
+                    nowIso,
+                    existingSub.linkedNiptoTask || null
+                );
+            } catch (niptoErr) {
+                console.warn("Could not log subtask points to Nipto API:", niptoErr);
+            }
+
+            const updated = todo.subTasks.map(st => {
+                if (st.id === subTaskId) {
+                    return {
+                        ...st,
+                        points: subPts,
+                        completed: true,
+                        completedAt: nowIso,
+                        completedBy: activeName,
+                        completedByUids: doerUids,
+                        completedActivityUids: activityUids,
+                        completedActivityUid: activityUids[0] || null
+                    };
+                }
+                return st;
+            });
+
+            todo.subTasks = updated;
+            todo.lastReviewedAt = nowIso;
+            todo.updatedAt = nowIso;
+
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                subTasks: updated,
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+
+            if (subPts > 0 && activityUids.length === 0) {
+                const splitPts = Math.ceil(subPts / Math.max(1, doerUids.length));
+                for (const uid of doerUids) {
+                    await api.awardAllowancePoints(uid, splitPts);
+                }
+            }
+
             await api.recordDailyCompletion({
                 id: `subtask_${taskId}_${subTaskId}`,
                 itemId: subTaskId,
@@ -1233,19 +1398,87 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
                 title: `${todo.name}: ${subName}`,
                 user: activeName,
                 userUid: activeUid,
-                points: 0,
+                points: subPts,
                 completedAt: nowIso,
-                dateKey: getLocalTodayKey()
+                dateKey: getLocalTodayKey(),
+                ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
             });
+
+            showToast("subtask_done", `Completed "${subName}"!`, subPts, activeName);
         } else {
+            const updated = todo.subTasks.map(st => {
+                if (st.id === subTaskId) {
+                    return {
+                        ...st,
+                        completed: false,
+                        completedAt: null,
+                        completedBy: null,
+                        completedByUids: [],
+                        completedActivityUids: [],
+                        completedActivityUid: null
+                    };
+                }
+                return st;
+            });
+
+            todo.subTasks = updated;
+            todo.lastReviewedAt = nowIso;
+            todo.updatedAt = nowIso;
+
+            await api.updateFirestoreDocument('custom_tasks', taskId, {
+                subTasks: updated,
+                lastReviewedAt: nowIso,
+                updatedAt: nowIso
+            });
+
+            if (prevActivityUids.length > 0) {
+                for (const actUid of prevActivityUids) {
+                    try {
+                        await api.deleteActivityFromNipto(actUid);
+                        await api.removeDailyCompletion(`nipto_${actUid}`, getLocalTodayKey());
+                        if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+                            await api.removeDailyCompletion(`nipto_${actUid}`, prevDateKey);
+                        }
+                    } catch (delErr) {
+                        console.warn(`Could not delete subtask Nipto activity ${actUid}:`, delErr);
+                    }
+                }
+            } else if (subPts > 0) {
+                const splitPts = Math.ceil(subPts / Math.max(1, prevByUids.length));
+                for (const uid of prevByUids) {
+                    await api.revokeAllowancePoints(uid, splitPts);
+                }
+            }
+
             await api.removeDailyCompletion(`subtask_${taskId}_${subTaskId}`, getLocalTodayKey());
+            if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+                await api.removeDailyCompletion(`subtask_${taskId}_${subTaskId}`, prevDateKey);
+            }
+
+            showToast("subtask_undo", `Unchecked "${subName}"`, 0, "");
         }
 
+        if (state.leaderboardWeekOffset === 0) {
+            const weekly = await api.loadWeeklyCompletionsFromFirestore(0);
+            if (weekly && weekly.scores) {
+                state.currentWeekScores = weekly.scores;
+                drawLeaderboard(state.currentWeekScores, false);
+            }
+            updateLeaderboardUI();
+        } else {
+            await api.loadWeeklyPointsFromFirestore();
+            updateLeaderboardUI();
+        }
+
+        rebuildCompletedThisWeek();
         rebuildCompletedToday();
         renderDoneTodayFeed();
         renderTodoTasks();
     } catch (e) {
         console.error("Error updating subtask:", e);
+        alert("Failed to update subtask: " + e.message);
+    } finally {
+        inFlightSubTaskOps.delete(opKey);
     }
 }
 
@@ -1253,6 +1486,7 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
 // 7. TASK MODAL (ADD / EDIT TO-DO)
 // ==========================================
 export function openTaskModal() {
+    ensureTaskModalListeners();
     document.getElementById('taskModalTitle').innerText = "Add Task";
     document.getElementById('taskId').value = '';
     document.getElementById('taskName').value = '';
@@ -1263,10 +1497,20 @@ export function openTaskModal() {
     if (typeEl) typeEl.value = 'todo';
 
     const pointsEl = document.getElementById('taskPoints');
-    if (pointsEl) pointsEl.value = '5';
+    if (pointsEl) {
+        pointsEl.disabled = false;
+        pointsEl.min = '5';
+        pointsEl.max = '100';
+        pointsEl.step = '5';
+        pointsEl.value = '5';
+        pointsEl.dataset.prevPoints = '5';
+    }
 
     const priorityEl = document.getElementById('taskPriority');
-    if (priorityEl) priorityEl.value = 'medium';
+    if (priorityEl) {
+        priorityEl.value = 'medium';
+        delete priorityEl.dataset.userTouchedPriority;
+    }
 
     const frictionEl = document.getElementById('taskFriction');
     if (frictionEl) frictionEl.value = '';
@@ -1292,6 +1536,7 @@ export function editTask(id) {
     const task = state.todoTasksData?.find(t => t.id === id);
     if (!task) return;
 
+    ensureTaskModalListeners();
     const norm = normalizeTask(task);
 
     document.getElementById('taskModalTitle').innerText = "Edit Task";
@@ -1303,11 +1548,20 @@ export function editTask(id) {
     const typeEl = document.getElementById('taskType');
     if (typeEl) typeEl.value = norm.type || 'todo';
 
+    const hasSubtasks = Array.isArray(norm.subTasks) && norm.subTasks.length > 0;
+    const basePts = hasSubtasks ? 5 : api.clampStep5Points(norm.points, 5);
     const pointsEl = document.getElementById('taskPoints');
-    if (pointsEl) pointsEl.value = norm.points || 5;
+    if (pointsEl) {
+        pointsEl.disabled = false;
+        pointsEl.value = String(basePts);
+        pointsEl.dataset.prevPoints = String(basePts);
+    }
 
     const priorityEl = document.getElementById('taskPriority');
-    if (priorityEl) priorityEl.value = norm.priority || 'medium';
+    if (priorityEl) {
+        priorityEl.value = norm.priority || (norm.type === 'project' ? 'low' : 'medium');
+        priorityEl.dataset.userTouchedPriority = 'true';
+    }
 
     const frictionEl = document.getElementById('taskFriction');
     if (frictionEl) frictionEl.value = norm.frictionTag || '';
@@ -1336,7 +1590,7 @@ function populateTodoAssignees(selected = []) {
     });
 }
 
-export function addSubTaskField(name = '', completed = false, createdBy = '') {
+export function addSubTaskField(subObjOrName = '', completed = false, createdBy = '') {
     const container = document.getElementById('subTasksContainer');
     if (!container) return;
     const emptyMsg = container.querySelector('.empty-subtasks-msg');
@@ -1344,20 +1598,48 @@ export function addSubTaskField(name = '', completed = false, createdBy = '') {
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
-    const creator = createdBy || activeName;
 
-    const subId = 'st_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const existingObj = (subObjOrName && typeof subObjOrName === 'object') ? subObjOrName : null;
+    const name = existingObj ? (existingObj.name || existingObj.text || '') : String(subObjOrName || '');
+    const creator = existingObj?.createdBy || createdBy || activeName;
+    const subId = existingObj?.id || ('st_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+    const subPts = api.clampStep5Points(existingObj?.points, 5);
+
     const row = document.createElement('div');
     row.className = 'subtask-field-row';
-    row.style.cssText = 'display: flex; gap: 8px; align-items: center; margin-bottom: 6px;';
     row.innerHTML = `
-        <input type="hidden" class="subtask-id" value="${subId}">
+        <input type="hidden" class="subtask-id" value="${escapeHtml(subId)}">
         <input type="hidden" class="subtask-created-by" value="${escapeHtml(creator)}">
-        <input type="text" class="subtask-name" value="${escapeHtml(name)}" placeholder="Sub-task name" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+        <input type="text" class="subtask-name" value="${escapeHtml(name)}" placeholder="Sub-task name" style="flex: 1; min-width: 140px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+        <input type="number" class="subtask-points" min="5" max="100" step="5" value="${subPts}" title="Subtask points (5-100, step 5)">
         <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap;">by ${escapeHtml(creator)}</span>
-        <button type="button" onclick="this.closest('.subtask-field-row').remove()" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px;">&times;</button>
+        <button type="button" class="subtask-remove-btn" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px;" title="Remove subtask">&times;</button>
     `;
+
+    const ptsInput = row.querySelector('.subtask-points');
+    if (ptsInput) {
+        const handlePtsSnap = () => {
+            snapStep5InputValue(ptsInput, false);
+            syncParentPointsContainerState();
+        };
+        ptsInput.addEventListener('change', handlePtsSnap);
+        ptsInput.addEventListener('blur', handlePtsSnap);
+        ptsInput.addEventListener('input', () => syncParentPointsContainerState());
+    }
+
+    const removeBtn = row.querySelector('.subtask-remove-btn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            row.remove();
+            if (!container.querySelector('.subtask-field-row')) {
+                container.innerHTML = '<div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
+            }
+            syncParentPointsContainerState();
+        });
+    }
+
     container.appendChild(row);
+    syncParentPointsContainerState();
 }
 
 function populateSubTaskFields(subtasks = []) {
@@ -1366,9 +1648,11 @@ function populateSubTaskFields(subtasks = []) {
     container.innerHTML = '';
     if (!subtasks || subtasks.length === 0) {
         container.innerHTML = '<div class="empty-subtasks-msg" style="font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center;">No sub-tasks added.</div>';
+        syncParentPointsContainerState();
         return;
     }
-    subtasks.forEach(st => addSubTaskField(st.name || st.text, st.completed, st.createdBy));
+    subtasks.forEach(st => addSubTaskField(st));
+    syncParentPointsContainerState();
 }
 
 export async function saveTask() {
@@ -1378,8 +1662,7 @@ export async function saveTask() {
 
     const assignees = Array.from(document.querySelectorAll('.todo-assignee-cb:checked')).map(cb => cb.value);
     const type = document.getElementById('taskType')?.value || 'todo';
-    const points = parseInt(document.getElementById('taskPoints')?.value, 10) || 5;
-    const priority = document.getElementById('taskPriority')?.value || 'medium';
+    const priority = document.getElementById('taskPriority')?.value || (type === 'project' ? 'low' : 'medium');
     const frictionTag = document.getElementById('taskFriction')?.value || '';
     const rawCat = document.getElementById('taskCategory')?.value.trim() || 'Home';
     const category = registerCustomCategory(rawCat) || 'Home';
@@ -1390,21 +1673,44 @@ export async function saveTask() {
     const activeName = ALL_USERS.find(u => u.uid === activeUid)?.name || 'Alyssa';
     const createdBy = document.getElementById('taskCreatedBy')?.value || activeName;
 
+    const existingTask = id ? state.todoTasksData?.find(t => t.id === id) : null;
+    const existingSubMap = new Map((existingTask?.subTasks || []).map(st => [st.id, st]));
+    const nowIso = new Date().toISOString();
+
     const subTasks = [];
     document.querySelectorAll('.subtask-field-row').forEach(row => {
         const subId = row.querySelector('.subtask-id').value;
         const subName = row.querySelector('.subtask-name').value.trim();
         const subCreator = row.querySelector('.subtask-created-by')?.value || createdBy;
-        if (subName) subTasks.push({ id: subId, name: subName, completed: false, createdBy: subCreator, createdAt: new Date().toISOString() });
+        const subPts = api.clampStep5Points(row.querySelector('.subtask-points')?.value, 5);
+        if (!subName) return;
+
+        const prevSt = existingSubMap.get(subId);
+        subTasks.push({
+            id: subId,
+            name: subName,
+            points: subPts,
+            completed: prevSt ? Boolean(prevSt.completed) : false,
+            completedAt: prevSt?.completedAt ?? null,
+            completedBy: prevSt?.completedBy ?? null,
+            completedByUids: Array.isArray(prevSt?.completedByUids) ? prevSt.completedByUids : [],
+            completedActivityUids: Array.isArray(prevSt?.completedActivityUids) ? prevSt.completedActivityUids : [],
+            completedActivityUid: prevSt?.completedActivityUid ?? null,
+            linkedNiptoTask: prevSt?.linkedNiptoTask ?? null,
+            createdBy: prevSt?.createdBy || subCreator,
+            createdAt: prevSt?.createdAt || nowIso
+        });
     });
 
-    const nowIso = new Date().toISOString();
+    const hasSubtasks = subTasks.length > 0;
+    const points = hasSubtasks ? 0 : api.clampStep5Points(document.getElementById('taskPoints')?.value, 5);
 
     const taskData = {
         name,
         type,
         bucket: (type === 'project') ? 'project_idea' : 'actionable',
         points,
+        ...(hasSubtasks ? { linkedNiptoTask: null } : {}),
         priority,
         category,
         location,
@@ -1501,6 +1807,7 @@ if (typeof window !== 'undefined') {
     window.saveTask = saveTask;
     window.deleteTask = deleteTask;
     window.addSubTaskField = addSubTaskField;
+    window.syncParentPointsContainerState = syncParentPointsContainerState;
     window.renderTodoTasks = renderTodoTasks;
     window.renderSidebarTodos = renderSidebarTodos;
     window.openStaleRefresherModal = openStaleRefresherModal;

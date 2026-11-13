@@ -394,7 +394,9 @@ export function rebuildCompletedThisWeek() {
                         title: t.name,
                         user: userObj?.name || (t.completedBy?.[0] ? 'User' : 'Someone'),
                         userUid: doerUid,
-                        points: t.points !== undefined ? Number(t.points) : 5,
+                        points: (Array.isArray(t.subTasks) && t.subTasks.length > 0)
+                            ? 0
+                            : (t.points !== undefined ? Number(t.points) : 5),
                         completedAt: t.completedAt,
                         dateKey: taskDateKey,
                         ...(t.completedActivityUid ? { activityUid: t.completedActivityUid } : {}),
@@ -410,9 +412,19 @@ export function rebuildCompletedThisWeek() {
                     if (isDateInLocalWeek(subDate, weekBounds)) {
                         const subDateKey = getLocalTodayKey(subDate);
                         const compId = `subtask_${t.id}_${st.id}`;
+                        if (st.completedActivityUid) addClaimedUid(claimedActivityUids, st.completedActivityUid);
+                        if (Array.isArray(st.completedActivityUids)) {
+                            st.completedActivityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
+                        }
                         if (!compMap.has(compId)) {
                             const doerName = st.completedBy || st.createdBy || 'Someone';
-                            const userObj = ALL_USERS.find(u => u.name.toLowerCase() === doerName.toLowerCase());
+                            const doerUidFromList = Array.isArray(st.completedByUids) ? st.completedByUids[0] : '';
+                            const userObj = (doerUidFromList && ALL_USERS.find(u => u.uid === doerUidFromList))
+                                || ALL_USERS.find(u => u.uid === doerName || u.name.toLowerCase() === String(doerName).toLowerCase());
+                            const subPts = api.clampStep5Points(st.points, 5);
+                            const subUids = Array.isArray(st.completedActivityUids) && st.completedActivityUids.length > 0
+                                ? st.completedActivityUids
+                                : (st.completedActivityUid ? [st.completedActivityUid] : []);
                             compMap.set(compId, {
                                 id: compId,
                                 itemId: st.id,
@@ -420,9 +432,11 @@ export function rebuildCompletedThisWeek() {
                                 title: `${t.name}: ${st.name || st.text || 'Subtask'}`,
                                 user: userObj ? userObj.name : doerName,
                                 userUid: userObj ? userObj.uid : '',
-                                points: 0,
+                                points: subPts,
                                 completedAt: st.completedAt,
-                                dateKey: subDateKey
+                                dateKey: subDateKey,
+                                ...(st.completedActivityUid ? { activityUid: st.completedActivityUid } : {}),
+                                ...(subUids.length > 0 ? { activityUids: subUids } : {})
                             });
                         }
                     }

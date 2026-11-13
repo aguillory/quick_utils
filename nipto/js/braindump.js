@@ -36,7 +36,7 @@ Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JS
     "type": "todo" | "routine" | "project",
     "title": "Task title",
     "description": "Any extra notes, context, or instructions mentioned (empty string if none)",
-    "subtasks": ["Subtask step 1", "Subtask step 2"],
+    "subtasks": [{"name": "Subtask step 1", "points": 5}, {"name": "Subtask step 2", "points": 10}],
     "assignee": "Alyssa" | "Devyn" | "Carrina" | "Kenny" | "Ayden" | "DJ" | "Anyone",
     "category": "Home" | "Farm" | "Errands" | "Tech" | "Kids" | "Project",
     "points": 5,
@@ -49,11 +49,11 @@ Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JS
 
 Action Rules:
 - "create": Brand new items not matching any existing task.
-  - subtasks: If the task/project has multiple steps, components, or instructions, output an array of concise actionable step strings.
+  - subtasks: If the task/project has multiple steps, components, or instructions, output an array of objects {"name": "...", "points": 5..100 step 5} (default points: 5 per subtask). When subtasks is non-empty, set parent points = 0 (points are awarded per subtask).
   - type: "routine" for recurring/scheduled chores (e.g. daily animal feedings, weekly trash), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
   - For daily routines (every day, animal feeding/watering), set schedule.type = "daily" and daysOfWeek = [0,1,2,3,4,5,6]. Only set schedule.type = "weekly" when specific days of the week (1 to 6 days) are explicitly requested.
-  - points: Default to 5 if not specified (or 5 for routines).
-  - priority: Default to "medium".
+  - points: Must ALWAYS be a multiple of 5 from 5 to 100 (5, 10, 15, ..., 100). Default to 5 if not specified; set parent points to 0 ONLY when subtasks is non-empty.
+  - priority: Default to "low" when type is "project" unless the user explicitly asks for medium/high urgency; otherwise default to "medium".
   - frictionTag: "" (standard), "quick" (<5m), "low_brain", or "deep_focus".
 - "update": The user wants to modify fields on an existing task (e.g. change points, add subtasks, move to projects, edit title, set priority, or change schedule). Match its exact id in CURRENT_TASKS.
 - "complete": The user mentioned crossing off, finishing, or completing an existing task. Match its exact id.
@@ -312,11 +312,29 @@ USER BRAIN DUMP / RAMBLE:
                 ? item.type
                 : (current ? current.type : (item.targetType === 'routine' ? 'routine' : 'todo'));
 
+            const existingSubs = (current && Array.isArray(current.subTasks)) ? current.subTasks : [];
+            const normalizeSubItem = (s) => {
+                const subName = (typeof s === 'string' ? s : (s?.name || s?.text || '')).trim();
+                if (!subName) return null;
+                const matchedExisting = existingSubs.find(es =>
+                    (s && typeof s === 'object' && s.id && es.id === s.id) ||
+                    ((es.name || es.text || '').trim().toLowerCase() === subName.toLowerCase())
+                );
+                const rawPts = (s && typeof s === 'object' && s.points !== undefined)
+                    ? s.points
+                    : matchedExisting?.points;
+                return {
+                    id: (s && typeof s === 'object' && s.id) || matchedExisting?.id || null,
+                    name: subName,
+                    points: api.clampStep5Points(rawPts, 5)
+                };
+            };
+
             let subtasks = [];
             if (Array.isArray(item.subtasks)) {
-                subtasks = item.subtasks.map(s => typeof s === 'string' ? s : (s.name || s.text || '')).filter(Boolean);
-            } else if (current && Array.isArray(current.subTasks)) {
-                subtasks = current.subTasks.map(s => s.name || s.text || '').filter(Boolean);
+                subtasks = item.subtasks.map(normalizeSubItem).filter(Boolean);
+            } else if (existingSubs.length > 0) {
+                subtasks = existingSubs.map(normalizeSubItem).filter(Boolean);
             }
 
             // Normalize routine schedule cleanly
@@ -342,6 +360,14 @@ USER BRAIN DUMP / RAMBLE:
             }
 
             const catVal = registerCustomCategory(item.category || (current ? current.category : 'Home')) || 'Home';
+            const isContainer = itemType !== 'routine' && subtasks.length > 0;
+            const resolvedPoints = isContainer
+                ? 0
+                : api.clampStep5Points(item.points !== undefined ? item.points : (current ? current.points : 5), 5);
+            const defaultPri = itemType === 'project' ? 'low' : 'medium';
+            const resolvedPri = ['high', 'medium', 'low'].includes(item.priority)
+                ? item.priority
+                : (current ? current.priority : defaultPri);
 
             return {
                 stagingId: 'stage_' + Date.now() + '_' + idx,
@@ -354,10 +380,10 @@ USER BRAIN DUMP / RAMBLE:
                 subtasks,
                 assignee: item.assignee || 'Anyone',
                 category: catVal,
-                points: item.points !== undefined
-                    ? (itemType === 'routine' ? api.clampStep5Points(item.points, 5) : (parseInt(item.points, 10) || 5))
-                    : (current ? current.points : 5),
-                priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : (current ? current.priority : 'medium'),
+                points: resolvedPoints,
+                _prevPoints: current ? api.clampStep5Points(current.points, 5) : 5,
+                priority: resolvedPri,
+                priorityTouched: Boolean(current),
                 frictionTag: item.frictionTag || '',
                 schedule: normalizedSched,
                 reason: item.reason || (action === 'create' ? 'New item' : (action === 'complete' ? 'Marked complete' : 'Updated')),
@@ -432,28 +458,50 @@ export function rawLineByLineAdd() {
 // ==========================================
 // 3. FULL-DETAIL STAGING REVIEW UI
 // ==========================================
-export function addSubtaskToStaging(stagingIdx, text = '') {
-    if (!state.brainDumpStaging[stagingIdx]) return;
-    if (!Array.isArray(state.brainDumpStaging[stagingIdx].subtasks)) {
-        state.brainDumpStaging[stagingIdx].subtasks = [];
+export function addSubtaskToStaging(stagingIdx, text = '', points = 5) {
+    const item = state.brainDumpStaging[stagingIdx];
+    if (!item) return;
+    if (!Array.isArray(item.subtasks)) item.subtasks = [];
+    if (item.type !== 'routine' && item.subtasks.length === 0 && Number(item.points) > 0) {
+        item._prevPoints = api.clampStep5Points(item.points, 5);
     }
-    state.brainDumpStaging[stagingIdx].subtasks.push(text);
+    item.subtasks.push({ name: text, points: api.clampStep5Points(points, 5) });
+    if (item.type !== 'routine') item.points = 0;
     renderBrainDumpStaging();
 }
 
 export function updateStagingSubtask(stagingIdx, subtaskIdx, text) {
-    if (!state.brainDumpStaging[stagingIdx]) return;
-    if (state.brainDumpStaging[stagingIdx].subtasks && state.brainDumpStaging[stagingIdx].subtasks[subtaskIdx] !== undefined) {
-        state.brainDumpStaging[stagingIdx].subtasks[subtaskIdx] = text;
+    const item = state.brainDumpStaging[stagingIdx];
+    if (!item || !item.subtasks || item.subtasks[subtaskIdx] === undefined) return;
+    const prev = item.subtasks[subtaskIdx];
+    if (prev && typeof prev === 'object') {
+        item.subtasks[subtaskIdx] = { ...prev, name: text };
+    } else {
+        item.subtasks[subtaskIdx] = { name: text, points: 5 };
     }
 }
 
-export function removeStagingSubtask(stagingIdx, subtaskIdx) {
-    if (!state.brainDumpStaging[stagingIdx]) return;
-    if (state.brainDumpStaging[stagingIdx].subtasks) {
-        state.brainDumpStaging[stagingIdx].subtasks.splice(subtaskIdx, 1);
-        renderBrainDumpStaging();
+export function updateStagingSubtaskPoints(stagingIdx, subtaskIdx, rawPoints) {
+    const item = state.brainDumpStaging[stagingIdx];
+    if (!item || !item.subtasks || item.subtasks[subtaskIdx] === undefined) return;
+    const clamped = api.clampStep5Points(rawPoints, 5);
+    const prev = item.subtasks[subtaskIdx];
+    if (prev && typeof prev === 'object') {
+        item.subtasks[subtaskIdx] = { ...prev, points: clamped };
+    } else {
+        item.subtasks[subtaskIdx] = { name: String(prev || ''), points: clamped };
     }
+    renderBrainDumpStaging();
+}
+
+export function removeStagingSubtask(stagingIdx, subtaskIdx) {
+    const item = state.brainDumpStaging[stagingIdx];
+    if (!item || !item.subtasks) return;
+    item.subtasks.splice(subtaskIdx, 1);
+    if (item.subtasks.length === 0 && item.type !== 'routine') {
+        item.points = api.clampStep5Points(item._prevPoints, 5);
+    }
+    renderBrainDumpStaging();
 }
 
 export function updateStagingRoutineSchedule(stagingIdx, freqType) {
@@ -551,12 +599,21 @@ export function renderBrainDumpStaging() {
             style: 'width: 120px;'
         });
 
+        const isContainer = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
+        const totalSubPts = isContainer
+            ? item.subtasks.reduce((sum, s) => sum + api.clampStep5Points(typeof s === 'object' ? s.points : 5, 5), 0)
+            : 0;
+        const parentPtsVal = isContainer ? 0 : api.clampStep5Points(item.points, 5);
+
         let subtasksHtml = '';
         if (item.subtasks && item.subtasks.length > 0) {
             const subtaskRows = item.subtasks.map((step, sIdx) => {
+                const stepName = typeof step === 'string' ? step : (step?.name || step?.text || '');
+                const stepPts = api.clampStep5Points(typeof step === 'object' ? step?.points : 5, 5);
                 return '<div style="display: flex; gap: 6px; align-items: center;">' +
                     '<span style="font-size: 11px; color: var(--text-muted);">&#x2022;</span>' +
-                    '<input type="text" value="' + escapeHtml(step) + '" onchange="updateStagingSubtask(' + idx + ', ' + sIdx + ', this.value)" placeholder="Step description..." style="flex: 1; padding: 3px 6px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">' +
+                    '<input type="text" value="' + escapeHtml(stepName) + '" onchange="updateStagingSubtask(' + idx + ', ' + sIdx + ', this.value)" placeholder="Step description..." style="flex: 1; padding: 3px 6px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);">' +
+                    '<input type="number" min="5" max="100" step="5" value="' + stepPts + '" onchange="updateStagingSubtaskPoints(' + idx + ', ' + sIdx + ', this.value)" title="Subtask points (5-100, step 5)" style="width: 54px; padding: 3px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; background: var(--bg-color); color: var(--text-main);">' +
                     '<button type="button" onclick="removeStagingSubtask(' + idx + ', ' + sIdx + ')" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 14px;" title="Remove step">&times;</button>' +
                     '</div>';
             }).join('');
@@ -567,6 +624,9 @@ export function renderBrainDumpStaging() {
         const isUnselected = !item.selected;
         const opacityVal = item.selected ? '1' : '0.6';
         const checkedAttr = item.selected ? 'checked' : '';
+        const pointsInputHtml = isContainer
+            ? `<input type="number" value="0" min="0" disabled title="Container mode: points awarded per subtask (Total: ${totalSubPts} pts)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; opacity: 0.7;"> <span style="font-size: 10px; color: var(--primary); font-weight: 700;">(&Sigma; ${totalSubPts})</span>`
+            : `<input type="number" value="${parentPtsVal}" min="5" max="100" step="5" onchange="updateStagingItem(${idx}, 'points', this.value); this.value = window._clampStep5Staging ? window._clampStep5Staging(this.value) : this.value;" style="width: 52px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">`;
 
         return `
         <div class="staging-card ${isUnselected ? 'is-unselected' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px; opacity: ${opacityVal}; display: flex; flex-direction: column; gap: 8px;">
@@ -597,7 +657,7 @@ export function renderBrainDumpStaging() {
 
                 <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
                     Points:
-                    <input type="number" value="${item.points || 5}" min="0" onchange="updateStagingItem(${idx}, 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                    ${pointsInputHtml}
                 </label>
 
                 <label style="display: flex; align-items: center; gap: 4px; color: var(--text-muted);">
@@ -685,21 +745,42 @@ export function renderBrainDumpStaging() {
 }
 
 export function updateStagingItem(index, field, value) {
-    if (state.brainDumpStaging[index]) {
-        if (field === 'category') {
-            value = registerCustomCategory(value) || 'Home';
+    const item = state.brainDumpStaging[index];
+    if (!item) return;
+
+    if (field === 'category') {
+        value = registerCustomCategory(value) || 'Home';
+    } else if (field === 'points') {
+        const hasSubs = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
+        value = hasSubs ? 0 : api.clampStep5Points(value, 5);
+    } else if (field === 'priority') {
+        item.priorityTouched = true;
+    } else if (field === 'type') {
+        if (value === 'routine') {
+            if (!item.schedule) {
+                item.schedule = {
+                    type: 'daily',
+                    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+                    timeOfDay: 'Anytime',
+                    points: api.clampStep5Points(item._prevPoints || item.points, 5)
+                };
+            }
+            if (!item.points || Number(item.points) <= 0) {
+                item.points = api.clampStep5Points(item._prevPoints, 5);
+            }
+        } else {
+            if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
+                if (Number(item.points) > 0) item._prevPoints = api.clampStep5Points(item.points, 5);
+                item.points = 0;
+            }
+            if (!item.priorityTouched && !item.current) {
+                item.priority = (value === 'project') ? 'low' : 'medium';
+            }
         }
-        if (field === 'type' && value === 'routine' && !state.brainDumpStaging[index].schedule) {
-            state.brainDumpStaging[index].schedule = {
-                type: 'daily',
-                daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-                timeOfDay: 'Anytime',
-                points: api.clampStep5Points(state.brainDumpStaging[index].points, 5)
-            };
-        }
-        state.brainDumpStaging[index][field] = value;
-        if (field === 'selected') renderBrainDumpStaging();
     }
+
+    item[field] = value;
+    if (field === 'selected') renderBrainDumpStaging();
 }
 
 export function deleteStagingItem(index) {
@@ -783,9 +864,10 @@ export async function applyUnifiedStagingToFirestore() {
                 if (userObj) assigneeUids.push(userObj.uid);
             }
 
+            const hasTodoSubtasks = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
             const pts = item.type === 'routine'
                 ? api.clampStep5Points(item.points, 5)
-                : (parseInt(item.points, 10) || 5);
+                : (hasTodoSubtasks ? 0 : api.clampStep5Points(item.points, 5));
 
             if (item.type === 'routine') {
                 const routineRef = window.getNiptoCollection('routines').doc();
@@ -813,12 +895,18 @@ export async function applyUnifiedStagingToFirestore() {
             } else {
                 const todoRef = window.getNiptoCollection('custom_tasks').doc();
                 const subTasks = (item.subtasks || []).map((s, i) => ({
-                    id: 'st_' + Date.now() + '_' + i,
+                    id: (typeof s === 'object' && s.id) || ('st_' + Date.now() + '_' + i),
                     name: typeof s === 'string' ? s : (s.name || s.text || ''),
+                    points: api.clampStep5Points(typeof s === 'object' ? s.points : 5, 5),
                     completed: false,
                     createdBy: doerName,
                     createdAt: nowIso
-                }));
+                })).filter(st => st.name);
+
+                const effectiveHasSubtasks = subTasks.length > 0;
+                const finalPriority = ['high', 'medium', 'low'].includes(item.priority)
+                    ? item.priority
+                    : (item.type === 'project' ? 'low' : 'medium');
 
                 batch.set(todoRef, {
                     name: item.title,
@@ -828,8 +916,9 @@ export async function applyUnifiedStagingToFirestore() {
                     location: 'N/A',
                     assignees: assigneeUids,
                     frictionTag: item.frictionTag || '',
-                    priority: item.priority || 'medium',
-                    points: pts,
+                    priority: finalPriority,
+                    points: effectiveHasSubtasks ? 0 : pts,
+                    ...(effectiveHasSubtasks ? { linkedNiptoTask: null } : {}),
                     description: item.description || '',
                     notes: item.description || '',
                     createdBy: doerName,
@@ -861,18 +950,22 @@ export async function applyUnifiedStagingToFirestore() {
                 }
             } else if (id) {
                 const existingTodo = state.todoTasksData?.find(t => t.id === id);
-                const pts = item.points || existingTodo?.points || 5;
+                const isContainerTodo = (Array.isArray(existingTodo?.subTasks) && existingTodo.subTasks.length > 0)
+                    || (Array.isArray(item.subtasks) && item.subtasks.length > 0);
+                const pts = isContainerTodo ? 0 : api.clampStep5Points(item.points ?? existingTodo?.points, 5);
                 let activityUids = [];
-                try {
-                    activityUids = await api.logCustomPointsToNipto(
-                        pts,
-                        item.title || existingTodo?.name || 'To-Do',
-                        [doerUid],
-                        nowIso,
-                        existingTodo?.linkedNiptoTask || null
-                    );
-                } catch (niptoErr) {
-                    console.warn("Could not log Brain Dump To-Do points to Nipto API:", niptoErr);
+                if (!isContainerTodo && pts > 0) {
+                    try {
+                        activityUids = await api.logCustomPointsToNipto(
+                            pts,
+                            item.title || existingTodo?.name || 'To-Do',
+                            [doerUid],
+                            nowIso,
+                            existingTodo?.linkedNiptoTask || null
+                        );
+                    } catch (niptoErr) {
+                        console.warn("Could not log Brain Dump To-Do points to Nipto API:", niptoErr);
+                    }
                 }
                 batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                     completed: true,
@@ -886,17 +979,20 @@ export async function applyUnifiedStagingToFirestore() {
                 if (pts > 0 && activityUids.length === 0) {
                     api.awardAllowancePoints(doerUid, pts);
                 }
-                await api.recordDailyCompletion({
-                    id: `todo_${id}`,
-                    itemId: id,
-                    sourceType: 'todo',
-                    title: item.title || existingTodo?.name || 'To-Do',
-                    user: doerName,
-                    userUid: doerUid,
-                    points: pts,
-                    completedAt: nowIso,
-                    dateKey: todayKey
-                });
+                if (!isContainerTodo && pts > 0) {
+                    await api.recordDailyCompletion({
+                        id: `todo_${id}`,
+                        itemId: id,
+                        sourceType: 'todo',
+                        title: item.title || existingTodo?.name || 'To-Do',
+                        user: doerName,
+                        userUid: doerUid,
+                        points: pts,
+                        completedAt: nowIso,
+                        dateKey: todayKey,
+                        ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
+                    });
+                }
             }
             completedCount++;
         } else {
@@ -936,27 +1032,56 @@ export async function applyUnifiedStagingToFirestore() {
                     });
                     batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
                 } else {
+                    const existingTaskDoc = state.todoTasksData?.find(t => t.id === id) || item.current;
+                    const existingSubList = Array.isArray(existingTaskDoc?.subTasks) ? existingTaskDoc.subTasks : [];
+                    let nextSubTasks = null;
+                    if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
+                        nextSubTasks = item.subtasks.map((s, i) => {
+                            const subName = (typeof s === 'string' ? s : (s?.name || s?.text || '')).trim();
+                            if (!subName) return null;
+                            const prevSt = existingSubList.find(es =>
+                                (typeof s === 'object' && s.id && es.id === s.id) ||
+                                ((es.name || es.text || '').trim().toLowerCase() === subName.toLowerCase())
+                            );
+                            return {
+                                id: (typeof s === 'object' && s.id) || prevSt?.id || ('st_' + Date.now() + '_' + i),
+                                name: subName,
+                                points: api.clampStep5Points(typeof s === 'object' ? s.points : prevSt?.points, 5),
+                                completed: prevSt ? Boolean(prevSt.completed) : false,
+                                completedAt: prevSt?.completedAt ?? null,
+                                completedBy: prevSt?.completedBy ?? null,
+                                completedByUids: Array.isArray(prevSt?.completedByUids) ? prevSt.completedByUids : [],
+                                completedActivityUids: Array.isArray(prevSt?.completedActivityUids) ? prevSt.completedActivityUids : [],
+                                completedActivityUid: prevSt?.completedActivityUid ?? null,
+                                linkedNiptoTask: prevSt?.linkedNiptoTask ?? null,
+                                createdBy: prevSt?.createdBy || doerName,
+                                createdAt: prevSt?.createdAt || nowIso
+                            };
+                        }).filter(Boolean);
+                    } else if (existingSubList.length > 0) {
+                        nextSubTasks = [];
+                    }
+
+                    const hasUpdatedSubtasks = Array.isArray(nextSubTasks)
+                        ? nextSubTasks.length > 0
+                        : existingSubList.length > 0;
+
                     const updates = {
                         name: item.title,
                         type: item.type,
                         bucket: item.type === 'project' ? 'project_idea' : 'actionable',
                         category: catVal,
-                        points: item.points || 5,
-                        priority: item.priority,
+                        points: hasUpdatedSubtasks ? 0 : api.clampStep5Points(item.points, 5),
+                        ...(hasUpdatedSubtasks ? { linkedNiptoTask: null } : {}),
+                        priority: item.priority || (item.type === 'project' ? 'low' : 'medium'),
                         frictionTag: item.frictionTag || '',
                         description: item.description !== undefined ? item.description : '',
                         notes: item.description !== undefined ? item.description : '',
                         updatedAt: nowIso,
                         lastReviewedAt: nowIso
                     };
-                    if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
-                        updates.subTasks = item.subtasks.map((s, i) => ({
-                            id: 'st_' + Date.now() + '_' + i,
-                            name: typeof s === 'string' ? s : (s.name || s.text || ''),
-                            completed: false,
-                            createdBy: doerName,
-                            createdAt: nowIso
-                        }));
+                    if (nextSubTasks !== null) {
+                        updates.subTasks = nextSubTasks;
                     }
                     batch.update(window.getNiptoCollection('custom_tasks').doc(id), updates);
                 }
@@ -1040,8 +1165,17 @@ export async function updateInlineTaskField(sourceType, id, field, value) {
     const nowIso = new Date().toISOString();
     if (field === 'category') {
         value = registerCustomCategory(value) || 'Home';
-    } else if (sourceType === 'routine' && field === 'points') {
-        value = api.clampStep5Points(value, 5);
+    } else if (field === 'points') {
+        if (sourceType === 'todo') {
+            const existingTodo = state.todoTasksData?.find(item => item.id === id);
+            if (existingTodo && Array.isArray(existingTodo.subTasks) && existingTodo.subTasks.length > 0) {
+                value = 0;
+            } else {
+                value = api.clampStep5Points(value, 5);
+            }
+        } else {
+            value = api.clampStep5Points(value, 5);
+        }
     }
     try {
         if (sourceType === 'routine') {
@@ -1264,7 +1398,10 @@ export function renderBulkTriageList() {
 
                 <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
                     Points:
-                    <input type="number" value="${t.points || 5}" min="0" onchange="updateInlineTaskField('todo', '${t.id}', 'points', parseInt(this.value, 10) || 5)" style="width: 45px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                    ${(Array.isArray(t.subTasks) && t.subTasks.length > 0)
+                        ? `<input type="number" value="0" min="0" disabled title="Container task: points awarded per subtask" style="width: 45px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center; opacity: 0.7;">`
+                        : `<input type="number" value="${api.clampStep5Points(t.points, 5)}" min="5" max="100" step="5" onchange="const p = window._clampStep5Staging(this.value); this.value = p; updateInlineTaskField('todo', '${t.id}', 'points', p);" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">`
+                    }
                 </label>
 
                 <div style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
@@ -1342,7 +1479,7 @@ export function renderBulkTriageList() {
 
                 <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
                     Points:
-                    <input type="number" value="${pts}" min="5" step="5" onchange="updateInlineTaskField('routine', '${r.uid}', 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                    <input type="number" value="${api.clampStep5Points(pts, 5)}" min="5" max="100" step="5" onchange="const p = window._clampStep5Staging(this.value); this.value = p; updateInlineTaskField('routine', '${r.uid}', 'points', p);" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
                 </label>
 
                 <div style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
@@ -1780,7 +1917,9 @@ if (typeof window !== 'undefined') {
     window.deleteStagingItem = deleteStagingItem;
     window.addSubtaskToStaging = addSubtaskToStaging;
     window.updateStagingSubtask = updateStagingSubtask;
+    window.updateStagingSubtaskPoints = updateStagingSubtaskPoints;
     window.removeStagingSubtask = removeStagingSubtask;
+    window._clampStep5Staging = (v) => api.clampStep5Points(v, 5);
     window.toggleAllStagingRows = toggleAllStagingRows;
     window.toggleSectionStagingRows = toggleSectionStagingRows;
     window.clearBrainDumpStaging = clearBrainDumpStaging;

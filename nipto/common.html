@@ -558,7 +558,8 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Points (Reward)</label>
-                    <input type="number" id="taskPoints" value="5" min="0" placeholder="5" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box;">
+                    <input type="number" id="taskPoints" value="5" min="5" max="100" step="5" placeholder="5" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box;">
+                    <div id="taskPointsContainerNote" class="parent-pts-container-note" style="display: none;"></div>
                 </div>
                 <div>
                     <label style="font-size: 12px; font-weight: bold; color: var(--text-muted);">Friction Level</label>
@@ -753,7 +754,7 @@
             </div>
 
             <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
-            <input type="number" id="routinePoints" min="0" placeholder="e.g. 15" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px; width: 100%; box-sizing: border-box;">
+            <input type="number" id="routinePoints" value="5" min="5" max="100" step="5" placeholder="5" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px; width: 100%; box-sizing: border-box;">
 
             <div class="modal-buttons" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                 <button type="button" id="btnDeleteRoutine" class="action-btn" onclick="deleteRoutineFromModal()" style="display: none; background: var(--danger); color: white;">&#x1F5D1; Delete</button>
