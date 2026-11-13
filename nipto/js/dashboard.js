@@ -175,7 +175,7 @@ Object.assign(window, {
     selectCategoryComboboxOption, handleCategoryComboboxKeydown,
     setDoneTodayView, changeDoneWeekOffset, resetDoneWeekToCurrent,
     rebuildCompletedThisWeek, renderDoneThisWeekFeed,
-    rebuildCompletedToday, renderDoneTodayFeed,
+    rebuildCompletedToday, renderDoneTodayFeed, updateLeaderboardUI,
     sendChatMessage, editChatMessage, deleteChatMessage,
     reconcileNiptoActivitiesToFirestore: api.reconcileNiptoActivitiesToFirestore
 });

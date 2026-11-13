@@ -697,4 +697,5 @@ if (typeof window !== 'undefined') {
     window.renderDoneThisWeekFeed = renderDoneThisWeekFeed;
     window.rebuildCompletedToday = rebuildCompletedThisWeek;
     window.renderDoneTodayFeed = renderDoneThisWeekFeed;
+    window.updateLeaderboardUI = updateLeaderboardUI;
 }

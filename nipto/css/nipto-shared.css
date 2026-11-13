@@ -1651,13 +1651,13 @@ input[list]:focus {
     color: #94a3b8;
 }
 
-.todo-card.is-assigned-to-me {
+.todo-card.is-assigned-to-me:not(.completed):not(.is-other-user-task) {
     border-color: rgba(37, 99, 235, 0.55);
     box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.4), 0 2px 6px rgba(37, 99, 235, 0.08);
     background: linear-gradient(90deg, rgba(37, 99, 235, 0.07) 0%, var(--card-bg) 42%);
 }
 
-.todo-card.is-assigned-to-me:hover {
+.todo-card.is-assigned-to-me:not(.completed):not(.is-other-user-task):hover {
     box-shadow: 0 0 0 2px var(--primary), 0 3px 8px rgba(37, 99, 235, 0.15);
 }
 

@@ -367,15 +367,24 @@ select:focus, input[type="datetime-local"]:focus, input[list]:focus {
     .chore-title { font-size: 14px; }
 }
 
-.todo-card.is-assigned-to-me {
-    border-color: var(--primary) !important;
-    box-shadow: 0 0 0 2px rgba(45, 90, 39, 0.25), 0 4px 10px rgba(45, 90, 39, 0.12) !important;
-    background: linear-gradient(90deg, rgba(45, 90, 39, 0.08) 0%, #FFFFFF 38%) !important;
+.todo-card.is-assigned-to-me:not(.completed):not(.is-other-user-task) {
+    background: linear-gradient(90deg, rgba(74, 93, 35, 0.14) 0%, #FAF6EE 58%) !important;
+    border: 1.5px solid #4A5D23 !important;
+    border-left: 5px solid #4A5D23 !important;
+    box-shadow: 0 2px 8px rgba(74, 93, 35, 0.18), 2px 2px 4px rgba(44, 35, 30, 0.1) !important;
+}
+
+.todo-card.is-assigned-to-me:not(.completed):not(.is-other-user-task):hover {
+    box-shadow: 0 0 0 1px rgba(74, 93, 35, 0.35), 0 4px 12px rgba(74, 93, 35, 0.24) !important;
 }
 
 .todo-card.is-other-user-task {
     opacity: 0.72;
     filter: saturate(0.75);
+}
+
+.todo-card.is-other-user-task * {
+    pointer-events: auto;
 }
 
 .todo-card.is-other-user-task:hover,

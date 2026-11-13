@@ -7,7 +7,7 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { renderTodoTasks, normalizeTask } from './todos.js';
 import { renderRollingSchedule, isDailyRoutine, completeRoutineForDate, isRoutineCompletedOnDate } from './routines.js';
-import { rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
+import { rebuildCompletedToday, renderDoneTodayFeed, updateLeaderboardUI } from './leaderboard.js';
 import { saveCloudPreference } from './preferences.js';
 import { getLocalTodayKey, renderCategoryCombobox, registerCustomCategory } from './utils.js';
 

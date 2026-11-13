@@ -318,3 +318,25 @@ span[style*="#f3f4f6"] {
         font-size: 15px;
     }
 }
+
+.todo-card.is-assigned-to-me:not(.completed):not(.is-other-user-task) {
+    border: 1.5px solid #ca9a04 !important;
+    border-left: 5px solid #ca9a04 !important;
+    box-shadow: 0 0 0 1px rgba(253, 240, 69, 0.45), 0 4px 12px rgba(24, 21, 97, 0.16) !important;
+    background: linear-gradient(90deg, rgba(253, 240, 69, 0.18) 0%, rgba(255, 255, 255, 0.92) 55%) !important;
+}
+
+.todo-card.is-other-user-task {
+    opacity: 0.68;
+    filter: saturate(0.72);
+}
+
+.todo-card.is-other-user-task * {
+    pointer-events: auto;
+}
+
+.todo-card.is-other-user-task:hover,
+.todo-card.is-other-user-task:focus-within {
+    opacity: 0.96;
+    filter: saturate(1);
+}

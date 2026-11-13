@@ -3,6 +3,8 @@
 import { state } from './state.js';
 import { saveCloudPreference } from './preferences.js';
 
+const THEME_CSS_VERSION = '20261113b';
+
 const THEMES = {
     'boring': null,
     'pixel': 'css/minecraft.css',
@@ -46,7 +48,7 @@ export function applyTheme(themeId) {
         link = document.createElement('link');
         link.id = 'dynamic-theme-css';
         link.rel = 'stylesheet';
-        link.href = THEMES[themeId];
+        link.href = `${THEMES[themeId]}?v=${THEME_CSS_VERSION}`;
         document.head.appendChild(link);
     }
 
