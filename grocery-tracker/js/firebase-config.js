@@ -21,14 +21,27 @@ import {
     onAuthStateChanged 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// Reusing project config from quick_utils/tracker/js/connection.js
-const firebaseConfig = {
-    apiKey: "AIzaSyBZEMURsXfHMi9E-sOPv5MEBBuqsnPuwEA",
-    authDomain: "quick-utils.firebaseapp.com",
-    projectId: "quick-utils",
-    storageBucket: "quick-utils.firebasestorage.app",
-    messagingSenderId: "761342715921",
-    appId: "1:761342715921:web:3f05487a9a40beaccfe9b0"
+// Canonical Firebase config & Firestore collection schema (parsed by Python config_loader.py)
+export const firebaseConfig = {
+    "apiKey": "AIzaSyBZEMURsXfHMi9E-sOPv5MEBBuqsnPuwEA",
+    "authDomain": "quick-utils.firebaseapp.com",
+    "projectId": "quick-utils",
+    "storageBucket": "quick-utils.firebasestorage.app",
+    "messagingSenderId": "761342715921",
+    "appId": "1:761342715921:web:3f05487a9a40beaccfe9b0"
+};
+
+export const GROCERY_COLLECTIONS = {
+    "watchlist": "grocery_watchlist",
+    "ads_current": "grocery_ads_current",
+    "price_history": "grocery_price_history",
+    "raw_feed": "grocery_weekly_raw_feed",
+    "sync_state": "grocery_sync_state"
+};
+
+export const GROCERY_DEFAULTS = {
+    "sync_state_doc_id": "current",
+    "postal_code": "71201"
 };
 
 const app = initializeApp(firebaseConfig);

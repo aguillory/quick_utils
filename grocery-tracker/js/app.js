@@ -3,6 +3,8 @@ import {
     db, 
     auth,
     ensureAuthReady,
+    GROCERY_COLLECTIONS,
+    GROCERY_DEFAULTS,
     doc, 
     collection, 
     onSnapshot, 
@@ -110,6 +112,48 @@ function cacheDOMElements() {
 }
 
 // ----------------------------------------------------
+// Shared Helpers (Date Lifecycle, Slugs, Batches, CSV)
+// ----------------------------------------------------
+function slugifyStore(store) {
+    return (store || 'store').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function getDealTiming(ad) {
+    const hasDates = !!(ad && (ad.valid_from || ad.valid_to));
+    const dyn = formatValidWindow(ad?.valid_from, ad?.valid_to);
+    const isUpcoming = hasDates ? dyn.isUpcoming : !!ad?.is_upcoming;
+    const isExpired = hasDates ? dyn.isExpired : !!ad?.is_expired;
+    const windowStr = hasDates ? dyn.windowStr : (ad?.date_window_str || null);
+    return { windowStr, isUpcoming, isExpired };
+}
+
+async function commitInChunks(firestoreDb, operations, chunkSize = 400) {
+    for (let i = 0; i < operations.length; i += chunkSize) {
+        const chunk = operations.slice(i, i + chunkSize);
+        const batch = writeBatch(firestoreDb);
+        for (const op of chunk) {
+            if (op.type === 'set') {
+                batch.set(op.ref, op.data, op.options || {});
+            } else if (op.type === 'update') {
+                batch.update(op.ref, op.data);
+            } else if (op.type === 'delete') {
+                batch.delete(op.ref);
+            }
+        }
+        await batch.commit();
+    }
+}
+
+function escapeCsvField(val) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (/[",\r\n]/.test(str)) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+}
+
+// ----------------------------------------------------
 // Firestore Real-Time Subscriptions
 // ----------------------------------------------------
 function initFirestoreListeners() {
@@ -120,7 +164,7 @@ function initFirestoreListeners() {
     state.unsubscribes = [];
 
     // 1. Sync State Listener
-    const unsubSync = onSnapshot(doc(db, 'grocery_sync_state', 'current'), (docSnap) => {
+    const unsubSync = onSnapshot(doc(db, GROCERY_COLLECTIONS.sync_state, GROCERY_DEFAULTS.sync_state_doc_id), (docSnap) => {
         if (docSnap.exists()) {
             state.syncState = { ...state.syncState, ...docSnap.data() };
             updateSyncUI();
@@ -129,7 +173,7 @@ function initFirestoreListeners() {
     state.unsubscribes.push(unsubSync);
 
     // 2. Watchlist Listener
-    const unsubWatchlist = onSnapshot(collection(db, 'grocery_watchlist'), (snapshot) => {
+    const unsubWatchlist = onSnapshot(collection(db, GROCERY_COLLECTIONS.watchlist), (snapshot) => {
         state.watchlist = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateCategoryOptions();
         renderAll();
@@ -137,7 +181,7 @@ function initFirestoreListeners() {
     state.unsubscribes.push(unsubWatchlist);
 
     // 3. Current Ads Listener
-    const unsubAds = onSnapshot(collection(db, 'grocery_ads_current'), (snapshot) => {
+    const unsubAds = onSnapshot(collection(db, GROCERY_COLLECTIONS.ads_current), (snapshot) => {
         state.currentAds = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateStoreOptions();
         renderAll();
@@ -145,7 +189,7 @@ function initFirestoreListeners() {
     state.unsubscribes.push(unsubAds);
 
     // 4. Weekly Raw Feed Listener
-    const unsubRaw = onSnapshot(collection(db, 'grocery_weekly_raw_feed'), (snapshot) => {
+    const unsubRaw = onSnapshot(collection(db, GROCERY_COLLECTIONS.raw_feed), (snapshot) => {
         state.rawFeed = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         renderRawFeed();
     }, (err) => console.error("Raw feed listener error:", err));
@@ -183,16 +227,22 @@ function updateSummaryStats() {
     let dealsBeating = 0;
     let priorityDeals = 0;
 
-    // Group current ads by watchlist item
+    // Group non-expired current ads by watchlist item
     const adsByItem = {};
     for (const ad of state.currentAds) {
+        const timing = getDealTiming(ad);
+        if (timing.isExpired) continue;
         if (!adsByItem[ad.watchlist_id]) adsByItem[ad.watchlist_id] = [];
         adsByItem[ad.watchlist_id].push(ad);
     }
 
     for (const item of state.watchlist) {
         const itemAds = adsByItem[item.id] || [];
-        const beating = itemAds.some(a => a.beats_baseline);
+        // Count only active, non-expired, non-upcoming sales beating baseline
+        const beating = itemAds.some(a => {
+            const timing = getDealTiming(a);
+            return !timing.isExpired && !timing.isUpcoming && a.beats_baseline;
+        });
         if (beating) {
             dealsBeating++;
             if (item.is_priority) priorityDeals++;
@@ -210,9 +260,11 @@ function updateSummaryStats() {
 function renderPriceBook() {
     if (!elements.priceBookBody) return;
 
-    // Group current ads by watchlist_id
+    // Group non-expired current ads by watchlist_id
     const adsByItem = {};
     for (const ad of state.currentAds) {
+        const timing = getDealTiming(ad);
+        if (timing.isExpired) continue;
         if (!adsByItem[ad.watchlist_id]) adsByItem[ad.watchlist_id] = [];
         adsByItem[ad.watchlist_id].push(ad);
     }
@@ -223,7 +275,10 @@ function renderPriceBook() {
         if (state.filters.category !== 'all' && item.category !== state.filters.category) return false;
 
         const itemAds = adsByItem[item.id] || [];
-        const hasBeatingDeal = itemAds.some(a => a.beats_baseline);
+        const hasBeatingDeal = itemAds.some(a => {
+            const timing = getDealTiming(a);
+            return !timing.isExpired && !timing.isUpcoming && a.beats_baseline;
+        });
         if (state.filters.beatsBaselineOnly && !hasBeatingDeal) return false;
 
         if (state.filters.store !== 'all') {
@@ -257,21 +312,22 @@ function renderPriceBook() {
 
     for (const item of filteredItems) {
         const itemAds = adsByItem[item.id] || [];
-        
-        // Prioritize active sales over upcoming preview ads
+
+        // Prioritize active non-expired sales over upcoming preview ads
         const activeDeals = itemAds.filter(a => {
-            const fromStr = (a.valid_from || '').slice(0, 10);
-            return !a.is_upcoming && (!fromStr || fromStr <= todayStr);
+            const timing = getDealTiming(a);
+            return !timing.isExpired && !timing.isUpcoming;
         });
         activeDeals.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
 
         const upcomingDeals = itemAds.filter(a => {
-            const fromStr = (a.valid_from || '').slice(0, 10);
-            return a.is_upcoming || (fromStr && fromStr > todayStr);
+            const timing = getDealTiming(a);
+            return !timing.isExpired && timing.isUpcoming;
         });
         upcomingDeals.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
 
         const bestDeal = activeDeals[0] || upcomingDeals[0] || null;
+        const bestTiming = bestDeal ? getDealTiming(bestDeal) : null;
 
         const isExpanded = state.expandedRows.has(item.id);
         const unit = item.target_unit || 'ea';
@@ -280,32 +336,32 @@ function renderPriceBook() {
         // Baseline HTML (Editable inline)
         const isEditingThisBaseline = state.editingBaselineId === item.id;
         const baselineVal = item.baseline_price_per_unit != null ? `$${item.baseline_price_per_unit.toFixed(2)}` : '--';
-        
+
         let baselineHtml = '';
         if (isEditingThisBaseline) {
+            const baselineInputVal = item.baseline_price_per_unit || '';
             baselineHtml = `
                 <div class="flex items-center gap-1" onclick="event.stopPropagation()">
-                    <input type="number" step="0.01" id="input-baseline-${item.id}" value="${item.baseline_price_per_unit || ''}" class="w-20 px-1 py-0.5 text-sm border rounded" />
+                    <input type="number" step="0.01" id="input-baseline-${item.id}" value="${baselineInputVal}" class="w-20 px-1 py-0.5 text-sm border rounded" />
                     <button onclick="saveInlineBaseline('${item.id}')" class="text-emerald-600 hover:text-emerald-700 px-1"><i class="fas fa-check"></i></button>
                     <button onclick="cancelInlineBaseline()" class="text-slate-400 hover:text-slate-600 px-1"><i class="fas fa-times"></i></button>
                 </div>`;
         } else {
+            const baselineSource = item.baseline_source || 'Walmart';
             baselineHtml = `
                 <span class="editable-baseline font-semibold text-slate-700" onclick="event.stopPropagation(); startInlineBaseline('${item.id}')" title="Click to edit baseline">
                     ${baselineVal}<span class="text-xs text-slate-400">/${unit}</span>
                 </span>
-                <span class="text-[11px] block text-slate-400">${item.baseline_source || 'Walmart'}</span>`;
+                <span class="text-[11px] block text-slate-400">${baselineSource}</span>`;
         }
 
         // Date window & upcoming badge for best deal
         let dateBadgeHtml = '';
-        if (bestDeal) {
-            const { windowStr, isUpcoming, isExpired } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
-            const displayWindow = bestDeal.date_window_str || windowStr;
-            if (bestDeal.is_upcoming || isUpcoming) {
-                dateBadgeHtml = `<span class="badge badge-upcoming" title="Upcoming Preview Deal"><i class="fas fa-clock"></i> ${displayWindow || 'Upcoming'}</span>`;
-            } else if (isExpired) {
-                dateBadgeHtml = `<span class="badge badge-date opacity-70" title="Expired"><i class="fas fa-history"></i> ${displayWindow || 'Expired'}</span>`;
+        if (bestDeal && bestTiming) {
+            const displayWindow = bestTiming.windowStr;
+            if (bestTiming.isUpcoming) {
+                const upLabel = displayWindow || 'Upcoming';
+                dateBadgeHtml = `<span class="badge badge-upcoming" title="Upcoming Preview Deal"><i class="fas fa-clock"></i> ${upLabel}</span>`;
             } else if (displayWindow) {
                 dateBadgeHtml = `<span class="badge badge-date" title="Sale Window"><i class="far fa-calendar-alt"></i> ${displayWindow}</span>`;
             }
@@ -315,15 +371,17 @@ function renderPriceBook() {
         let bestSaleHtml = '';
         if (bestDeal && bestDeal.normalized_unit_price != null) {
             const beat = bestDeal.beats_baseline;
-            const savingsPct = bestDeal.savings_pct ? `${bestDeal.savings_pct}% off` : '';
-            const beatBadge = beat 
-                ? `<span class="badge badge-beat ml-1"><i class="fas fa-arrow-down"></i> ${savingsPct || 'Beats Baseline'}</span>` 
+            const savingsPct = bestDeal.savings_pct ? `${bestDeal.savings_pct}% off` : 'Beats Baseline';
+            const beatBadge = beat
+                ? `<span class="badge badge-beat ml-1"><i class="fas fa-arrow-down"></i> ${savingsPct}</span>`
                 : '';
+            const priceTextClass = beat ? 'text-emerald-700 text-base' : 'text-slate-800';
+            const formattedBestPrice = bestDeal.normalized_unit_price.toFixed(2);
 
             bestSaleHtml = `
                 <div class="flex items-center gap-1.5 flex-wrap">
-                    <span class="font-bold ${beat ? 'text-emerald-700 text-base' : 'text-slate-800'}">
-                        $${bestDeal.normalized_unit_price.toFixed(2)}<span class="text-xs font-normal text-slate-500">/${unit}</span>
+                    <span class="font-bold ${priceTextClass}">
+                        $${formattedBestPrice}<span class="text-xs font-normal text-slate-500">/${unit}</span>
                     </span>
                     ${beatBadge}
                 </div>
@@ -337,11 +395,11 @@ function renderPriceBook() {
 
         // Notes / Conditions HTML
         let notesHtml = '';
-        if (bestDeal) {
+        if (bestDeal && bestTiming) {
             const badges = [];
-            const { windowStr, isUpcoming } = formatValidWindow(bestDeal.valid_from, bestDeal.valid_to);
-            if (bestDeal.is_upcoming || isUpcoming) {
-                badges.push(`<span class="badge badge-upcoming"><i class="fas fa-clock"></i> ${bestDeal.date_window_str || windowStr || 'Upcoming'}</span>`);
+            if (bestTiming.isUpcoming) {
+                const upNote = bestTiming.windowStr || 'Upcoming';
+                badges.push(`<span class="badge badge-upcoming"><i class="fas fa-clock"></i> ${upNote}</span>`);
             }
             if (bestDeal.is_bogo) {
                 const bogoNote = bestDeal.notes_str && bestDeal.notes_str.includes('BOGO 1¢') ? 'BOGO 1¢' : 'BOGO Free';
@@ -354,7 +412,9 @@ function renderPriceBook() {
                 if (n.startsWith('Limit')) {
                     badges.push(`<span class="badge badge-limit">${n}</span>`);
                 } else if (n.includes('pack') || n.includes('count') || n.includes('oz') || n.includes('lb')) {
-                    if (!n.includes('BOGO') && !n.startsWith('Starts')) badges.push(`<span class="badge badge-store">${n}</span>`);
+                    if (!n.includes('BOGO') && !n.startsWith('Starts')) {
+                        badges.push(`<span class="badge badge-store">${n}</span>`);
+                    }
                 }
             }
             notesHtml = badges.join(' ') || `<span class="text-xs text-slate-400">Standard pack</span>`;
@@ -366,27 +426,40 @@ function renderPriceBook() {
         let histLowHtml = '';
         if (item.historical_low_price != null) {
             const isFuture = item.historical_low_date && item.historical_low_date > todayStr;
+            const histLowPriceStr = item.historical_low_price.toFixed(2);
+            const histDateClass = isFuture ? 'text-amber-600 font-semibold' : 'text-slate-400';
+            const histStoreStr = item.historical_low_store || '';
+            const histDateStr = item.historical_low_date || '';
             histLowHtml = `
-                <div class="font-semibold text-slate-800">$${item.historical_low_price.toFixed(2)}<span class="text-xs text-slate-400">/${unit}</span></div>
-                <div class="text-[11px] ${isFuture ? 'text-amber-600 font-semibold' : 'text-slate-400'}">${item.historical_low_store || ''} (${item.historical_low_date || ''})</div>`;
+                <div class="font-semibold text-slate-800">$${histLowPriceStr}<span class="text-xs text-slate-400">/${unit}</span></div>
+                <div class="text-[11px] ${histDateClass}">${histStoreStr} (${histDateStr})</div>`;
         } else {
             histLowHtml = `<span class="text-slate-400 font-medium">—</span>`;
         }
 
         // Rolling Avg HTML
-        const rollingAvgHtml = item.rolling_avg_price != null 
-            ? `<span class="font-medium text-slate-700">$${item.rolling_avg_price.toFixed(2)}<span class="text-xs text-slate-400">/${unit}</span></span>` 
+        const rollingAvgVal = item.rolling_avg_price != null ? item.rolling_avg_price.toFixed(2) : null;
+        const rollingAvgHtml = rollingAvgVal !== null
+            ? `<span class="font-medium text-slate-700">$${rollingAvgVal}<span class="text-xs text-slate-400">/${unit}</span></span>`
             : `<span class="text-slate-400 font-medium">—</span>`;
 
         // Item Header Column
         const starClass = item.is_priority ? 'fas fa-star star-active' : 'far fa-star star-inactive';
-        const brandBadge = isStrict ? `<span class="badge badge-strict" title="Brand Strict Mode: ${(item.required_brands || []).join(', ')}"><i class="fas fa-lock"></i> Strict</span>` : '';
+        const starTitle = item.is_priority
+            ? 'Priority Alert: ON (Click to toggle)'
+            : 'Passive Tracking (Click to make priority alert)';
+        const reqBrandsStr = (item.required_brands || []).join(', ');
+        const brandBadge = isStrict
+            ? `<span class="badge badge-strict" title="Brand Strict Mode: ${reqBrandsStr}"><i class="fas fa-lock"></i> Strict</span>`
+            : '';
+        const rowBgClass = isExpanded ? 'bg-slate-50/60' : '';
+        const chevronDir = isExpanded ? 'up' : 'down';
 
         html += `
-            <tr class="hover:bg-slate-50/80 cursor-pointer transition-colors border-b border-slate-100 ${isExpanded ? 'bg-slate-50/60' : ''}" onclick="toggleRowExpand('${item.id}')">
+            <tr class="hover:bg-slate-50/80 cursor-pointer transition-colors border-b border-slate-100 ${rowBgClass}" onclick="toggleRowExpand('${item.id}')">
                 <td class="p-3.5 pl-4">
                     <div class="flex items-center gap-2.5">
-                        <i class="${starClass} star-btn text-base" onclick="event.stopPropagation(); togglePriority('${item.id}', ${!item.is_priority})" title="${item.is_priority ? 'Priority Alert: ON (Click to toggle)' : 'Passive Tracking (Click to make priority alert)'}"></i>
+                        <i class="${starClass} star-btn text-base" onclick="event.stopPropagation(); togglePriority('${item.id}', ${!item.is_priority})" title="${starTitle}"></i>
                         <div>
                             <div class="font-bold text-slate-800 text-sm flex items-center gap-1.5 flex-wrap">
                                 <span>${item.canonical_name}</span>
@@ -403,45 +476,72 @@ function renderPriceBook() {
                 <td class="p-3.5">${histLowHtml}</td>
                 <td class="p-3.5 pr-4 flex items-center justify-between">
                     <div>${rollingAvgHtml}</div>
-                    <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'} text-slate-300 text-xs ml-2"></i>
+                    <i class="fas fa-chevron-${chevronDir} text-slate-300 text-xs ml-2"></i>
                 </td>
             </tr>`;
 
-        // Expanded Drawer showing ALL store deals for this item
+        // Expanded Drawer showing ALL active/upcoming store deals for this item
         if (isExpanded) {
             let drawerContent = '';
             if (itemAds.length === 0) {
                 drawerContent = `<div class="p-4 text-center text-slate-400 text-sm italic">No store advertised this item in circulars this week.</div>`;
             } else {
+                const sortedDrawerAds = [...itemAds].sort((a, b) => {
+                    const aUp = getDealTiming(a).isUpcoming ? 1 : 0;
+                    const bUp = getDealTiming(b).isUpcoming ? 1 : 0;
+                    if (aUp !== bUp) return aUp - bUp;
+                    return (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999);
+                });
+
+                const drawerCardsHtml = sortedDrawerAds.map(ad => {
+                    const adTiming = getDealTiming(ad);
+                    const adWinDisplay = adTiming.windowStr;
+                    let adDateBadge = '';
+                    if (adTiming.isUpcoming) {
+                        const upText = adWinDisplay || 'Upcoming';
+                        adDateBadge = `<span class="badge badge-upcoming text-[10px] py-0"><i class="fas fa-clock"></i> ${upText}</span>`;
+                    } else if (adWinDisplay) {
+                        adDateBadge = `<span class="badge badge-date text-[10px] py-0"><i class="far fa-calendar-alt"></i> ${adWinDisplay}</span>`;
+                    }
+
+                    const adImgHtml = ad.image_url
+                        ? `<img src="${ad.image_url}" alt="" class="w-16 h-16 object-contain rounded-lg bg-slate-50 border p-1" />`
+                        : `<div class="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300"><i class="fas fa-shopping-basket text-xl"></i></div>`;
+
+                    const adBeatBadge = ad.beats_baseline
+                        ? `<span class="badge badge-beat text-[10px] py-0">Beats Baseline</span>`
+                        : '';
+
+                    const adUnitPriceStr = (ad.normalized_unit_price || 0).toFixed(2);
+                    const adPackHtml = ad.effective_price && ad.effective_price !== ad.normalized_unit_price
+                        ? `<span class="text-xs font-normal text-slate-400">($${ad.effective_price.toFixed(2)} pack)</span>`
+                        : '';
+                    const adNoteLine = ad.notes_str || ad.raw_description || '';
+
+                    return `
+                        <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex gap-3 items-center">
+                            ${adImgHtml}
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start gap-1">
+                                    <div class="font-bold text-xs text-slate-500 uppercase truncate">${ad.store}</div>
+                                    <div class="flex items-center gap-1 flex-shrink-0">
+                                        ${adDateBadge}
+                                        ${adBeatBadge}
+                                    </div>
+                                </div>
+                                <div class="font-semibold text-sm text-slate-800 truncate" title="${ad.raw_name}">${ad.raw_name}</div>
+                                <div class="text-sm font-bold text-emerald-600 mt-0.5">
+                                    $${adUnitPriceStr}<span class="text-xs font-normal text-slate-500">/${unit}</span>
+                                    ${adPackHtml}
+                                </div>
+                                <div class="text-[11px] text-slate-500 truncate">${adNoteLine}</div>
+                            </div>
+                        </div>`;
+                }).join('');
+
                 drawerContent = `
                     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
-                        ${itemAds.map(ad => {
-                            const { windowStr: adWin, isUpcoming: isAdUp } = formatValidWindow(ad.valid_from, ad.valid_to);
-                            const adWinDisplay = ad.date_window_str || adWin;
-                            const adDateBadge = (ad.is_upcoming || isAdUp)
-                                ? `<span class="badge badge-upcoming text-[10px] py-0"><i class="fas fa-clock"></i> ${adWinDisplay || 'Upcoming'}</span>`
-                                : (adWinDisplay ? `<span class="badge badge-date text-[10px] py-0"><i class="far fa-calendar-alt"></i> ${adWinDisplay}</span>` : '');
-
-                            return `
-                            <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex gap-3 items-center">
-                                ${ad.image_url ? `<img src="${ad.image_url}" alt="" class="w-16 h-16 object-contain rounded-lg bg-slate-50 border p-1" />` : `<div class="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300"><i class="fas fa-shopping-basket text-xl"></i></div>`}
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex justify-between items-start">
-                                        <div class="font-bold text-xs text-slate-500 uppercase truncate">${ad.store}</div>
-                                        <div class="flex items-center gap-1">
-                                            ${adDateBadge}
-                                            ${ad.beats_baseline ? `<span class="badge badge-beat text-[10px] py-0">Beats Baseline</span>` : ''}
-                                        </div>
-                                    </div>
-                                    <div class="font-semibold text-sm text-slate-800 truncate" title="${ad.raw_name}">${ad.raw_name}</div>
-                                    <div class="text-sm font-bold text-emerald-600 mt-0.5">
-                                        $${(ad.normalized_unit_price || 0).toFixed(2)}<span class="text-xs font-normal text-slate-500">/${unit}</span>
-                                        ${ad.effective_price && ad.effective_price !== ad.normalized_unit_price ? `<span class="text-xs font-normal text-slate-400">($${ad.effective_price.toFixed(2)} pack)</span>` : ''}
-                                    </div>
-                                    <div class="text-[11px] text-slate-500 truncate">${ad.notes_str || ad.raw_description || ''}</div>
-                                </div>
-                            </div>
-                        `}).join('')}
+                        ${drawerCardsHtml}
                     </div>`;
             }
 
@@ -465,7 +565,11 @@ function renderPriceBook() {
 function renderRawFeed() {
     if (!elements.rawFeedContainer) return;
 
-    let items = state.rawFeed;
+    // Filter out expired raw feed items dynamically
+    const nonExpiredRaw = state.rawFeed.filter(it => !formatValidWindow(it.valid_from, it.valid_to).isExpired);
+    populateRawStoreFilter(nonExpiredRaw);
+
+    let items = nonExpiredRaw;
 
     // Filters
     if (state.rawFeedFilters.store !== 'all') {
@@ -481,8 +585,6 @@ function renderRawFeed() {
         elements.rawFeedCount.textContent = `${items.length} circular items`;
     }
 
-    populateRawStoreFilter();
-
     if (items.length === 0) {
         elements.rawFeedContainer.innerHTML = `
             <div class="col-span-full p-12 text-center text-slate-400">
@@ -496,20 +598,42 @@ function renderRawFeed() {
     const totalVisible = state.rawFeedFilters.pageSize * state.rawFeedFilters.page;
     const paginated = items.slice(0, totalVisible);
 
-    elements.rawFeedContainer.innerHTML = paginated.map(it => {
-        const priceDisplay = it.price ? `$${parseFloat(it.price).toFixed(2)}` : (it.price_text || 'See ad');
+    const cardsHtml = paginated.map(it => {
+        const parsedPrice = parseFloat(it.price);
+        const priceDisplay = it.price && !isNaN(parsedPrice) ? `$${parsedPrice.toFixed(2)}` : (it.price_text || 'See ad');
+        const { windowStr, isUpcoming } = formatValidWindow(it.valid_from, it.valid_to);
+
+        let dateBadgeHtml = '';
+        if (isUpcoming) {
+            const upLabel = windowStr || 'Upcoming';
+            dateBadgeHtml = `<span class="badge badge-upcoming text-[10px] py-0"><i class="fas fa-clock"></i> ${upLabel}</span>`;
+        } else if (windowStr) {
+            dateBadgeHtml = `<span class="badge badge-date text-[10px] py-0"><i class="far fa-calendar-alt"></i> ${windowStr}</span>`;
+        }
+
+        const rawImgHtml = it.image_url
+            ? `<img src="${it.image_url}" alt="" class="w-14 h-14 object-contain rounded-lg border bg-slate-50 p-1 flex-shrink-0" />`
+            : `<div class="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 flex-shrink-0"><i class="fas fa-shopping-basket"></i></div>`;
+
+        const merchantName = it.merchant || 'Store';
+        const itemTitle = it.name || '';
+        const itemDesc = it.description || it.sale_story || '';
+
         return `
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col justify-between hover:border-emerald-300 transition-all group">
                 <div>
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="badge badge-store text-xs font-semibold">${it.merchant || 'Store'}</span>
-                        <span class="font-extrabold text-emerald-600 text-base">${priceDisplay}</span>
+                    <div class="flex justify-between items-start gap-2 mb-2">
+                        <div class="flex flex-wrap items-center gap-1 min-w-0">
+                            <span class="badge badge-store text-xs font-semibold truncate">${merchantName}</span>
+                            ${dateBadgeHtml}
+                        </div>
+                        <span class="font-extrabold text-emerald-600 text-base flex-shrink-0">${priceDisplay}</span>
                     </div>
                     <div class="flex gap-3 mb-3">
-                        ${it.image_url ? `<img src="${it.image_url}" alt="" class="w-14 h-14 object-contain rounded-lg border bg-slate-50 p-1 flex-shrink-0" />` : `<div class="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 flex-shrink-0"><i class="fas fa-shopping-basket"></i></div>`}
+                        ${rawImgHtml}
                         <div class="min-w-0">
-                            <h4 class="font-bold text-slate-800 text-sm line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors">${it.name || ''}</h4>
-                            <p class="text-xs text-slate-500 mt-1 line-clamp-2">${it.description || it.sale_story || ''}</p>
+                            <h4 class="font-bold text-slate-800 text-sm line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors">${itemTitle}</h4>
+                            <p class="text-xs text-slate-500 mt-1 line-clamp-2">${itemDesc}</p>
                         </div>
                     </div>
                 </div>
@@ -519,6 +643,8 @@ function renderRawFeed() {
             </div>
         `;
     }).join('');
+
+    elements.rawFeedContainer.innerHTML = cardsHtml;
 
     // Pagination controls visibility
     if (elements.rawFeedPagination) {
@@ -530,14 +656,29 @@ function renderRawFeed() {
     }
 }
 
-function populateRawStoreFilter() {
-    if (!elements.rawFeedStore || elements.rawFeedStore.children.length > 1) return;
-    const stores = Array.from(new Set(state.rawFeed.map(it => it.merchant).filter(Boolean))).sort();
+function populateRawStoreFilter(sourceItems = state.rawFeed) {
+    if (!elements.rawFeedStore) return;
+    const currentVal = state.rawFeedFilters.store || elements.rawFeedStore.value || 'all';
+    const stores = Array.from(new Set(sourceItems.map(it => it.merchant).filter(Boolean))).sort();
+
+    elements.rawFeedStore.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all';
+    allOpt.textContent = 'All Stores';
+    elements.rawFeedStore.appendChild(allOpt);
+
     for (const s of stores) {
         const opt = document.createElement('option');
         opt.value = s;
         opt.textContent = s;
         elements.rawFeedStore.appendChild(opt);
+    }
+
+    if (currentVal !== 'all' && stores.includes(currentVal)) {
+        elements.rawFeedStore.value = currentVal;
+    } else {
+        elements.rawFeedStore.value = 'all';
+        state.rawFeedFilters.store = 'all';
     }
 }
 
@@ -713,39 +854,51 @@ window.saveTrackedItemFromModal = async (e) => {
     };
 
     try {
-        // 1. Save to Firestore grocery_watchlist
-        await setDoc(doc(db, 'grocery_watchlist', docId), itemData, { merge: true });
+        // 1. Save to Firestore watchlist
+        await setDoc(doc(db, GROCERY_COLLECTIONS.watchlist, docId), itemData, { merge: true });
 
-        // 2. Re-evaluate cached raw feed circulars for this item & batch-update grocery_ads_current
+        // 2. Re-evaluate active/upcoming cached raw feed circulars for this item & chunk-update ads_current
         const matchedDeals = [];
         for (const raw of state.rawFeed) {
+            if (formatValidWindow(raw.valid_from, raw.valid_to).isExpired) continue;
             const matches = evaluateRawItem(raw, [itemData]);
-            matchedDeals.push(...matches);
+            for (const deal of matches) {
+                if (!deal.is_expired) matchedDeals.push(deal);
+            }
         }
 
-        const batch = writeBatch(db);
+        const operations = [];
         const newDealIds = new Set();
 
         for (const deal of matchedDeals) {
-            const storeSlug = (deal.store || 'store').toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const storeSlug = slugifyStore(deal.store);
             const dealDocId = `${deal.watchlist_id}_${storeSlug}_${deal.item_id}`;
             newDealIds.add(dealDocId);
-            batch.set(doc(db, 'grocery_ads_current', dealDocId), { ...deal, id: dealDocId });
+            operations.push({
+                type: 'set',
+                ref: doc(db, GROCERY_COLLECTIONS.ads_current, dealDocId),
+                data: { ...deal, id: dealDocId }
+            });
         }
 
         // Clean up deals for this item that no longer match
         const existingItemDeals = state.currentAds.filter(a => a.watchlist_id === docId);
         for (const oldDeal of existingItemDeals) {
             if (!newDealIds.has(oldDeal.id)) {
-                batch.delete(doc(db, 'grocery_ads_current', oldDeal.id));
+                operations.push({
+                    type: 'delete',
+                    ref: doc(db, GROCERY_COLLECTIONS.ads_current, oldDeal.id)
+                });
             }
         }
 
-        await batch.commit();
+        if (operations.length > 0) {
+            await commitInChunks(db, operations);
+        }
 
         // 3. Recompute historical stats and update watchlist doc
         const computedStats = computeWatchlistStatsFromDeals(matchedDeals, itemData);
-        await updateDoc(doc(db, 'grocery_watchlist', docId), computedStats);
+        await updateDoc(doc(db, GROCERY_COLLECTIONS.watchlist, docId), computedStats);
 
         closeTrackModal();
         showToast(editingId ? `Updated "${name}" and re-synced ${matchedDeals.length} deals.` : `Added "${name}" to Watchlist! Matched ${matchedDeals.length} current sales.`);
@@ -783,16 +936,15 @@ window.saveInlineBaseline = async (itemId) => {
     if (isNaN(newPrice) || newPrice < 0) return;
 
     try {
-        await updateDoc(doc(db, 'grocery_watchlist', itemId), {
+        await updateDoc(doc(db, GROCERY_COLLECTIONS.watchlist, itemId), {
             baseline_price_per_unit: newPrice,
             baseline_updated_at: new Date().toISOString()
         });
 
-        // Active Deal Synchronization: update baseline and savings in grocery_ads_current
+        // Active Deal Synchronization: update baseline and savings in ads_current
         const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
         if (itemDeals.length > 0) {
-            const batch = writeBatch(db);
-            for (const deal of itemDeals) {
+            const operations = itemDeals.map(deal => {
                 const unitPrice = deal.normalized_unit_price;
                 let beatsBaseline = false;
                 let savingsAmount = 0.0;
@@ -804,14 +956,18 @@ window.saveInlineBaseline = async (itemId) => {
                     savingsPct = parseFloat((((newPrice - unitPrice) / newPrice) * 100).toFixed(1));
                 }
 
-                batch.update(doc(db, 'grocery_ads_current', deal.id), {
-                    baseline_price_per_unit: newPrice,
-                    beats_baseline: beatsBaseline,
-                    savings_amount: savingsAmount,
-                    savings_pct: savingsPct
-                });
-            }
-            await batch.commit();
+                return {
+                    type: 'update',
+                    ref: doc(db, GROCERY_COLLECTIONS.ads_current, deal.id),
+                    data: {
+                        baseline_price_per_unit: newPrice,
+                        beats_baseline: beatsBaseline,
+                        savings_amount: savingsAmount,
+                        savings_pct: savingsPct
+                    }
+                };
+            });
+            await commitInChunks(db, operations);
         }
 
         state.editingBaselineId = null;
@@ -827,20 +983,19 @@ window.saveInlineBaseline = async (itemId) => {
 // ----------------------------------------------------
 window.togglePriority = async (itemId, newStatus) => {
     try {
-        await updateDoc(doc(db, 'grocery_watchlist', itemId), {
+        await updateDoc(doc(db, GROCERY_COLLECTIONS.watchlist, itemId), {
             is_priority: newStatus
         });
 
-        // Active Deal Synchronization: batch update deal priority
+        // Active Deal Synchronization: chunked update deal priority
         const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
         if (itemDeals.length > 0) {
-            const batch = writeBatch(db);
-            for (const deal of itemDeals) {
-                batch.update(doc(db, 'grocery_ads_current', deal.id), {
-                    is_priority: newStatus
-                });
-            }
-            await batch.commit();
+            const operations = itemDeals.map(deal => ({
+                type: 'update',
+                ref: doc(db, GROCERY_COLLECTIONS.ads_current, deal.id),
+                data: { is_priority: newStatus }
+            }));
+            await commitInChunks(db, operations);
         }
 
         showToast(`Priority alert ${newStatus ? 'activated' : 'deactivated'}.`);
@@ -868,16 +1023,16 @@ window.toggleRowExpand = (itemId) => {
 window.deleteWatchlistItem = async (itemId) => {
     if (!confirm(`Are you sure you want to stop tracking "${itemId}"?`)) return;
     try {
-        await deleteDoc(doc(db, 'grocery_watchlist', itemId));
+        await deleteDoc(doc(db, GROCERY_COLLECTIONS.watchlist, itemId));
 
         // Active Deal Synchronization: clean up orphaned deals
         const itemDeals = state.currentAds.filter(a => a.watchlist_id === itemId);
         if (itemDeals.length > 0) {
-            const batch = writeBatch(db);
-            for (const deal of itemDeals) {
-                batch.delete(doc(db, 'grocery_ads_current', deal.id));
-            }
-            await batch.commit();
+            const operations = itemDeals.map(deal => ({
+                type: 'delete',
+                ref: doc(db, GROCERY_COLLECTIONS.ads_current, deal.id)
+            }));
+            await commitInChunks(db, operations);
         }
 
         showToast("Watchlist item and active deals deleted.");
@@ -904,29 +1059,41 @@ window.rematchRawFeed = async () => {
 
         const matchedDeals = [];
         for (const raw of state.rawFeed) {
+            if (formatValidWindow(raw.valid_from, raw.valid_to).isExpired) continue;
             const deals = evaluateRawItem(raw, state.watchlist);
-            matchedDeals.push(...deals);
+            for (const deal of deals) {
+                if (!deal.is_expired) matchedDeals.push(deal);
+            }
         }
 
-        const batch = writeBatch(db);
+        const operations = [];
         const existingDealIds = new Set(state.currentAds.map(d => d.id));
         const newDealIds = new Set();
 
         for (const deal of matchedDeals) {
-            const storeSlug = (deal.store || 'store').toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const storeSlug = slugifyStore(deal.store);
             const docId = `${deal.watchlist_id}_${storeSlug}_${deal.item_id}`;
             newDealIds.add(docId);
-            batch.set(doc(db, 'grocery_ads_current', docId), { ...deal, id: docId });
+            operations.push({
+                type: 'set',
+                ref: doc(db, GROCERY_COLLECTIONS.ads_current, docId),
+                data: { ...deal, id: docId }
+            });
         }
 
         for (const oldId of existingDealIds) {
             if (!newDealIds.has(oldId)) {
-                batch.delete(doc(db, 'grocery_ads_current', oldId));
+                operations.push({
+                    type: 'delete',
+                    ref: doc(db, GROCERY_COLLECTIONS.ads_current, oldId)
+                });
             }
         }
 
-        await batch.commit();
-        showToast(`Re-matched ${state.rawFeed.length} circular items against ${state.watchlist.length} watchlist items (${matchedDeals.length} active deals found).`);
+        if (operations.length > 0) {
+            await commitInChunks(db, operations);
+        }
+        showToast(`Re-matched ${state.rawFeed.length} circular items against ${state.watchlist.length} watchlist items (${matchedDeals.length} active/upcoming deals found).`);
     } catch (err) {
         console.error("Error during re-matching:", err);
         showToast("Error re-matching raw feed: " + err.message);
@@ -968,42 +1135,51 @@ function exportPriceBookToCSV() {
 
     const adsByItem = {};
     for (const ad of state.currentAds) {
+        if (getDealTiming(ad).isExpired) continue;
         if (!adsByItem[ad.watchlist_id]) adsByItem[ad.watchlist_id] = [];
         adsByItem[ad.watchlist_id].push(ad);
     }
 
     for (const item of state.watchlist) {
         const itemAds = adsByItem[item.id] || [];
-        itemAds.sort((a, b) => (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999));
+        // Sort active non-expired deals first, then upcoming preview deals, then unit price asc
+        itemAds.sort((a, b) => {
+            const aUp = getDealTiming(a).isUpcoming ? 1 : 0;
+            const bUp = getDealTiming(b).isUpcoming ? 1 : 0;
+            if (aUp !== bUp) return aUp - bUp;
+            return (a.normalized_unit_price || 999) - (b.normalized_unit_price || 999);
+        });
         const best = itemAds[0] || {};
 
         rows.push([
-            `"${item.canonical_name}"`,
-            item.category,
+            item.canonical_name || "",
+            item.category || "",
             item.is_priority ? "Yes" : "No",
-            item.brand_mode,
-            item.target_unit,
-            item.baseline_price_per_unit || "",
+            item.brand_mode || "",
+            item.target_unit || "",
+            item.baseline_price_per_unit ?? "",
             item.baseline_source || "Walmart",
-            `"${best.store || ''}"`,
-            best.normalized_unit_price || "",
+            best.store || "",
+            best.normalized_unit_price ?? "",
             best.beats_baseline ? "YES" : "NO",
-            best.savings_amount || "",
-            `"${best.notes_str || ''}"`,
-            item.historical_low_price || "",
-            `"${item.historical_low_store || ''}"`,
-            item.rolling_avg_price || ""
-        ]);
+            best.savings_amount ?? "",
+            best.notes_str || "",
+            item.historical_low_price ?? "",
+            item.historical_low_store || "",
+            item.rolling_avg_price ?? ""
+        ].map(escapeCsvField));
     }
 
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csvString = rows.map(row => row.join(",")).join("\r\n");
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `monroe_grocery_price_book_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ----------------------------------------------------
@@ -1106,7 +1282,8 @@ function updateCategoryOptions() {
 function updateStoreOptions() {
     if (!elements.filterStore) return;
     const currentVal = elements.filterStore.value;
-    const stores = Array.from(new Set(state.currentAds.map(a => a.store).filter(Boolean))).sort();
+    const activeAds = state.currentAds.filter(a => !getDealTiming(a).isExpired);
+    const stores = Array.from(new Set(activeAds.map(a => a.store).filter(Boolean))).sort();
     elements.filterStore.innerHTML = `<option value="all">All Stores</option>` + 
         stores.map(s => `<option value="${s}" ${s === currentVal ? 'selected' : ''}>${s}</option>`).join('');
 }
