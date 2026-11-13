@@ -10,7 +10,7 @@ import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey, registerCustomCategory } from './utils.js';
 import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
-import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees } from './routines.js';
+import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate } from './routines.js';
 import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
 export { NIPTO_PUBLIC_URL };
@@ -347,17 +347,17 @@ export function renderTodoTasks() {
     function sortRoutineList(list) {
         const todayKey = getLocalTodayKey();
         return list.slice().sort((a, b) => {
-            const aDone = !!(a.completionsByDate && a.completionsByDate[todayKey]);
-            const bDone = !!(b.completionsByDate && b.completionsByDate[todayKey]);
+            const aDone = isRoutineCompletedOnDate(a, todayKey);
+            const bDone = isRoutineCompletedOnDate(b, todayKey);
             if (aDone !== bDone) return aDone ? 1 : -1;
 
             if (currentSort === 'priority') {
                 const pA = getPriorityWeight(a.priority);
                 const pB = getPriorityWeight(b.priority);
                 if (pA !== pB) return pB - pA;
-                return (b.points || 15) - (a.points || 15);
+                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
             } else if (currentSort === 'points') {
-                return (b.points || 15) - (a.points || 15);
+                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
             } else if (currentSort === 'category') {
                 return (a.category || 'Home').localeCompare(b.category || 'Home');
             } else {
@@ -558,15 +558,15 @@ export function renderTodoTasks() {
 
     function renderRoutineCard(r) {
         const todayKey = getLocalTodayKey();
-        const isCompletedToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
+        const isCompletedToday = isRoutineCompletedOnDate(r, todayKey);
         const pri = r.priority || 'medium';
         const priorityClass = `priority-${pri}`;
         const assignees = r.assignees || [];
         const isAssignedToMe = (assignees.length === 1 && assignees[0] === activeUid);
-        const pts = r.points !== undefined && r.points !== null ? r.points : 15;
+        const pts = api.getRoutinePoints(r);
         const sched = r.schedule || {};
-        const freqLabel = sched.type === 'weekly' ? 'Weekly' : 'Daily';
-        const comp = isCompletedToday ? r.completionsByDate[todayKey] : null;
+        const freqLabel = sched.type === 'weekly' ? 'Weekly' : (sched.type === 'interval' ? 'Interval' : 'Daily');
+        const comp = r.completionsByDate ? r.completionsByDate[todayKey] : null;
         const doneByName = comp?.completedByName || '';
 
         let priorityPill = '';

@@ -336,15 +336,24 @@ export function rebuildCompletedThisWeek() {
             if (comp && !comp.withoutPoints) {
                 const compId = `routine_${r.uid}_${dKey}`;
                 if (comp.activityUid) addClaimedUid(claimedActivityUids, comp.activityUid);
+                if (comp.niptoActivityUid) addClaimedUid(claimedActivityUids, comp.niptoActivityUid);
                 if (Array.isArray(comp.activityUids)) {
                     comp.activityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
                 }
+                if (Array.isArray(comp.niptoActivityUids)) {
+                    comp.niptoActivityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
+                }
                 if (!compMap.has(compId)) {
-                    const linkedTask = (state.tasks || []).find(t => t.uid === r.linkedNiptoTask);
-                    const routinePts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                    const routinePts = api.getRoutinePoints(r);
                     const doerUid = comp.completedByUid || (r.assignees && r.assignees.length === 1 ? r.assignees[0] : '');
                     const userObj = ALL_USERS.find(u => u.uid === doerUid);
                     const userName = comp.completedByName || userObj?.name || 'User';
+
+                    const linkedUids = [
+                        ...(Array.isArray(comp.niptoActivityUids) ? comp.niptoActivityUids : []),
+                        ...(Array.isArray(comp.activityUids) ? comp.activityUids : [])
+                    ].filter(Boolean);
+                    const primaryActUid = comp.niptoActivityUid || comp.activityUid || linkedUids[0] || '';
 
                     compMap.set(compId, {
                         id: compId,
@@ -356,8 +365,8 @@ export function rebuildCompletedThisWeek() {
                         points: routinePts,
                         completedAt: comp.completedAt || `${dKey}T12:00:00`,
                         dateKey: dKey,
-                        ...(comp.activityUid ? { activityUid: comp.activityUid } : {}),
-                        ...(Array.isArray(comp.activityUids) ? { activityUids: comp.activityUids } : {})
+                        ...(primaryActUid ? { activityUid: primaryActUid } : {}),
+                        ...(linkedUids.length > 0 ? { activityUids: linkedUids } : {})
                     });
                 }
             }

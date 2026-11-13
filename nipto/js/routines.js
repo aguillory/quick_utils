@@ -5,10 +5,14 @@
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
-import { getLocalTodayKey, registerCustomCategory } from './utils.js';
+import { drawLeaderboard, updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
+import { getLocalTodayKey, getLocalWeekBounds, registerCustomCategory } from './utils.js';
 
 export { NIPTO_PUBLIC_URL };
+export const getRoutinePoints = api.getRoutinePoints;
+
+// Double-tap & in-flight idempotency guard keyed by `${routineId}_${dateKey}`
+const inFlightRoutineOps = new Set();
 
 const DAILY_CARE_ROUTINE_SLUGS = new Set([
     "feed orion",
@@ -180,9 +184,174 @@ export function toggleHideCompletedRoutines() {
     renderRollingSchedule();
 }
 
+// Safe date parser supporting Firestore Timestamps, YYYY-MM-DD strings (parsed as local noon),
+// ISO strings, numbers, and Date objects. Returns null on invalid input.
+export function parseRoutineDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) {
+        return isNaN(val.getTime()) ? null : new Date(val.getTime());
+    }
+    if (typeof val === 'object') {
+        if (typeof val.toDate === 'function') {
+            const d = val.toDate();
+            return (d instanceof Date && !isNaN(d.getTime())) ? d : null;
+        }
+        const secs = (val.seconds !== undefined) ? val.seconds : val._seconds;
+        if (secs !== undefined && secs !== null && Number.isFinite(Number(secs))) {
+            const d = new Date(Number(secs) * 1000);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+    }
+    if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (!trimmed) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            const d = new Date(`${trimmed}T12:00:00`);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        const d = new Date(trimmed);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof val === 'number' && Number.isFinite(val)) {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+}
+
+function diffCalendarDays(a, b) {
+    const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+    const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+    return Math.round((utcA - utcB) / 86400000);
+}
+
+function getIntervalStepDays(routine) {
+    const sched = (routine && typeof routine.schedule === 'object') ? routine.schedule : null;
+    const rawIntervalVal = Number(
+        (sched && (sched.value ?? sched.interval ?? sched.repeatEvery ?? sched.every ?? sched.intervalValue)) ??
+        (routine?.interval ?? routine?.repeatEvery ?? routine?.every ?? 1)
+    );
+    const intervalVal = Math.max(1, Number.isFinite(rawIntervalVal) ? rawIntervalVal : 1);
+    const unit = String((sched && (sched.unit || sched.intervalUnit)) || routine?.unit || routine?.intervalUnit || 'days').toLowerCase();
+    let stepDays = intervalVal;
+    if (unit.startsWith('week')) stepDays = intervalVal * 7;
+    else if (unit.startsWith('month')) stepDays = intervalVal * 30;
+    else if (unit.startsWith('year')) stepDays = intervalVal * 365;
+    return stepDays;
+}
+
+function getIntervalAnchorInfo(routine) {
+    let latestRealCompDate = null;
+    let latestDismissDate = null;
+
+    const considerRealDate = (d) => {
+        if (!d) return;
+        const key = toLocalDateKey(d);
+        const norm = parseRoutineDate(key);
+        if (!norm) return;
+        norm.setHours(0, 0, 0, 0);
+        if (!latestRealCompDate || norm > latestRealCompDate) {
+            latestRealCompDate = norm;
+        }
+    };
+
+    if (routine?.completionsByDate && typeof routine.completionsByDate === 'object') {
+        Object.entries(routine.completionsByDate).forEach(([k, entry]) => {
+            const parsed = parseRoutineDate(k);
+            if (!parsed) return;
+            parsed.setHours(0, 0, 0, 0);
+            if (entry && entry.withoutPoints === true) {
+                if (!latestDismissDate || parsed > latestDismissDate) {
+                    latestDismissDate = parsed;
+                }
+            } else if (entry) {
+                if (!latestRealCompDate || parsed > latestRealCompDate) {
+                    latestRealCompDate = parsed;
+                }
+            }
+        });
+    }
+
+    if (routine?.lastCompleted) {
+        const lc = routine.lastCompleted;
+        if (typeof lc === 'object' && !(lc instanceof Date) && typeof lc.toDate !== 'function' && lc.seconds === undefined && lc._seconds === undefined) {
+            Object.values(lc).forEach(val => considerRealDate(parseRoutineDate(val)));
+        } else {
+            considerRealDate(parseRoutineDate(lc));
+        }
+    }
+
+    const hasRealCompletion = Boolean(latestRealCompDate);
+    let anchorDate = latestRealCompDate || parseRoutineDate(routine?.createdAt);
+    if (!anchorDate) {
+        anchorDate = new Date();
+    }
+    anchorDate = new Date(anchorDate.getTime());
+    anchorDate.setHours(0, 0, 0, 0);
+
+    return { anchorDate, hasRealCompletion, latestDismissDate };
+}
+
+function findNativeActivityForRoutine(routine, dateKey) {
+    if (!routine || !routine.linkedNiptoTask || !dateKey) return null;
+    const linkedTask = (state.tasks || []).find(t => t.uid === routine.linkedNiptoTask);
+    if (!linkedTask || api.isGenericAssignedTask(linkedTask)) return null;
+
+    const assignees = Array.isArray(routine.assignees) ? routine.assignees : [];
+    const hasSpecificAssignees = assignees.length > 0 && assignees.length < ALL_USERS.length;
+
+    return (state.allWeekActivities || []).find(a => {
+        if (!a) return false;
+        const actTaskUid = a.taskUid || a.task?.uid || '';
+        if (actTaskUid !== routine.linkedNiptoTask) return false;
+        const aDateKey = a.dateKey || (a.date ? toLocalDateKey(new Date(a.date)) : '');
+        if (aDateKey !== dateKey) return false;
+        if (hasSpecificAssignees && a.user?.uid && !assignees.includes(a.user.uid)) return false;
+        return true;
+    }) || null;
+}
+
+export function getRoutineCompletionForDate(routine, dateKey) {
+    if (!routine || !dateKey) return { comp: null, isDone: false, isNative: false, withoutPoints: false };
+    const fsComp = routine.completionsByDate ? routine.completionsByDate[dateKey] : null;
+    if (fsComp) {
+        return {
+            comp: fsComp,
+            isDone: true,
+            isNative: false,
+            withoutPoints: !!fsComp.withoutPoints
+        };
+    }
+
+    const nativeAct = findNativeActivityForRoutine(routine, dateKey);
+    if (nativeAct) {
+        return {
+            comp: {
+                dateKey,
+                completedAt: nativeAct.date,
+                completedByUid: nativeAct.user?.uid || '',
+                completedByName: nativeAct.user?.name || 'User',
+                points: nativeAct.awardedPts || api.getRoutinePoints(routine),
+                withoutPoints: false,
+                niptoActivityUid: nativeAct.uid
+            },
+            isDone: true,
+            isNative: true,
+            withoutPoints: false
+        };
+    }
+
+    return { comp: null, isDone: false, isNative: false, withoutPoints: false };
+}
+
+export function isRoutineCompletedOnDate(routine, dateKey) {
+    return getRoutineCompletionForDate(routine, dateKey).isDone;
+}
+
 // Determines if a routine applies to a given JS Date object.
 // Enforces the strict rule that daily routines ONLY apply to Today.
-function routineAppliesToDate(routine, targetDate) {
+export function routineAppliesToDate(routine, targetDate) {
     if (!routine || !targetDate) return false;
 
     const todayKey = toLocalDateKey(new Date());
@@ -203,36 +372,96 @@ function routineAppliesToDate(routine, targetDate) {
     }
 
     if (sched.type === 'interval') {
-        const intervalVal = Math.max(1, Number(sched.value || sched.interval || 1));
-        const unit = String(sched.unit || 'days').toLowerCase();
-        let stepDays = intervalVal;
-        if (unit.startsWith('week')) stepDays = intervalVal * 7;
-        else if (unit.startsWith('month')) stepDays = intervalVal * 30;
-
+        const stepDays = getIntervalStepDays(routine);
         if (stepDays <= 1) {
             return targetKey === todayKey;
         }
 
-        // Anchor interval calculation to most recent completion date or createdAt
-        const compKeys = routine.completionsByDate ? Object.keys(routine.completionsByDate).sort() : [];
-        const anchorStr = compKeys.length > 0
-            ? `${compKeys[compKeys.length - 1]}T00:00:00`
-            : (routine.createdAt || `${todayKey}T00:00:00`);
-        const anchorDate = new Date(anchorStr);
-        if (isNaN(anchorDate.getTime())) return targetKey === todayKey;
-
-        anchorDate.setHours(0, 0, 0, 0);
-        const checkDate = new Date(targetDate.getTime());
-        checkDate.setHours(0, 0, 0, 0);
-
-        const diffDays = Math.round((checkDate.getTime() - anchorDate.getTime()) / 86400000);
-        if (compKeys.length > 0) {
+        const { anchorDate, hasRealCompletion } = getIntervalAnchorInfo(routine);
+        const diffDays = diffCalendarDays(targetDate, anchorDate);
+        if (hasRealCompletion) {
             return diffDays > 0 && (diffDays % stepDays === 0);
         }
         return diffDays >= 0 && (diffDays % stepDays === 0);
     }
 
     return targetKey === todayKey;
+}
+
+export function getMissedRoutineItems(routines, filter, activeUid, today) {
+    const pastDays = [-1, -2, -3].map(offset => {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        return {
+            offset,
+            dateObj: d,
+            dateKey: toLocalDateKey(d),
+            dayName: d.toLocaleDateString(undefined, { weekday: 'short' }),
+            dateStr: `${d.getMonth() + 1}/${d.getDate()}`
+        };
+    });
+
+    const missedItems = [];
+    routines.forEach(r => {
+        if (isDailyRoutine(r)) return;
+        if (!routineMatchesFilter(r, filter, activeUid)) return;
+
+        const sched = (r.schedule && typeof r.schedule === 'object') ? r.schedule : null;
+        if (sched && sched.type === 'interval') {
+            const stepDays = getIntervalStepDays(r);
+            if (stepDays <= 1) return;
+
+            const { anchorDate, latestDismissDate } = getIntervalAnchorInfo(r);
+            const isSuppressedByDismissal = (checkDate) => {
+                if (!latestDismissDate || diffCalendarDays(latestDismissDate, anchorDate) < 0) return false;
+                return diffCalendarDays(checkDate, latestDismissDate) < stepDays;
+            };
+
+            let foundExactInPastWindow = false;
+            pastDays.forEach(day => {
+                if (!routineAppliesToDate(r, day.dateObj)) return;
+                foundExactInPastWindow = true;
+                if (getRoutineCompletionForDate(r, day.dateKey).isDone) return;
+                if (isSuppressedByDismissal(day.dateObj)) return;
+                missedItems.push({
+                    routine: r,
+                    dateKey: day.dateKey,
+                    dayName: day.dayName,
+                    dateStr: day.dateStr
+                });
+            });
+
+            // Prevent >3-day overdue interval disappearance when no exact multiple falls inside [today-3..today]
+            const diffToday = diffCalendarDays(today, anchorDate);
+            if (!foundExactInPastWindow && !routineAppliesToDate(r, today) && diffToday >= stepDays) {
+                const yesterday = pastDays[0];
+                if (!getRoutineCompletionForDate(r, yesterday.dateKey).isDone && !isSuppressedByDismissal(yesterday.dateObj)) {
+                    missedItems.push({
+                        routine: r,
+                        dateKey: yesterday.dateKey,
+                        dayName: yesterday.dayName,
+                        dateStr: yesterday.dateStr
+                    });
+                }
+            }
+            return;
+        }
+
+        pastDays.forEach(day => {
+            if (!routineAppliesToDate(r, day.dateObj)) return;
+            if (!getRoutineCompletionForDate(r, day.dateKey).isDone) {
+                missedItems.push({
+                    routine: r,
+                    dateKey: day.dateKey,
+                    dayName: day.dayName,
+                    dateStr: day.dateStr
+                });
+            }
+        });
+    });
+
+    missedItems.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    return missedItems;
 }
 
 // Filter matching helper
@@ -279,38 +508,7 @@ export function renderRollingSchedule() {
     // COLUMN 1: Past (Missed) - Past 3 days (-1, -2, -3)
     // Daily routines are strictly excluded.
     // ------------------------------------------
-    const pastDays = [-1, -2, -3].map(offset => {
-        const d = new Date(today);
-        d.setDate(today.getDate() + offset);
-        return {
-            offset,
-            dateObj: d,
-            dateKey: toLocalDateKey(d),
-            dayName: d.toLocaleDateString(undefined, { weekday: 'short' }),
-            dateStr: `${d.getMonth() + 1}/${d.getDate()}`
-        };
-    });
-
-    const missedItems = [];
-    pastDays.forEach(day => {
-        routines.forEach(r => {
-            if (isDailyRoutine(r)) return;
-            if (!routineMatchesFilter(r, filter, activeUid)) return;
-            if (!routineAppliesToDate(r, day.dateObj)) return;
-
-            const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
-            if (!comp) {
-                missedItems.push({
-                    routine: r,
-                    dateKey: day.dateKey,
-                    dayName: day.dayName,
-                    dateStr: day.dateStr
-                });
-            }
-        });
-    });
-
-    missedItems.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    const missedItems = getMissedRoutineItems(routines, filter, activeUid, today);
 
     // ------------------------------------------
     // COLUMN 2: Current (Today) - Displayed ONCE
@@ -320,8 +518,7 @@ export function renderRollingSchedule() {
         if (!routineMatchesFilter(r, filter, activeUid)) return;
         if (!routineAppliesToDate(r, today)) return;
 
-        const comp = r.completionsByDate ? r.completionsByDate[todayKey] : null;
-        const isDone = !!comp;
+        const { isDone, comp } = getRoutineCompletionForDate(r, todayKey);
         todayItems.push({
             routine: r,
             isDone,
@@ -422,8 +619,7 @@ export function renderRollingSchedule() {
 
             grp.items.forEach(item => {
                 const r = item.routine;
-                const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-                const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                const pts = api.getRoutinePoints(r);
                 const assigneesLabel = formatRoutineAssignees(r, true);
 
                 boardHtml += `
@@ -481,8 +677,7 @@ export function renderRollingSchedule() {
             const doneByName = isDone ? (comp?.completedByName || 'Someone') : '';
             const withoutPts = isDone && comp?.withoutPoints;
 
-            const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-            const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+            const pts = api.getRoutinePoints(r);
             const assigneesLabel = formatRoutineAssignees(r, true);
 
             boardHtml += `
@@ -553,8 +748,7 @@ export function renderRollingSchedule() {
 
             grp.items.forEach(item => {
                 const r = item.routine;
-                const linkedTask = state.tasks?.find(t => t.uid === r.linkedNiptoTask);
-                const pts = r.points !== undefined && r.points !== null ? r.points : (linkedTask ? linkedTask.value : 0);
+                const pts = api.getRoutinePoints(r);
                 const assigneesLabel = formatRoutineAssignees(r, true);
 
                 boardHtml += `
@@ -593,28 +787,10 @@ export async function clearAllMissedRoutines() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const pastDays = [-1, -2, -3].map(offset => {
-        const d = new Date(today);
-        d.setDate(today.getDate() + offset);
-        return {
-            dateObj: d,
-            dateKey: toLocalDateKey(d)
-        };
-    });
-
-    const missedToClear = [];
-    pastDays.forEach(day => {
-        routines.forEach(r => {
-            if (isDailyRoutine(r)) return;
-            if (!routineMatchesFilter(r, filter, activeUid)) return;
-            if (!routineAppliesToDate(r, day.dateObj)) return;
-
-            const comp = r.completionsByDate ? r.completionsByDate[day.dateKey] : null;
-            if (!comp) {
-                missedToClear.push({ routineId: r.uid, dateKey: day.dateKey });
-            }
-        });
-    });
+    const missedToClear = getMissedRoutineItems(routines, filter, activeUid, today).map(item => ({
+        routineId: item.routine.uid,
+        dateKey: item.dateKey
+    }));
 
     if (missedToClear.length === 0) return;
     if (!window.confirm(`Dismiss all ${missedToClear.length} missed item(s) without awarding points?`)) return;
@@ -661,50 +837,179 @@ export async function clearAllMissedRoutines() {
     }
 }
 
-// Retroactive Check-off & Point Attribution (or admin dismiss when awardPoints = false)
-export async function completeRoutineForDate(routineId, dateKey, awardPoints = true) {
-    const routine = state.routines.find(r => r.uid === routineId);
-    if (!routine) return;
+function rebuildLastCompletedExcludingDate(routine, excludedDateKey, updatedCompletions) {
+    const existingLc = (routine.lastCompleted && typeof routine.lastCompleted === 'object')
+        ? { ...routine.lastCompleted }
+        : {};
+    const existingLcBy = (routine.lastCompletedBy && typeof routine.lastCompletedBy === 'object')
+        ? { ...routine.lastCompletedBy }
+        : {};
 
-    let creditedUid = '';
-    let creditedName = 'User';
-    if (routine.assignees && routine.assignees.length === 1) {
-        creditedUid = routine.assignees[0];
-    } else {
-        creditedUid = state.activeUsers[0] || ALL_USERS[0].uid;
+    const hadExcluded = Object.values(existingLc).some(val => {
+        const d = parseRoutineDate(val);
+        return d && toLocalDateKey(d) === excludedDateKey;
+    });
+    if (!hadExcluded) return null;
+
+    let bestKey = '';
+    let bestEntry = null;
+    Object.entries(updatedCompletions || {}).forEach(([k, entry]) => {
+        if (entry && !entry.withoutPoints && k > bestKey) {
+            bestKey = k;
+            bestEntry = entry;
+        }
+    });
+
+    const nextLc = {};
+    const nextLcBy = {};
+    if (bestKey && bestEntry) {
+        const fallbackIso = bestEntry.completedAt || new Date(`${bestKey}T12:00:00`).toISOString();
+        if (routine.completionType === 'shared') {
+            nextLc.shared = fallbackIso;
+            nextLcBy.shared = bestEntry.completedByName || 'User';
+        } else if (bestEntry.completedByUid) {
+            nextLc[bestEntry.completedByUid] = fallbackIso;
+            nextLcBy[bestEntry.completedByUid] = bestEntry.completedByName || 'User';
+        }
     }
-    const userObj = ALL_USERS.find(u => u.uid === creditedUid);
-    if (userObj) creditedName = userObj.name;
+    return { lastCompleted: nextLc, lastCompletedBy: nextLcBy };
+}
 
-    const nowIso = new Date().toISOString();
-    const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
-    completions[dateKey] = {
-        completedAt: nowIso,
-        completedByUid: creditedUid,
-        completedByName: creditedName,
-        withoutPoints: !awardPoints
-    };
+// Idempotent completion check-off & bidirectional Nipto point sync (or dismiss when awardPoints = false)
+export async function completeRoutineForDate(routineId, dateKey, awardPoints = true) {
+    const routine = state.routines?.find(r => r.uid === routineId);
+    if (!routine || !dateKey) return false;
 
+    const opKey = `${routineId}_${dateKey}`;
+    if (inFlightRoutineOps.has(opKey)) return false;
+
+    const existingEntry = routine.completionsByDate?.[dateKey];
+    if (existingEntry) {
+        if (!awardPoints || existingEntry.withoutPoints !== true) {
+            return false;
+        }
+    }
+
+    inFlightRoutineOps.add(opKey);
     try {
-        await api.updateFirestoreDocument('routines', routineId, {
-            completionsByDate: completions
-        });
-        routine.completionsByDate = completions;
+        let creditedUid = '';
+        let creditedName = 'User';
+        if (routine.assignees && routine.assignees.length === 1) {
+            creditedUid = routine.assignees[0];
+        } else {
+            creditedUid = state.activeUsers[0] || ALL_USERS[0].uid;
+        }
+        const creditedUids = [creditedUid];
+        const userObj = ALL_USERS.find(u => u.uid === creditedUid);
+        if (userObj) creditedName = userObj.name;
 
-        const linkedTask = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
-        const routinePts = routine.points !== undefined && routine.points !== null ? routine.points : (linkedTask ? linkedTask.value : 0);
+        const nowIso = new Date().toISOString();
+        const routinePts = api.getRoutinePoints(routine);
+        let loggedActivityUids = [];
 
         if (awardPoints) {
-            if (routine.linkedNiptoTask && state.apiToken) {
-                const backdatedDateIso = new Date(`${dateKey}T12:00:00`).toISOString();
-                await api.logActivityToNipto(routine.linkedNiptoTask, backdatedDateIso, [creditedUid]);
-                showToast(routine.linkedNiptoTask, routine.name, routinePts, creditedName);
-            } else if (routinePts > 0) {
-                api.awardAllowancePoints(creditedUid, routinePts);
-                showToast("routine_done", routine.name, routinePts, creditedName);
-            } else {
-                showToast("routine_done", routine.name, 0, creditedName);
+            const existingNative = findNativeActivityForRoutine(routine, dateKey);
+            if (existingNative) {
+                loggedActivityUids = [existingNative.uid];
+            } else if (state.apiToken) {
+                const currentWeekBounds = getLocalWeekBounds(new Date(), 0);
+                const targetLocalNoon = parseRoutineDate(dateKey) || new Date();
+                const targetDateIso = targetLocalNoon.toISOString();
+                const effectiveDateIso = (targetLocalNoon < currentWeekBounds.startDate)
+                    ? nowIso
+                    : targetDateIso;
+
+                const linkedTask = (state.tasks || []).find(t => t.uid === routine.linkedNiptoTask);
+                const canUseLinkedDirectly = Boolean(
+                    linkedTask &&
+                    !api.isGenericAssignedTask(linkedTask) &&
+                    Number(linkedTask.value) === routinePts
+                );
+
+                const runNiptoLog = async (isoToUse) => {
+                    if (canUseLinkedDirectly) {
+                        const uids = await api.logActivityToNipto(routine.linkedNiptoTask, isoToUse, creditedUids);
+                        if (uids && uids.length > 0 && routine.name) {
+                            await api.saveActivityLabels(uids, routine.name);
+                        }
+                        return uids || [];
+                    }
+                    return await api.logCustomPointsToNipto(
+                        routinePts,
+                        routine.name,
+                        creditedUids,
+                        isoToUse,
+                        routine.linkedNiptoTask || null
+                    );
+                };
+
+                try {
+                    loggedActivityUids = await runNiptoLog(effectiveDateIso);
+                } catch (backdateErr) {
+                    if (effectiveDateIso !== nowIso) {
+                        console.warn(`Backdated Nipto log failed for "${routine.name}" (${dateKey}), retrying with current timestamp:`, backdateErr);
+                        try {
+                            loggedActivityUids = await runNiptoLog(nowIso);
+                        } catch (retryErr) {
+                            console.warn(`Retry Nipto log failed for "${routine.name}":`, retryErr);
+                        }
+                    } else {
+                        console.warn(`Nipto log failed for "${routine.name}":`, backdateErr);
+                    }
+                }
             }
+
+            if (loggedActivityUids.length === 0 && routinePts > 0) {
+                await api.awardAllowancePoints(creditedUid, routinePts);
+            }
+        }
+
+        const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
+        completions[dateKey] = {
+            dateKey: dateKey,
+            completedAt: nowIso,
+            completedByUid: creditedUid,
+            completedByName: creditedName,
+            points: awardPoints ? routinePts : 0,
+            withoutPoints: !awardPoints,
+            niptoActivityUids: loggedActivityUids,
+            niptoActivityUid: loggedActivityUids[0] || null
+        };
+
+        const routineUpdates = {
+            completionsByDate: completions,
+            updatedAt: nowIso
+        };
+
+        if (awardPoints) {
+            const nextLastCompleted = { ...(routine.lastCompleted || {}) };
+            const nextLastCompletedBy = { ...(routine.lastCompletedBy || {}) };
+            const completionIso = parseRoutineDate(dateKey)?.toISOString() || nowIso;
+            const prevKeys = Object.values(nextLastCompleted)
+                .map(v => parseRoutineDate(v))
+                .filter(Boolean)
+                .map(d => toLocalDateKey(d));
+            const maxPrevKey = prevKeys.sort().pop() || '';
+            if (!maxPrevKey || dateKey >= maxPrevKey) {
+                if (routine.completionType === 'shared') {
+                    nextLastCompleted.shared = completionIso;
+                    nextLastCompletedBy.shared = creditedName;
+                } else {
+                    nextLastCompleted[creditedUid] = completionIso;
+                    nextLastCompletedBy[creditedUid] = creditedName;
+                }
+                routineUpdates.lastCompleted = nextLastCompleted;
+                routineUpdates.lastCompletedBy = nextLastCompletedBy;
+                routine.lastCompleted = nextLastCompleted;
+                routine.lastCompletedBy = nextLastCompletedBy;
+            }
+        }
+
+        await api.updateFirestoreDocument('routines', routineId, routineUpdates);
+        routine.completionsByDate = completions;
+
+        if (awardPoints) {
+            showToast(routine.linkedNiptoTask || 'routine_done', routine.name, routinePts, creditedName);
         } else {
             showToast("admin_clear", `Dismissed "${routine.name}" on ${dateKey} (no points)`, 0, creditedName);
         }
@@ -720,7 +1025,9 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
                 userUid: creditedUid,
                 points: routinePts,
                 completedAt: nowIso,
-                dateKey: dateKey
+                dateKey: dateKey,
+                activityUids: loggedActivityUids,
+                activityUid: loggedActivityUids[0] || null
             });
         } else {
             await api.removeDailyCompletion(compId, dateKey);
@@ -730,36 +1037,100 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
         renderDoneTodayFeed();
         renderRollingSchedule();
         updateLeaderboardUI();
+        if (typeof window !== 'undefined') {
+            if (window.renderTodoTasks) window.renderTodoTasks();
+            if (window.renderBulkTriageList) window.renderBulkTriageList();
+        }
+        return true;
     } catch (err) {
         console.error("Error completing routine for date:", err);
         alert("Failed to complete routine: " + err.message);
+        return false;
+    } finally {
+        inFlightRoutineOps.delete(opKey);
     }
 }
 
-// Reverts a specific date's completion
+// Reverts a specific date's completion and deletes any linked Nipto activities
 export async function undoRoutineForDate(routineId, dateKey) {
-    const routine = state.routines.find(r => r.uid === routineId);
-    if (!routine || !routine.completionsByDate) return;
+    const routine = state.routines?.find(r => r.uid === routineId);
+    if (!routine || !routine.completionsByDate || !routine.completionsByDate[dateKey]) return false;
 
-    const completions = { ...routine.completionsByDate };
-    delete completions[dateKey];
+    const opKey = `${routineId}_${dateKey}`;
+    if (inFlightRoutineOps.has(opKey)) return false;
 
+    inFlightRoutineOps.add(opKey);
     try {
-        await api.updateFirestoreDocument('routines', routineId, {
-            completionsByDate: completions
-        });
+        const existing = routine.completionsByDate[dateKey];
+        const uidsToDelete = [];
+        if (Array.isArray(existing.niptoActivityUids)) {
+            existing.niptoActivityUids.forEach(u => { if (u && !uidsToDelete.includes(u)) uidsToDelete.push(u); });
+        }
+        if (existing.niptoActivityUid && !uidsToDelete.includes(existing.niptoActivityUid)) {
+            uidsToDelete.push(existing.niptoActivityUid);
+        }
+        if (Array.isArray(existing.activityUids)) {
+            existing.activityUids.forEach(u => { if (u && !uidsToDelete.includes(u)) uidsToDelete.push(u); });
+        }
+        if (existing.activityUid && !uidsToDelete.includes(existing.activityUid)) {
+            uidsToDelete.push(existing.activityUid);
+        }
+
+        if (uidsToDelete.length > 0) {
+            for (const actUid of uidsToDelete) {
+                try {
+                    await api.deleteActivityFromNipto(actUid);
+                } catch (delErr) {
+                    console.warn(`Could not delete Nipto activity ${actUid} (e.g. prior-week restriction):`, delErr);
+                }
+            }
+        } else if (existing.withoutPoints === false && existing.completedByUid) {
+            const ptsToRevoke = existing.points || api.getRoutinePoints(routine);
+            if (ptsToRevoke > 0) {
+                await api.revokeAllowancePoints(existing.completedByUid, ptsToRevoke);
+            }
+        }
+
+        const completions = { ...routine.completionsByDate };
+        delete completions[dateKey];
+
+        const routineUpdates = {
+            completionsByDate: completions,
+            updatedAt: new Date().toISOString()
+        };
+        const rebuiltLc = rebuildLastCompletedExcludingDate(routine, dateKey, completions);
+        if (rebuiltLc) {
+            routineUpdates.lastCompleted = rebuiltLc.lastCompleted;
+            routineUpdates.lastCompletedBy = rebuiltLc.lastCompletedBy;
+            routine.lastCompleted = rebuiltLc.lastCompleted;
+            routine.lastCompletedBy = rebuiltLc.lastCompletedBy;
+        }
+
+        await api.updateFirestoreDocument('routines', routineId, routineUpdates);
         routine.completionsByDate = completions;
 
         const compId = `routine_${routineId}_${dateKey}`;
         await api.removeDailyCompletion(compId, dateKey);
 
+        await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
+        if ((state.doneWeekOffset || 0) !== 0) {
+            await api.loadWeeklyPointsFromFirestore();
+        }
+        drawLeaderboard(state.currentWeekScores, false);
         rebuildCompletedToday();
         renderDoneTodayFeed();
         renderRollingSchedule();
-        updateLeaderboardUI();
+        if (typeof window !== 'undefined') {
+            if (window.renderTodoTasks) window.renderTodoTasks();
+            if (window.renderBulkTriageList) window.renderBulkTriageList();
+        }
+        return true;
     } catch (err) {
         console.error("Error undoing routine:", err);
         alert("Failed to undo routine: " + err.message);
+        return false;
+    } finally {
+        inFlightRoutineOps.delete(opKey);
     }
 }
 
@@ -786,7 +1157,7 @@ export function openRoutineModal() {
     const timeOfDayEl = document.getElementById('routineTimeOfDay');
     if (timeOfDayEl) timeOfDayEl.value = 'Anytime';
     const pointsEl = document.getElementById('routinePoints');
-    if (pointsEl) pointsEl.value = '15';
+    if (pointsEl) pointsEl.value = '5';
     const btnDel = document.getElementById('btnDeleteRoutine');
     if (btnDel) btnDel.style.display = 'none';
 
@@ -836,8 +1207,7 @@ export function editRoutine(routineId) {
     const createdByEl = document.getElementById('routineCreatedBy');
     if (createdByEl) createdByEl.value = routine.createdBy || 'Alyssa';
 
-    const linkedTask = state.tasks?.find(t => t.uid === routine.linkedNiptoTask);
-    const pts = routine.points !== undefined && routine.points !== null ? routine.points : (linkedTask ? linkedTask.value : 0);
+    const pts = api.getRoutinePoints(routine);
     const pointsEl = document.getElementById('routinePoints');
     if (pointsEl) pointsEl.value = pts;
 
@@ -888,7 +1258,7 @@ export async function saveRoutine() {
 
     let freq = document.getElementById('routineFrequency').value;
     const timeOfDayVal = document.getElementById('routineTimeOfDay')?.value || 'Anytime';
-    const pointsVal = parseInt(document.getElementById('routinePoints')?.value, 10) || 0;
+    const pointsVal = api.clampStep5Points(parseInt(document.getElementById('routinePoints')?.value, 10), 5);
     const rawCat = document.getElementById('routineCategory')?.value.trim() || 'Home';
     const categoryVal = registerCustomCategory(rawCat) || 'Home';
 
@@ -984,6 +1354,9 @@ export function renderSidebarRoutines() {
 // Window bindings for inline HTML onclick handlers
 if (typeof window !== 'undefined') {
     window.isDailyRoutine = isDailyRoutine;
+    window.getRoutinePoints = getRoutinePoints;
+    window.parseRoutineDate = parseRoutineDate;
+    window.isRoutineCompletedOnDate = isRoutineCompletedOnDate;
     window.setScheduleFilter = setScheduleFilter;
     window.toggleHideCompletedRoutines = toggleHideCompletedRoutines;
     window.clearAllMissedRoutines = clearAllMissedRoutines;

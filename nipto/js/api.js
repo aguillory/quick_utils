@@ -423,6 +423,19 @@ export function findGenericAssignedTaskByPoints(pts) {
 }
 
 /**
+ * Single canonical routine point resolver.
+ * Precedence: positive routine.points -> positive linked Nipto task value -> 5 (clamped step-5 in [5..100]).
+ */
+export function getRoutinePoints(r) {
+    const linkedTask = (state.tasks || []).find(t => t.uid === r?.linkedNiptoTask);
+    const hasExplicitPts = r?.points !== undefined && r?.points !== null && r?.points !== '' && Number(r.points) > 0;
+    const raw = hasExplicitPts
+        ? Number(r.points)
+        : (linkedTask && Number(linkedTask.value) > 0 ? Number(linkedTask.value) : 5);
+    return clampStep5Points(raw, 5);
+}
+
+/**
  * Finds the best matching generic point-value task in state.tasks for a given points value
  * (or uses linkedNiptoTaskUid if non-generic and matching pts), logs the activity to Nipto via GraphQL,
  * saves the To-Do's title to saveActivityLabels(activityUids, taskTitle),
@@ -539,7 +552,7 @@ export async function repairMissingNiptoPoints() {
                     });
 
                     if (!alreadyArchived && !comp.niptoActivityUid) {
-                        const pts = rData.points || 15;
+                        const pts = getRoutinePoints(rData);
                         const compIso = comp.completedAt || new Date(`${dateKey}T12:00:00`).toISOString();
                         console.log(`[Points Repair] Logging routine completion to Nipto: "${rData.name}" (${pts} pts) on ${dateKey}`);
                         try {
@@ -770,8 +783,8 @@ export async function reconcileNiptoActivitiesToFirestore(force = false, lookbac
                 }
             }
 
-            // 5. Check if this activity matches a linked routine
-            if (taskUid) {
+            // 5. Check if this activity matches a linked routine (non-generic task only)
+            if (taskUid && !isGenericAssignedTask({ uid: taskUid, name: taskName })) {
                 const matchingRoutine = (state.routines || []).find(r => r.linkedNiptoTask === taskUid);
                 if (matchingRoutine) {
                     matchingRoutine.completionsByDate = matchingRoutine.completionsByDate || {};
@@ -783,6 +796,7 @@ export async function reconcileNiptoActivitiesToFirestore(force = false, lookbac
                             completedByUid: userUid,
                             points: pts,
                             withoutPoints: false,
+                            niptoActivityUids: [act.uid],
                             niptoActivityUid: act.uid
                         };
                         window.getNiptoCollection('routines').doc(matchingRoutine.uid).update({

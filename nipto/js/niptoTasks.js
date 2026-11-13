@@ -59,7 +59,9 @@ export async function logTask(buttonElement, taskUid, taskName) {
                     completedAt: targetDate.toISOString(),
                     completedByUid: primaryUid,
                     completedByName: namesString,
-                    withoutPoints: false
+                    withoutPoints: false,
+                    niptoActivityUids: activityUids || [],
+                    niptoActivityUid: (activityUids && activityUids[0]) || null
                 };
 
                 if (routine.completionType === 'shared') {

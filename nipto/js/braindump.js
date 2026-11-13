@@ -6,7 +6,7 @@ import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { renderTodoTasks, normalizeTask } from './todos.js';
-import { renderRollingSchedule, isDailyRoutine } from './routines.js';
+import { renderRollingSchedule, isDailyRoutine, completeRoutineForDate, isRoutineCompletedOnDate } from './routines.js';
 import { rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { saveCloudPreference } from './preferences.js';
 import { getLocalTodayKey, renderCategoryCombobox, registerCustomCategory } from './utils.js';
@@ -42,7 +42,7 @@ Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JS
     "points": 5,
     "priority": "high" | "medium" | "low",
     "frictionTag": "" | "quick" | "low_brain" | "deep_focus",
-    "schedule": {"type": "daily"|"weekly", "daysOfWeek": [0,1,2,3,4,5,6], "timeOfDay": "Morning"|"Afternoon"|"Evening"|"Anytime", "points": 15},
+    "schedule": {"type": "daily"|"weekly", "daysOfWeek": [0,1,2,3,4,5,6], "timeOfDay": "Morning"|"Afternoon"|"Evening"|"Anytime", "points": 5},
     "reason": "Short summary of why this action was proposed (e.g. 'New To-Do with 3 steps', 'Increased points to 10', 'Marked completed')"
   }
 ]
@@ -52,7 +52,7 @@ Action Rules:
   - subtasks: If the task/project has multiple steps, components, or instructions, output an array of concise actionable step strings.
   - type: "routine" for recurring/scheduled chores (e.g. daily animal feedings, weekly trash), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
   - For daily routines (every day, animal feeding/watering), set schedule.type = "daily" and daysOfWeek = [0,1,2,3,4,5,6]. Only set schedule.type = "weekly" when specific days of the week (1 to 6 days) are explicitly requested.
-  - points: Default to 5 if not specified (or 15 for routines).
+  - points: Default to 5 if not specified (or 5 for routines).
   - priority: Default to "medium".
   - frictionTag: "" (standard), "quick" (<5m), "low_brain", or "deep_focus".
 - "update": The user wants to modify fields on an existing task (e.g. change points, add subtasks, move to projects, edit title, set priority, or change schedule). Match its exact id in CURRENT_TASKS.
@@ -243,7 +243,7 @@ export async function parseWithGemini() {
         title: r.name,
         type: 'routine',
         category: r.category || 'Home',
-        points: r.points || 15,
+        points: api.getRoutinePoints(r),
         priority: r.priority || 'medium',
         schedule: isDailyRoutine(r) ? 'daily' : 'weekly',
         description: ''
@@ -332,12 +332,12 @@ USER BRAIN DUMP / RAMBLE:
                         type: isWeekly ? 'weekly' : 'daily',
                         daysOfWeek: isWeekly ? rawDays : [0, 1, 2, 3, 4, 5, 6],
                         timeOfDay: rawSched.timeOfDay || 'Anytime',
-                        points: rawSched.points || item.points || 15
+                        points: api.clampStep5Points(rawSched.points || item.points, 5)
                     };
                 } else if (typeof rawSched === 'string' && rawSched.toLowerCase() === 'weekly') {
-                    normalizedSched = { type: 'weekly', daysOfWeek: [1, 3, 5], timeOfDay: 'Anytime', points: 15 };
+                    normalizedSched = { type: 'weekly', daysOfWeek: [1, 3, 5], timeOfDay: 'Anytime', points: api.clampStep5Points(item.points, 5) };
                 } else {
-                    normalizedSched = { type: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Anytime', points: 15 };
+                    normalizedSched = { type: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], timeOfDay: 'Anytime', points: api.clampStep5Points(item.points, 5) };
                 }
             }
 
@@ -354,7 +354,9 @@ USER BRAIN DUMP / RAMBLE:
                 subtasks,
                 assignee: item.assignee || 'Anyone',
                 category: catVal,
-                points: item.points !== undefined ? (parseInt(item.points, 10) || 5) : (current ? current.points : (itemType === 'routine' ? 15 : 5)),
+                points: item.points !== undefined
+                    ? (itemType === 'routine' ? api.clampStep5Points(item.points, 5) : (parseInt(item.points, 10) || 5))
+                    : (current ? current.points : 5),
                 priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : (current ? current.priority : 'medium'),
                 frictionTag: item.frictionTag || '',
                 schedule: normalizedSched,
@@ -692,7 +694,7 @@ export function updateStagingItem(index, field, value) {
                 type: 'daily',
                 daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
                 timeOfDay: 'Anytime',
-                points: 15
+                points: api.clampStep5Points(state.brainDumpStaging[index].points, 5)
             };
         }
         state.brainDumpStaging[index][field] = value;
@@ -781,7 +783,9 @@ export async function applyUnifiedStagingToFirestore() {
                 if (userObj) assigneeUids.push(userObj.uid);
             }
 
-            const pts = parseInt(item.points, 10) || (item.type === 'routine' ? 15 : 5);
+            const pts = item.type === 'routine'
+                ? api.clampStep5Points(item.points, 5)
+                : (parseInt(item.points, 10) || 5);
 
             if (item.type === 'routine') {
                 const routineRef = window.getNiptoCollection('routines').doc();
@@ -848,30 +852,12 @@ export async function applyUnifiedStagingToFirestore() {
             if (isRoutineDoc) {
                 const routine = state.routines.find(r => r.uid === id);
                 if (routine) {
-                    const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
-                    completions[todayKey] = {
-                        completedAt: nowIso,
-                        completedByUid: doerUid,
-                        completedByName: doerName,
-                        withoutPoints: false
-                    };
-                    batch.update(window.getNiptoCollection('routines').doc(id), {
-                        completionsByDate: completions,
-                        updatedAt: nowIso
-                    });
-                    const pts = item.points || routine.points || 15;
-                    if (pts > 0) api.awardAllowancePoints(doerUid, pts);
-                    await api.recordDailyCompletion({
-                        id: `routine_${id}_${todayKey}`,
-                        itemId: id,
-                        sourceType: 'routine',
-                        title: item.title || routine.name,
-                        user: doerName,
-                        userUid: doerUid,
-                        points: pts,
-                        completedAt: nowIso,
-                        dateKey: todayKey
-                    });
+                    const stagedPts = item.points !== undefined ? api.clampStep5Points(item.points, 5) : null;
+                    if (stagedPts && stagedPts !== api.getRoutinePoints(routine)) {
+                        routine.points = stagedPts;
+                        await api.updateFirestoreDocument('routines', id, { points: stagedPts });
+                    }
+                    await completeRoutineForDate(id, todayKey, true);
                 }
             } else if (id) {
                 const existingTodo = state.todoTasksData?.find(t => t.id === id);
@@ -920,7 +906,7 @@ export async function applyUnifiedStagingToFirestore() {
                 batch.update(window.getNiptoCollection('routines').doc(id), {
                     name: item.title,
                     category: catVal,
-                    points: item.points || 15,
+                    points: api.clampStep5Points(item.points, 5),
                     priority: item.priority || 'medium',
                     frictionTag: item.frictionTag || '',
                     schedule: scheduleData,
@@ -939,7 +925,7 @@ export async function applyUnifiedStagingToFirestore() {
                         assignees: ALL_USERS.map(u => u.uid),
                         schedule: scheduleData,
                         timeOfDay: scheduleData.timeOfDay,
-                        points: item.points || 15,
+                        points: api.clampStep5Points(item.points, 5),
                         category: catVal,
                         priority: item.priority || 'medium',
                         frictionTag: item.frictionTag || '',
@@ -1054,6 +1040,8 @@ export async function updateInlineTaskField(sourceType, id, field, value) {
     const nowIso = new Date().toISOString();
     if (field === 'category') {
         value = registerCustomCategory(value) || 'Home';
+    } else if (sourceType === 'routine' && field === 'points') {
+        value = api.clampStep5Points(value, 5);
     }
     try {
         if (sourceType === 'routine') {
@@ -1203,17 +1191,17 @@ export function renderBulkTriageList() {
     function sortRoutines(list) {
         const todayKey = getLocalTodayKey();
         return list.slice().sort((a, b) => {
-            const aDone = !!(a.completionsByDate && a.completionsByDate[todayKey]);
-            const bDone = !!(b.completionsByDate && b.completionsByDate[todayKey]);
+            const aDone = isRoutineCompletedOnDate(a, todayKey);
+            const bDone = isRoutineCompletedOnDate(b, todayKey);
             if (aDone !== bDone) return aDone ? 1 : -1;
 
             if (sortBy === 'priority') {
                 const pA = getPriorityWeight(a.priority);
                 const pB = getPriorityWeight(b.priority);
                 if (pA !== pB) return pB - pA;
-                return (b.points || 15) - (a.points || 15);
+                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
             } else if (sortBy === 'points') {
-                return (b.points || 15) - (a.points || 15);
+                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
             } else if (sortBy === 'category') {
                 return (a.category || 'Home').localeCompare(b.category || 'Home');
             } else {
@@ -1299,9 +1287,9 @@ export function renderBulkTriageList() {
     function renderBulkRoutineRow(r) {
         const isChecked = state.selectedRoutineIds.has(r.uid);
         const freq = isDailyRoutine(r) ? 'daily' : 'weekly';
-        const pts = r.points || 15;
+        const pts = api.getRoutinePoints(r);
         const todayKey = getLocalTodayKey();
-        const isDoneToday = !!(r.completionsByDate && r.completionsByDate[todayKey]);
+        const isDoneToday = isRoutineCompletedOnDate(r, todayKey);
 
         const toggleRoutineCall = isDoneToday
             ? 'undoRoutineForDate(\'' + r.uid + '\', \'' + todayKey + '\')'
@@ -1354,7 +1342,7 @@ export function renderBulkTriageList() {
 
                 <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
                     Points:
-                    <input type="number" value="${pts}" min="0" onchange="updateInlineTaskField('routine', '${r.uid}', 'points', parseInt(this.value, 10) || 15)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+                    <input type="number" value="${pts}" min="5" step="5" onchange="updateInlineTaskField('routine', '${r.uid}', 'points', parseInt(this.value, 10) || 5)" style="width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
                 </label>
 
                 <div style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted);">
