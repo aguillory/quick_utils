@@ -1182,6 +1182,7 @@ export async function dispatchHomeAssistantNotification(payload) {
 
         const safePayload = {
             ...payload,
+            token: state.integrationsConfig?.haWebhookToken || "",
             targets: validTargets
         };
 

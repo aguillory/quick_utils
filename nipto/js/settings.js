@@ -28,7 +28,7 @@ export function openSettingsModal() {
     if (geminiModelInput) geminiModelInput.value = currentModel;
 
     if (haInput) {
-        haInput.value = cfg.haWebhookUrl || 'https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge';
+        haInput.value = cfg.haWebhookUrl || '';
     }
 
     if (testBadge) {
@@ -81,6 +81,7 @@ export async function saveSettingsModal() {
         geminiApiKey: geminiKey,
         geminiModel: geminiModel,
         haWebhookUrl: haWebhook,
+        haWebhookToken: state.integrationsConfig?.haWebhookToken || '',
         publicAppUrl: state.integrationsConfig?.publicAppUrl || NIPTO_PUBLIC_URL
     };
 

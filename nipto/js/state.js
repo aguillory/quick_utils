@@ -53,7 +53,8 @@ export const state = {
     integrationsConfig: {
         geminiApiKey: "",
         geminiModel: "gemini-3.8-flash",
-        haWebhookUrl: "https://zbd3yezedhldtsyc2joff0uhgmklnahn.ui.nabu.casa/api/webhook/nipto_notify_bridge",
+        haWebhookUrl: "",
+        haWebhookToken: "",
         publicAppUrl: "https://aguillory.github.io/quick_utils/nipto/common.html"
     },
 
