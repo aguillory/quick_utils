@@ -15,15 +15,15 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const CURRENT_ENV = window.location.pathname.includes('/test-env/') ? 'test' : 'prod';
+const CURRENT_ENV = 'prod';
 export const getEnv = () => CURRENT_ENV;
 
 export const getTrackerDoc = (...pathSegments) => {
-    return doc(db, 'tracker', getEnv(), ...pathSegments);
+    return doc(db, 'tracker', 'prod', ...pathSegments);
 };
 
 export const getTrackerCollection = (...pathSegments) => {
-    return collection(db, 'tracker', getEnv(), ...pathSegments);
+    return collection(db, 'tracker', 'prod', ...pathSegments);
 };
 
 export { db, auth };

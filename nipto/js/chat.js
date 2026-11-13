@@ -74,13 +74,17 @@ function startChatListeners() {
     if (listenersStarted || !window.db) return;
     listenersStarted = true;
 
-    window.getNiptoCollection(CHAT_COLLECTION).orderBy('createdAt', 'asc').onSnapshot(snap => {
-        chatMessagesCache = [];
-        snap.forEach(doc => chatMessagesCache.push({ id: doc.id, ...doc.data() }));
-        renderChat();
-        updateUnreadBadge();
-        if (isMessagesTabOpen() && document.visibilityState === 'visible') markAllRead();
-    }, err => console.error('Chat listener error:', err));
+    window.getNiptoCollection(CHAT_COLLECTION)
+        .orderBy('createdAt', 'desc')
+        .limit(100)
+        .onSnapshot(snap => {
+            const recent = [];
+            snap.forEach(doc => recent.push({ id: doc.id, ...doc.data() }));
+            chatMessagesCache = recent.reverse();
+            renderChat();
+            updateUnreadBadge();
+            if (isMessagesTabOpen() && document.visibilityState === 'visible') markAllRead();
+        }, err => console.error('Chat listener error:', err));
 
     window.getNiptoCollection(READS_COLLECTION).onSnapshot(snap => {
         lastReads = {};

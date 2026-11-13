@@ -567,7 +567,7 @@ let lastReconcileTime = 0;
  * Queries Nipto GraphQL for recent activities, cross-checks against Firestore activities_history,
  * and backfills any missing activities into activities_history, daily_completions, and allowance ledger.
  */
-export async function reconcileNiptoActivitiesToFirestore(force = false) {
+export async function reconcileNiptoActivitiesToFirestore(force = false, lookbackDays = 14) {
     if (isReconcilingNipto) {
         console.log("[Nipto Reconcile] Sync already in progress, skipping.");
         return { reconciledCount: 0, newPoints: 0 };
@@ -612,22 +612,27 @@ export async function reconcileNiptoActivitiesToFirestore(force = false) {
 
         const data = await fetchNipto(QUERY);
         const activities = (data && Array.isArray(data.activities)) ? data.activities : [];
-        const validActivities = activities.filter(act => act && act.uid && !act.draft);
+        const effectiveDays = (typeof lookbackDays === 'number' && lookbackDays > 0) ? lookbackDays : 14;
+        const cutoffMs = Date.now() - effectiveDays * 86400000;
+        const recentActivities = activities.filter(act => {
+            if (!act || !act.uid || act.draft || !act.date) return false;
+            const actMs = new Date(act.date).getTime();
+            return !isNaN(actMs) && actMs >= cutoffMs;
+        });
 
-        if (validActivities.length === 0) {
+        if (recentActivities.length === 0) {
             isReconcilingNipto = false;
             return { reconciledCount: 0, newPoints: 0 };
         }
 
-        // Determine date range for single-pass lookup against Firestore activities_history
-        let oldestDate = new Date();
-        validActivities.forEach(a => {
-            if (a.date) {
-                const d = new Date(a.date);
-                if (!isNaN(d.getTime()) && d < oldestDate) oldestDate = d;
-            }
+        // Determine date range for single-pass lookup against Firestore activities_history (bounded to lookbackDays)
+        let oldestMs = Date.now();
+        recentActivities.forEach(a => {
+            const d = new Date(a.date).getTime();
+            if (!isNaN(d) && d >= cutoffMs && d < oldestMs) oldestMs = d;
         });
-        const minDateIso = new Date(oldestDate.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        const boundedStartMs = Math.max(cutoffMs, oldestMs) - 24 * 60 * 60 * 1000;
+        const minDateIso = new Date(boundedStartMs).toISOString();
 
         const existingSnap = await window.getNiptoCollection('activities_history')
             .where('date', '>=', minDateIso)
@@ -635,8 +640,8 @@ export async function reconcileNiptoActivitiesToFirestore(force = false) {
 
         const existingUids = new Set(existingSnap.docs.map(doc => doc.id));
 
-        // Filter activities that do not yet exist in Firestore
-        const missingActivities = validActivities.filter(act => !existingUids.has(act.uid));
+        // Filter activities within the lookback window that do not yet exist in Firestore
+        const missingActivities = recentActivities.filter(act => !existingUids.has(act.uid));
 
         if (missingActivities.length === 0) {
             isReconcilingNipto = false;

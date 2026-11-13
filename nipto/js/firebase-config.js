@@ -15,10 +15,10 @@ const auth = firebase.auth();
 window.db = db;
 window.auth = auth;
 
-const CURRENT_ENV = window.location.hostname.includes('aguillory.github.io') ? 'prod' : 'test';
+const CURRENT_ENV = 'prod';
 window.getEnv = () => CURRENT_ENV;
 window.getNiptoCollection = (colName) => {
     // If it's a dynamic path that already has prefix, be careful. 
     // All known usages are direct string literals like 'custom_tasks'.
-    return db.collection('nipto/' + window.getEnv() + '/' + colName);
+    return db.collection('nipto/prod/' + colName);
 };

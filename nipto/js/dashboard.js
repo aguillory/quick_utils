@@ -206,11 +206,70 @@ window.runSync = async () => {
 async function startDashboardData() {
     try {
         await api.loadUsersFromFirestore();
+
+        // Clean up any prior listeners before attaching new ones
+        if (unsubTodos) { unsubTodos(); unsubTodos = null; }
+        if (unsubRoutines) { unsubRoutines(); unsubRoutines = null; }
+        if (unsubDailyComp) { unsubDailyComp(); unsubDailyComp = null; }
+        if (unsubSyncSignal) { unsubSyncSignal(); unsubSyncSignal = null; }
+
+        let resolveTodosInitial, resolveRoutinesInitial;
+        const todosInitialPromise = new Promise(resolve => { resolveTodosInitial = resolve; });
+        const routinesInitialPromise = new Promise(resolve => { resolveRoutinesInitial = resolve; });
+        let todosInitialized = false;
+        let routinesInitialized = false;
+
+        // Real-time listener for To-Dos in Firestore (populates initial state on first snapshot)
+        unsubTodos = window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            state.todoTasksData = [];
+            snapshot.forEach(doc => {
+                state.todoTasksData.push({ id: doc.id, ...doc.data() });
+            });
+            if (!todosInitialized) {
+                todosInitialized = true;
+                resolveTodosInitial();
+            } else {
+                rebuildCompletedThisWeek();
+                renderDoneThisWeekFeed();
+                renderTodoTasks();
+                renderBulkTriageList();
+            }
+        }, err => {
+            console.error("Error in custom_tasks listener:", err);
+            if (!todosInitialized) {
+                todosInitialized = true;
+                resolveTodosInitial();
+            }
+        });
+
+        // Real-time listener for Routines in Firestore (with schedule auto-healing; populates initial state on first snapshot)
+        unsubRoutines = window.getNiptoCollection('routines').onSnapshot(snapshot => {
+            state.routines = [];
+            snapshot.forEach(doc => {
+                state.routines.push(api.normalizeAndHealRoutineDoc({ uid: doc.id, ...doc.data() }));
+            });
+            if (!routinesInitialized) {
+                routinesInitialized = true;
+                resolveRoutinesInitial();
+            } else {
+                rebuildCompletedThisWeek();
+                renderDoneThisWeekFeed();
+                renderRollingSchedule();
+                renderTodoTasks();
+                renderBulkTriageList();
+            }
+        }, err => {
+            console.error("Error in routines listener:", err);
+            if (!routinesInitialized) {
+                routinesInitialized = true;
+                resolveRoutinesInitial();
+            }
+        });
+
         await Promise.all([
             api.loadTasksFromFirestore(),
-            api.loadRoutinesFromFirestore(),
-            api.loadTodosFromFirestore(),
-            api.loadActivityLabelsFromFirestore(),
+            todosInitialPromise,
+            routinesInitialPromise,
             api.loadAllowanceLedgerFromFirestore(),
             api.loadIntegrationsConfigFromFirestore(),
             api.loadNotificationPreferencesFromFirestore(),
@@ -222,28 +281,10 @@ async function startDashboardData() {
         renderTodoTasks();
         renderTasks();
         renderAllowanceUI();
-        updateLeaderboardUI();
+        drawLeaderboard(state.currentWeekScores, false);
         await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
         rebuildCompletedThisWeek();
         renderDoneThisWeekFeed();
-
-        // Automatically reconcile activities from Nipto and repair any chores completed without Nipto API points
-        if (state.apiToken) {
-            api.reconcileNiptoActivitiesToFirestore().then(res => {
-                if (res && res.reconciledCount > 0) {
-                    showToast("reconcile_ok", `Reconciled ${res.reconciledCount} activities from Nipto (+${res.newPoints} pts)!`, res.newPoints, "Nipto Sync");
-                }
-            }).catch(e => console.warn("Background Nipto activity reconcile error:", e));
-
-            api.repairMissingNiptoPoints().then(res => {
-                if (res && res.repairedCount > 0) {
-                    showToast("points_repair", `Repaired ${res.repairedCount} chores and restored ${res.totalPoints} points!`, res.totalPoints, "Nipto Repair");
-                    updateLeaderboardUI();
-                    rebuildCompletedToday();
-                    renderDoneTodayFeed();
-                }
-            }).catch(e => console.warn("Background points repair error:", e));
-        }
 
         handleUrlQuickActions();
     } catch (e) {
@@ -254,41 +295,6 @@ async function startDashboardData() {
             statusText.style.color = "var(--danger)";
         }
     }
-
-    // Clean up any prior listeners before attaching new ones
-    if (unsubTodos) { unsubTodos(); unsubTodos = null; }
-    if (unsubRoutines) { unsubRoutines(); unsubRoutines = null; }
-    if (unsubDailyComp) { unsubDailyComp(); unsubDailyComp = null; }
-    if (unsubSyncSignal) { unsubSyncSignal(); unsubSyncSignal = null; }
-
-    // Real-time listener for To-Dos in Firestore
-    unsubTodos = window.getNiptoCollection('custom_tasks').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-        state.todoTasksData = [];
-        snapshot.forEach(doc => {
-            state.todoTasksData.push({ id: doc.id, ...doc.data() });
-        });
-        rebuildCompletedThisWeek();
-        renderDoneThisWeekFeed();
-        renderTodoTasks();
-        renderBulkTriageList();
-    }, err => {
-        console.error("Error in custom_tasks listener:", err);
-    });
-
-    // Real-time listener for Routines in Firestore (with schedule auto-healing)
-    unsubRoutines = window.getNiptoCollection('routines').onSnapshot(snapshot => {
-        state.routines = [];
-        snapshot.forEach(doc => {
-            state.routines.push(api.normalizeAndHealRoutineDoc({ uid: doc.id, ...doc.data() }));
-        });
-        rebuildCompletedThisWeek();
-        renderDoneThisWeekFeed();
-        renderRollingSchedule();
-        renderTodoTasks();
-        renderBulkTriageList();
-    }, err => {
-        console.error("Error in routines listener:", err);
-    });
 
     // Real-time listener for today's daily_completions doc (merges with the rest of the current week)
     const todayKey = getLocalTodayKey();
@@ -328,16 +334,3 @@ api.checkAuth(
     () => { document.getElementById('pinModal').style.display = 'flex'; },
     (err) => { console.error("Database Auth Failed:", err); }
 );
-
-// Periodic and visibility-based background reconciliation from Nipto -> Firestore
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && (state.apiToken || localStorage.getItem("nipto_api_token"))) {
-        api.reconcileNiptoActivitiesToFirestore().catch(e => console.warn("Visibility reconcile error:", e));
-    }
-});
-
-setInterval(() => {
-    if (state.apiToken || localStorage.getItem("nipto_api_token")) {
-        api.reconcileNiptoActivitiesToFirestore().catch(e => console.warn("Periodic reconcile error:", e));
-    }
-}, 4 * 60 * 1000);

@@ -21,11 +21,8 @@ const auth = firebase.auth();
 window.db = db;
 window.auth = auth;
 
-const CURRENT_ENV = window.location.pathname.includes('/test-env/') ? 'test' : 'prod';
+const CURRENT_ENV = 'prod';
 window.getEnv = () => CURRENT_ENV;
 window.getFarmCollection = (colName) => {
-    if (window.getEnv() === 'test') {
-        return db.collection('farm_manager/test/' + colName);
-    }
     return db.collection('farm_manager/prod/' + colName);
 };

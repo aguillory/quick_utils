@@ -76,6 +76,7 @@ let ALL = [];
 let filter = 'flagged';
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function ms(v, fb){ if(!v) return fb||0; if(typeof v==='number') return v;
+    if(typeof v==='string'){ const p = Date.parse(v); return isNaN(p) ? (fb||0) : p; }
     if(typeof v.toMillis==='function') return v.toMillis();
     if(v.seconds) return v.seconds*1000; return fb||0; }
 function fmt(t){ return t ? new Date(t).toLocaleString() : '—'; }
@@ -105,8 +106,9 @@ function render(){
         return;
     }
     list.innerHTML = rows.map(m => {
-        const hist = (m.history || []).slice().sort((a,b) =>
-            new Date(a.at||0) - new Date(b.at||0));
+        const rawHist = (m.editHistory && m.editHistory.length) ? m.editHistory : (m.history || []);
+        const hist = rawHist.slice().sort((a,b) =>
+            new Date(a.at || a.editedAt || 0) - new Date(b.at || b.editedAt || 0));
         const histHtml = hist.length ? `
             <div class="hist">
                 <h5>Version history (oldest first)</h5>
@@ -114,20 +116,28 @@ function render(){
                     <div class="hist-meta">V1 · ORIGINAL · ${esc(m.senderName)} · ${esc(fmt(m.createdTs))}</div>
                     <div class="hist-text">${esc(m.originalText || hist[0].text || m.text)}</div>
                 </div>
-                ${hist.map((h,i) => `
-                    <div class="hist-row" style="border-left-color:${h.action==='deleted'?'var(--danger)':'var(--primary)'};">
+                ${hist.map(h => {
+                    const action = h.action || 'edited';
+                    const who = h.byName || h.editedByName || m.senderName || 'Unknown';
+                    const when = h.at || h.editedAt;
+                    const borderCol = action === 'deleted' ? 'var(--danger)' : 'var(--primary)';
+                    const badge = action === 'deleted' ? '&#x1F5D1;&#xFE0F; DELETED' : (action === 'restored' ? '&#x21A9;&#xFE0F; RESTORED' : '[Edit] EDITED');
+                    return `
+                    <div class="hist-row" style="border-left-color:${borderCol};">
                         <div class="hist-meta">
-                            ${h.action === 'deleted' ? '&#x1F5D1;️ DELETED' : '[Edit] EDITED'}
-                            by ${esc(h.byName || 'Unknown')} · ${esc(fmt(new Date(h.at).getTime()))}
+                            ${badge}
+                            by ${esc(who)} · ${esc(fmt(ms(when)))}
                             — text at that moment was:
                         </div>
                         <div class="hist-text">${esc(h.text)}</div>
-                    </div>`).join('')}
+                    </div>`;
+                }).join('')}
                 <div class="hist-row" style="border-left-color:var(--success);">
                     <div class="hist-meta">CURRENT STORED TEXT ${m.deleted ? '(hidden from chat)' : '(shown in chat)'}</div>
                     <div class="hist-text">${esc(m.text)}</div>
                 </div>
             </div>` : '';
+        const editCount = hist.filter(h => (h.action || 'edited') === 'edited').length;
         return `
         <div class="msg-card ${m.deleted ? 'is-deleted' : (m.edited ? 'is-edited' : '')}">
             <div class="msg-top">
@@ -136,14 +146,14 @@ function render(){
                     ${m.deleted ? '<span class="tag del">deleted</span>' : ''}
                     ${m.edited ? '<span class="tag edit">edited</span>' : ''}
                 </div>
-                <div class="msg-when">sent ${esc(fmt(m.createdTs))} &nbsp;·&nbsp; <code class="uid">${esc(m.id)}</code></div>
+                <div class="msg-when">sent ${esc(fmt(m.createdTs))} &nbsp;·&nbsp; <code class="uid">${esc(m.id)}</code>${m.senderUid ? ` &nbsp;·&nbsp; <code class="uid">${esc(m.senderUid)}</code>` : ''}</div>
             </div>
             <div class="msg-text ${m.deleted ? 'struck' : ''}">${esc(m.text)}</div>
             ${m.deleted ? `<div class="msg-when" style="margin-top:6px;">
                 &#x1F5D1;️ Removed by <strong>${esc(m.deletedByName || 'Unknown')}</strong> on ${esc(fmt(m.deletedTs))}
             </div>` : ''}
             ${m.edited && !m.deleted ? `<div class="msg-when" style="margin-top:6px;">
-                [Edit] Last edited ${esc(fmt(m.editedTs))} · ${ (m.history||[]).filter(h=>h.action==='edited').length } edit(s)
+                [Edit] Last edited ${esc(fmt(m.editedTs))} · ${editCount} edit(s)
             </div>` : ''}
             ${histHtml}
             ${m.deleted ? `<div class="row-actions">
@@ -154,12 +164,14 @@ function render(){
 }
 async function restore(id){
     if (!confirm('Put this message back in the chat?')) return;
-    await window.db.collection('chat_messages').doc(id).update({
+    const nowIso = new Date().toISOString();
+    await window.getNiptoCollection('chat_messages').doc(id).update({
         deleted: false,
         restoredAt: firebase.firestore.FieldValue.serverTimestamp(),
-        history: firebase.firestore.FieldValue.arrayUnion({
+        editHistory: firebase.firestore.FieldValue.arrayUnion({
             action: 'restored', text: '(restored by parent)',
-            at: new Date().toISOString(), byId: 'admin', byName: 'Parent (admin page)'
+            at: nowIso, editedAt: nowIso,
+            byId: 'admin', byName: 'Parent (admin page)', editedByName: 'Parent (admin page)'
         })
     });
 }
@@ -171,24 +183,32 @@ function exportJson(){
     a.click();
 }
 firebase.auth().signInAnonymously().then(() => {
-    window.db.collection('chat_messages')
-        .orderBy('createdAtMs', 'desc')
+    window.getNiptoCollection('chat_messages')
+        .orderBy('createdAt', 'desc')
         .onSnapshot(snap => {
             ALL = [];
             snap.forEach(doc => {
                 const d = doc.data() || {};
+                const senderUid = d.senderUid || d.userUid || d.senderId || '';
+                const rawHistory = (Array.isArray(d.editHistory) && d.editHistory.length)
+                    ? d.editHistory
+                    : (Array.isArray(d.history) ? d.history : []);
+                const lastHistEntry = rawHistory.length ? rawHistory[rawHistory.length - 1] : null;
+                const editedFallback = lastHistEntry ? (lastHistEntry.editedAt || lastHistEntry.at) : 0;
                 ALL.push({
                     id: doc.id,
-                    senderId: d.senderId || '',
-                    senderName: d.senderName || d.senderId || 'Unknown',
+                    senderUid: senderUid,
+                    senderId: senderUid,
+                    senderName: d.senderName || senderUid || 'Unknown',
                     text: d.text || '',
                     originalText: d.originalText || '',
                     deleted: !!d.deleted,
                     edited: !!d.edited,
                     deletedByName: d.deletedByName || '',
-                    history: d.history || [],
+                    history: rawHistory,
+                    editHistory: rawHistory,
                     createdTs: ms(d.createdAt, d.createdAtMs),
-                    editedTs:  ms(d.editedAt,  d.editedAtMs),
+                    editedTs:  ms(d.editedAt || editedFallback, d.editedAtMs),
                     deletedTs: ms(d.deletedAt, d.deletedAtMs)
                 });
             });

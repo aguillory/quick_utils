@@ -15,19 +15,19 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const CURRENT_ENV = window.location.pathname.includes('/test-env/') ? 'test' : 'prod';
+const CURRENT_ENV = 'prod';
 export const getEnv = () => CURRENT_ENV;
 
 export const toggleEnv = () => {
-    console.info("Environment routing is path-based: /test-env/ vs /budget/");
+    console.info("Environment is locked to prod.");
 };
 
 export const getBudgetDoc = (...pathSegments) => {
-    return doc(db, 'budget', getEnv(), ...pathSegments);
+    return doc(db, 'budget', 'prod', ...pathSegments);
 };
 
 export const getBudgetCollection = (...pathSegments) => {
-    return collection(db, 'budget', getEnv(), ...pathSegments);
+    return collection(db, 'budget', 'prod', ...pathSegments);
 };
 
 /**
@@ -108,16 +108,7 @@ export const initEnvToggleUI = () => {
     if (typeof document === 'undefined') return;
     const btn = document.getElementById('env-toggle');
     if (!btn) return;
-    if (window.self !== window.top) {
-        btn.style.display = 'none';
-        return;
-    }
-    const isTest = getEnv() === 'test';
-    btn.textContent = isTest ? 'ENV: TEST' : 'ENV: PROD';
-    btn.style.backgroundColor = isTest ? '#f59e0b' : '#3b82f6';
-    btn.style.color = '#ffffff';
-    btn.style.fontSize = '11px';
-    btn.title = `Currently using Firestore path: budget/${getEnv()}`;
+    btn.style.display = 'none';
 };
 
 if (typeof window !== 'undefined') {
