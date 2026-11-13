@@ -35,9 +35,20 @@ export const state = {
 
     // User preferences (cloud-synced & local cache)
     userPrefs: {
+        theme: 'boring',
+        historyView: 'everyone',
         niptoSortOrder: [],
         customSortOrder: [],
         todoSortOrder: [],
+        todoSort: 'priority',
+        todoGroupBy: 'none',
+        todoTypeFilter: 'all',
+        todoCategoryFilter: 'all',
+        todoPriorityFilter: 'all',
+        todoPersonFilter: 'all',
+        todoBucketFilter: 'all',
+        todoFrictionFilter: 'all',
+        todoView: 'all',
         collapsed: {},
         collapsedSections: {},
         bulkCollapsedSections: {}
@@ -108,15 +119,15 @@ export const state = {
     // Filter & sort state
     scheduleFilter: 'me',            // 'me' (default) | 'all' | uid
     hideCompletedRoutines: false,
-    todoView: 'my_actionable',       // 'my_actionable' (default) | 'shared' | 'projects' | 'all'
-    todoPersonFilter: 'all',         // 'all' | 'me' | 'unassigned' | uid
+    todoView: 'all',                 // 'all' (default) | 'my_actionable' | 'shared' | 'projects'
+    todoPersonFilter: 'all',         // 'all' | 'me' | 'shared_anyone' | 'unassigned' | uid
     todoBucketFilter: 'all',         // 'all' | 'actionable' | 'project_idea'
     todoTypeFilter: 'all',           // 'all' (default) | 'todo' | 'project' | 'routine'
     todoCategoryFilter: 'all',       // 'all' | specific category
     todoPriorityFilter: 'all',       // 'all' | 'high' | 'medium' | 'low'
     todoFrictionFilter: 'all',       // 'all' | 'quick' | 'low_brain' | 'deep_focus'
-    todoSort: 'priority',            // 'priority' | 'points' | 'category' | 'age'
-    todoGroupBy: 'category',         // 'category' (default accordions) | 'ownership'
+    todoSort: 'priority',            // 'priority' | 'points' | 'category' | 'age' | 'oldest' | 'alpha' | 'friction'
+    todoGroupBy: 'none',             // 'none' (default) | 'category'
     manageSubtab: 'todos',           // 'todos' | 'routines'
     manageSearchQuery: '',
     bulkTypeFilter: 'all',           // 'all' | 'todo' | 'project' | 'routine'

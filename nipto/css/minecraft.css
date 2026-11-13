@@ -349,3 +349,20 @@ input[list] {
     h2 { font-size: 24px; }
     h3 { font-size: 20px; }
 }
+
+.todo-card.is-assigned-to-me {
+    border-color: #3C8527 !important;
+    box-shadow: 0 0 0 2px rgba(60, 133, 39, 0.45), inset 3px 3px 0 rgba(255, 255, 255, 0.4) !important;
+    background: linear-gradient(90deg, rgba(60, 133, 39, 0.14) 0%, #E4C094 38%) !important;
+}
+
+.todo-card.is-other-user-task {
+    opacity: 0.72;
+    filter: saturate(0.75);
+}
+
+.todo-card.is-other-user-task:hover,
+.todo-card.is-other-user-task:focus-within {
+    opacity: 0.96;
+    filter: saturate(1);
+}

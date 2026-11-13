@@ -138,10 +138,12 @@ export function isDailyRoutine(task) {
 
 // Compact assignee label for a routine card or row
 export function formatRoutineAssignees(routine, compact = true) {
-    const assignees = routine.assignees || [];
+    const raw = Array.isArray(routine?.assignees) ? routine.assignees : [];
+    const assignees = raw.map(a => (typeof a === 'string' ? a.trim() : '')).filter(Boolean);
+    const lowerSet = new Set(assignees.map(a => a.toLowerCase()));
     const baseClass = "routine-assignee-pill";
 
-    if (!assignees.length || assignees.length >= ALL_USERS.length) {
+    if (assignees.length === 0 || lowerSet.has('anyone') || (ALL_USERS.length > 0 && assignees.length >= ALL_USERS.length)) {
         return `<span class="${baseClass} shared-pill" title="Anyone can do">&#x1F465;</span>`;
     }
 
@@ -464,15 +466,19 @@ export function getMissedRoutineItems(routines, filter, activeUid, today) {
     return missedItems;
 }
 
-// Filter matching helper
+// Filter matching helper (empty / null / undefined / 'anyone' / all-users = anyone can do)
 function routineMatchesFilter(r, filter, activeUid) {
     if (!filter || filter === 'all') return true;
+    const raw = Array.isArray(r?.assignees) ? r.assignees : [];
+    const assignees = raw.map(a => (typeof a === 'string' ? a.trim() : '')).filter(Boolean);
+    const isAnyone = assignees.length === 0
+        || assignees.some(a => a.toLowerCase() === 'anyone')
+        || (ALL_USERS.length > 0 && assignees.length >= ALL_USERS.length);
+    if (isAnyone) return true;
     if (filter === 'me') {
-        if (!r.assignees || r.assignees.length === 0) return true;
-        return r.assignees.includes(activeUid);
+        return Boolean(activeUid) && assignees.includes(activeUid);
     }
-    if (!r.assignees || r.assignees.length === 0) return true;
-    return r.assignees.includes(filter);
+    return assignees.includes(filter);
 }
 
 export function renderRollingSchedule() {
@@ -1254,7 +1260,6 @@ export async function saveRoutine() {
     if (!name) { alert("Routine Name is required!"); return; }
 
     const assignees = Array.from(document.querySelectorAll('.routine-assignee-cb:checked')).map(cb => cb.value);
-    if (assignees.length === 0) { alert("Assign the routine to at least one person!"); return; }
 
     let freq = document.getElementById('routineFrequency').value;
     const timeOfDayVal = document.getElementById('routineTimeOfDay')?.value || 'Anytime';

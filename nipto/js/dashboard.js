@@ -7,7 +7,7 @@ import * as api from './api.js';
 import { initChat, onChatTabOpened, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import {
     savePin, setMode, setTimeOffset, getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek,
-    getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
+    loadCustomCategoriesFromFirestore, getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
     openCategoryCombobox, toggleCategoryComboboxDropdown, filterCategoryCombobox,
     selectCategoryComboboxOption, handleCategoryComboboxKeydown
 } from './utils.js';
@@ -28,7 +28,7 @@ import {
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
     setTodoPriorityFilter, setTodoTypeFilter, setTodoCategoryFilter, setTodoSort,
-    setTodoGroupBy, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
+    setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
     openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi
@@ -151,7 +151,7 @@ Object.assign(window, {
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
     renderTodoTasks, renderSidebarTodos,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter,
-    setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
+    setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
     openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi,
@@ -268,6 +268,7 @@ async function startDashboardData() {
 
         await Promise.all([
             api.loadTasksFromFirestore(),
+            loadCustomCategoriesFromFirestore(),
             todosInitialPromise,
             routinesInitialPromise,
             api.loadAllowanceLedgerFromFirestore(),

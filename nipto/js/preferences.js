@@ -2,68 +2,99 @@
 // Cloud-synced user preferences (theme, history view, sort orders, filters, collapsed sections).
 import { state } from './state.js';
 
-state.userPrefs = {
-    theme: 'boring',
-    historyView: 'everyone',
-    niptoSortOrder: [],
-    customSortOrder: [],
-    todoSortOrder: [],
-    todoSort: 'priority',
-    todoGroupBy: 'category',
-    todoTypeFilter: 'all',
-    todoCategoryFilter: 'all',
-    todoPriorityFilter: 'all',
-    todoPersonFilter: 'all',
-    collapsed: {},
-    collapsedSections: {},
-    bulkCollapsedSections: {},
-    ...(state.userPrefs || {})
-};
+const userPrefsCache = new Map();
 
-// Loads a user's saved preferences from Firestore into state with local cache fallback.
+function getDefaultUserPrefs() {
+    return {
+        theme: 'boring',
+        historyView: 'everyone',
+        niptoSortOrder: [],
+        customSortOrder: [],
+        todoSortOrder: [],
+        todoSort: 'priority',
+        todoGroupBy: 'none',
+        todoTypeFilter: 'all',
+        todoCategoryFilter: 'all',
+        todoPriorityFilter: 'all',
+        todoPersonFilter: 'all',
+        todoBucketFilter: 'all',
+        todoFrictionFilter: 'all',
+        todoView: 'all',
+        collapsed: {},
+        collapsedSections: {},
+        bulkCollapsedSections: {}
+    };
+}
+
+function normalizeUserPrefs(raw = {}) {
+    const prefs = { ...getDefaultUserPrefs(), ...(raw || {}) };
+    if (!raw?.todoPersonFilter && raw?.todoAssigneeFilter) {
+        prefs.todoPersonFilter = raw.todoAssigneeFilter;
+    }
+    if (prefs.todoGroupBy !== 'category') {
+        prefs.todoGroupBy = 'none';
+    }
+    return prefs;
+}
+
+state.userPrefs = normalizeUserPrefs(state.userPrefs);
+
+// Loads a user's saved preferences from Firestore into state with per-session & local cache.
 export async function loadCloudPreferences(uid) {
     if (!uid || state.isTogetherMode) return;
 
-    // Fast-path: local storage cache for instant UI rendering
+    if (userPrefsCache.has(uid)) {
+        state.userPrefs = normalizeUserPrefs(userPrefsCache.get(uid));
+        applyPrefsToState(uid);
+        return;
+    }
+
+    // Fast-path: local storage cache for instant UI rendering (scoped strictly to this uid)
     try {
         const cached = localStorage.getItem(`nipto_user_prefs_${uid}`);
         if (cached) {
             const parsed = JSON.parse(cached);
-            state.userPrefs = { ...state.userPrefs, ...parsed };
+            state.userPrefs = normalizeUserPrefs(parsed);
+            applyPrefsToState(uid);
+        } else {
+            state.userPrefs = getDefaultUserPrefs();
             applyPrefsToState(uid);
         }
     } catch (e) {
-        // non-blocking cache error
+        state.userPrefs = getDefaultUserPrefs();
+        applyPrefsToState(uid);
     }
 
     try {
         const doc = await window.getNiptoCollection('user_preferences').doc(uid).get();
-        if (doc.exists) {
-            state.userPrefs = { ...state.userPrefs, ...doc.data() };
-            // Update local cache
+        const docData = doc.exists ? (doc.data() || {}) : {};
+        userPrefsCache.set(uid, docData);
+        state.userPrefs = normalizeUserPrefs(docData);
+        try {
             localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
-            applyPrefsToState(uid);
-        }
+        } catch (e) {}
+        applyPrefsToState(uid);
     } catch (e) {
         console.error("Error loading cloud prefs:", e);
     }
 }
 
-// Applies stored preferences to the reactive state
+// Applies stored preferences to the reactive state (resets all fields to prevent cross-user leakage)
 function applyPrefsToState(uid) {
-    if (state.userPrefs.todoSort) state.todoSort = state.userPrefs.todoSort;
-    if (state.userPrefs.todoGroupBy) state.todoGroupBy = state.userPrefs.todoGroupBy;
-    if (state.userPrefs.todoTypeFilter) state.todoTypeFilter = state.userPrefs.todoTypeFilter;
-    if (state.userPrefs.todoCategoryFilter) state.todoCategoryFilter = state.userPrefs.todoCategoryFilter;
-    if (state.userPrefs.todoPriorityFilter) state.todoPriorityFilter = state.userPrefs.todoPriorityFilter;
-    if (state.userPrefs.todoPersonFilter) state.todoPersonFilter = state.userPrefs.todoPersonFilter;
-    if (state.userPrefs.todoBucketFilter) state.todoBucketFilter = state.userPrefs.todoBucketFilter;
-    if (state.userPrefs.todoFrictionFilter) state.todoFrictionFilter = state.userPrefs.todoFrictionFilter;
-    if (state.userPrefs.todoView) state.todoView = state.userPrefs.todoView;
+    const p = state.userPrefs || getDefaultUserPrefs();
+    state.todoSort = p.todoSort || 'priority';
+    state.todoGroupBy = (p.todoGroupBy === 'category') ? 'category' : 'none';
+    state.todoTypeFilter = p.todoTypeFilter || 'all';
+    state.todoCategoryFilter = p.todoCategoryFilter || 'all';
+    state.todoPriorityFilter = p.todoPriorityFilter || 'all';
+    state.todoPersonFilter = p.todoPersonFilter || 'all';
+    state.todoBucketFilter = p.todoBucketFilter || 'all';
+    state.todoFrictionFilter = p.todoFrictionFilter || 'all';
+    state.todoView = p.todoView || 'all';
 
     // Reconcile per-user shown/hidden Nipto dashboard tasks if saved in user_preferences
-    if (uid && Array.isArray(state.userPrefs.dashboardTaskUids) && state.userPrefs.dashboardTaskUids.length > 0 && Array.isArray(state.tasks)) {
-        const allowedSet = new Set(state.userPrefs.dashboardTaskUids);
+    if (uid && Array.isArray(p.dashboardTaskUids) && p.dashboardTaskUids.length > 0 && Array.isArray(state.tasks)) {
+        const allowedSet = new Set(p.dashboardTaskUids);
         state.tasks.forEach(task => {
             const users = Array.isArray(task.dashboardUsers) ? [...task.dashboardUsers] : [];
             const hasUid = users.includes(uid);
@@ -78,15 +109,30 @@ function applyPrefsToState(uid) {
     }
 }
 
-// Saves a single preference key/value to Firestore, local state, and local cache.
+function updateCachedPrefs(uid, patch) {
+    const prevRaw = userPrefsCache.get(uid) || {};
+    userPrefsCache.set(uid, { ...prevRaw, ...patch });
+    try {
+        localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
+    } catch (e) {}
+}
+
+// Saves a single preference key/value to Firestore, local state, and caches.
 export function saveCloudPreference(key, value) {
     const uid = state.activeUsers[0];
     if (!uid || state.isTogetherMode) return;
     state.userPrefs[key] = value;
-    try {
-        localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
-    } catch (e) {}
+    updateCachedPrefs(uid, { [key]: value });
     window.getNiptoCollection('user_preferences').doc(uid).set({ [key]: value }, { merge: true });
+}
+
+// Saves multiple preference fields in a single Firestore write.
+export function saveCloudPreferencesBatch(updates = {}) {
+    const uid = state.activeUsers[0];
+    if (!uid || state.isTogetherMode || !updates || typeof updates !== 'object') return;
+    Object.assign(state.userPrefs, updates);
+    updateCachedPrefs(uid, updates);
+    window.getNiptoCollection('user_preferences').doc(uid).set(updates, { merge: true });
 }
 
 // Saves the collapsed/expanded state of a category section.
@@ -95,8 +141,6 @@ export function saveCloudCollapsed(catKey, isCollapsed) {
     if (!uid || state.isTogetherMode) return;
     if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
     state.userPrefs.collapsed[catKey] = isCollapsed;
-    try {
-        localStorage.setItem(`nipto_user_prefs_${uid}`, JSON.stringify(state.userPrefs));
-    } catch (e) {}
+    updateCachedPrefs(uid, { collapsed: state.userPrefs.collapsed });
     window.getNiptoCollection('user_preferences').doc(uid).set({ collapsed: state.userPrefs.collapsed }, { merge: true });
 }

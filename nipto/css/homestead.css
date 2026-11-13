@@ -366,3 +366,20 @@ select:focus, input[type="datetime-local"]:focus, input[list]:focus {
     h3 { font-size: 16px; }
     .chore-title { font-size: 14px; }
 }
+
+.todo-card.is-assigned-to-me {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(45, 90, 39, 0.25), 0 4px 10px rgba(45, 90, 39, 0.12) !important;
+    background: linear-gradient(90deg, rgba(45, 90, 39, 0.08) 0%, #FFFFFF 38%) !important;
+}
+
+.todo-card.is-other-user-task {
+    opacity: 0.72;
+    filter: saturate(0.75);
+}
+
+.todo-card.is-other-user-task:hover,
+.todo-card.is-other-user-task:focus-within {
+    opacity: 0.96;
+    filter: saturate(1);
+}

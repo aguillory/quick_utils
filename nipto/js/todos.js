@@ -9,7 +9,7 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed, drawLeaderboard, rebuildCompletedThisWeek } from './leaderboard.js';
 import { getLocalTodayKey, registerCustomCategory } from './utils.js';
-import { saveCloudPreference, saveCloudCollapsed } from './preferences.js';
+import { saveCloudPreference, saveCloudPreferencesBatch, saveCloudCollapsed } from './preferences.js';
 import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate } from './routines.js';
 import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
@@ -257,9 +257,58 @@ export function setTodoSort(val) {
     renderTodoTasks();
 }
 
+export function classifyTaskOwnership(item, activeUid, allUsers = ALL_USERS) {
+    const rawAssignees = Array.isArray(item?.assignees) ? item.assignees : [];
+    const assignees = rawAssignees
+        .map(a => (typeof a === 'string' ? a.trim() : ''))
+        .filter(Boolean);
+    const lowerSet = new Set(assignees.map(a => a.toLowerCase()));
+    const totalUsers = Array.isArray(allUsers) ? allUsers.length : 0;
+
+    const isAnyone =
+        assignees.length === 0 ||
+        lowerSet.has('anyone') ||
+        (totalUsers > 0 && assignees.length >= totalUsers);
+
+    const isAssignedToMe = !isAnyone && Boolean(activeUid) && assignees.includes(activeUid);
+    const isOtherUsersOnly = !isAnyone && Boolean(activeUid) && !assignees.includes(activeUid);
+
+    return {
+        assignees,
+        isAnyone,
+        isAssignedToMe,
+        isOtherUsersOnly
+    };
+}
+
 export function setTodoGroupBy(val) {
-    state.todoGroupBy = val;
-    saveCloudPreference('todoGroupBy', val);
+    const clean = (val === 'category') ? 'category' : 'none';
+    state.todoGroupBy = clean;
+    saveCloudPreference('todoGroupBy', clean);
+    renderTodoTasks();
+}
+
+export function resetTodoFilters() {
+    state.todoView = 'all';
+    state.todoTypeFilter = 'all';
+    state.todoCategoryFilter = 'all';
+    state.todoPriorityFilter = 'all';
+    state.todoPersonFilter = 'all';
+    state.todoFrictionFilter = 'all';
+    state.todoBucketFilter = 'all';
+    state.todoSort = 'priority';
+    state.todoGroupBy = 'none';
+    saveCloudPreferencesBatch({
+        todoView: 'all',
+        todoTypeFilter: 'all',
+        todoCategoryFilter: 'all',
+        todoPriorityFilter: 'all',
+        todoPersonFilter: 'all',
+        todoBucketFilter: 'all',
+        todoFrictionFilter: 'all',
+        todoSort: 'priority',
+        todoGroupBy: 'none'
+    });
     renderTodoTasks();
 }
 
@@ -306,8 +355,9 @@ export async function clearTaskFriction(taskId, event) {
 }
 
 function formatTodoAssigneePill(task) {
-    const assignees = task.assignees || [];
-    if (assignees.length === 0) {
+    const own = classifyTaskOwnership(task, state.activeUsers[0] || '', ALL_USERS);
+    const assignees = own.assignees;
+    if (own.isAnyone) {
         return `<span class="todo-pill shared-pill" title="Anyone can do">&#x1F465;</span>`;
     }
     if (assignees.length >= 3) {
@@ -353,10 +403,11 @@ export function renderTodoTasks() {
 
     if (!state.todoTypeFilter) state.todoTypeFilter = 'all';
     if (!state.todoSort) state.todoSort = 'priority';
-    if (!state.todoGroupBy) state.todoGroupBy = 'category';
+    if (state.todoGroupBy !== 'category') state.todoGroupBy = 'none';
     if (!state.todoCategoryFilter) state.todoCategoryFilter = 'all';
     if (!state.todoPersonFilter) state.todoPersonFilter = 'all';
     if (!state.todoPriorityFilter) state.todoPriorityFilter = 'all';
+    if (!state.todoFrictionFilter) state.todoFrictionFilter = 'all';
 
     const currentType = state.todoTypeFilter;
     const currentSort = state.todoSort;
@@ -364,30 +415,39 @@ export function renderTodoTasks() {
     const personFilter = state.todoPersonFilter;
     const categoryFilter = state.todoCategoryFilter;
     const priorityFilter = state.todoPriorityFilter;
+    const frictionFilter = state.todoFrictionFilter;
     const collapsedSections = state.userPrefs.collapsedSections || {};
+    const todayKey = getLocalTodayKey();
 
     const uniqueCategories = Array.from(new Set([
         ...tasks.map(t => t.category || 'General').filter(Boolean),
-        ...routines.map(r => r.category || 'Home').filter(Boolean)
-    ])).sort();
+        ...routines.map(r => r.category || 'Home').filter(Boolean),
+        ...(categoryFilter && categoryFilter !== 'all' ? [categoryFilter] : [])
+    ])).sort((a, b) => a.localeCompare(b));
+
+    const isExplicitOtherUserFilter = Boolean(
+        personFilter &&
+        !['all', 'me', 'shared_anyone', 'unassigned'].includes(personFilter) &&
+        personFilter !== activeUid
+    );
 
     function matchesOwnership(item) {
         if (personFilter === 'all') return true;
-        const assignees = item.assignees || [];
+        const own = classifyTaskOwnership(item, activeUid, ALL_USERS);
         if (personFilter === 'me') {
-            return assignees.includes(activeUid);
+            return own.isAssignedToMe;
         } else if (personFilter === 'shared_anyone') {
-            return assignees.length === 0 || assignees.length > 1;
+            return own.isAnyone || own.assignees.length > 1;
         } else if (personFilter === 'unassigned') {
-            return assignees.length === 0;
+            return own.isAnyone;
         } else {
-            return assignees.includes(personFilter);
+            return !own.isAnyone && own.assignees.includes(personFilter);
         }
     }
 
-    function matchesCategory(item) {
+    function matchesCategory(item, isRoutine = false) {
         if (categoryFilter === 'all') return true;
-        const cat = (item.category || 'General').toLowerCase();
+        const cat = (item.category || (isRoutine ? 'Home' : 'General')).toLowerCase();
         return cat === categoryFilter.toLowerCase();
     }
 
@@ -398,65 +458,100 @@ export function renderTodoTasks() {
     }
 
     function matchesFriction(item) {
-        if (!state.todoFrictionFilter || state.todoFrictionFilter === 'all') return true;
-        return item.frictionTag === state.todoFrictionFilter;
+        if (!frictionFilter || frictionFilter === 'all') return true;
+        return item.frictionTag === frictionFilter;
     }
 
-    function getPriorityWeight(p) {
-        if (!p) return 2;
-        const lp = p.toLowerCase();
-        if (lp === 'high') return 3;
-        if (lp === 'medium') return 2;
-        if (lp === 'low') return 1;
-        return 2;
+    function getPriorityRank(p) {
+        const lp = (p || 'medium').toLowerCase();
+        if (lp === 'high') return 0;
+        if (lp === 'low') return 2;
+        return 1;
+    }
+
+    function getFrictionRank(tag) {
+        if (tag === 'quick') return 0;
+        if (tag === 'low_brain') return 1;
+        if (tag === 'deep_focus') return 2;
+        return 3;
+    }
+
+    function getEffectivePoints(item, isRoutine = false) {
+        if (isRoutine) return api.getRoutinePoints(item);
+        if (Array.isArray(item.subTasks) && item.subTasks.length > 0) {
+            return item.subTasks.reduce((sum, st) => sum + api.clampStep5Points(st.points, 5), 0);
+        }
+        return api.clampStep5Points(item.points, 5);
+    }
+
+    function getSortTier(item, isRoutine = false) {
+        const isDone = isRoutine ? isRoutineCompletedOnDate(item, todayKey) : !!item.completed;
+        if (isDone) return 2; // Tier 3: Completed at bottom
+        if (isExplicitOtherUserFilter) return 0;
+        const own = classifyTaskOwnership(item, activeUid, ALL_USERS);
+        return own.isOtherUsersOnly ? 1 : 0; // Tier 1 (me / shared-with-me / anyone) before Tier 2 (other users only)
+    }
+
+    function compareItems(aItem, aIsRoutine, bItem, bIsRoutine) {
+        const tierA = getSortTier(aItem, aIsRoutine);
+        const tierB = getSortTier(bItem, bIsRoutine);
+        if (tierA !== tierB) return tierA - tierB;
+
+        const priA = getPriorityRank(aItem.priority);
+        const priB = getPriorityRank(bItem.priority);
+        const ptsA = getEffectivePoints(aItem, aIsRoutine);
+        const ptsB = getEffectivePoints(bItem, bIsRoutine);
+        const catA = (aItem.category || (aIsRoutine ? 'Home' : 'General')).toLowerCase();
+        const catB = (bItem.category || (bIsRoutine ? 'Home' : 'General')).toLowerCase();
+        const dateA = new Date(aItem.createdAt || 0).getTime() || 0;
+        const dateB = new Date(bItem.createdAt || 0).getTime() || 0;
+        const nameA = (aItem.name || '').toLowerCase();
+        const nameB = (bItem.name || '').toLowerCase();
+
+        if (currentSort === 'points') {
+            if (ptsA !== ptsB) return ptsB - ptsA;
+            if (priA !== priB) return priA - priB;
+            return nameA.localeCompare(nameB);
+        } else if (currentSort === 'category') {
+            if (catA !== catB) return catA.localeCompare(catB);
+            if (priA !== priB) return priA - priB;
+            if (ptsA !== ptsB) return ptsB - ptsA;
+            return nameA.localeCompare(nameB);
+        } else if (currentSort === 'age') {
+            if (dateA !== dateB) return dateB - dateA;
+            if (priA !== priB) return priA - priB;
+            return nameA.localeCompare(nameB);
+        } else if (currentSort === 'oldest') {
+            if (dateA !== dateB) return dateA - dateB;
+            if (priA !== priB) return priA - priB;
+            return nameA.localeCompare(nameB);
+        } else if (currentSort === 'alpha') {
+            const cmp = nameA.localeCompare(nameB);
+            if (cmp !== 0) return cmp;
+            if (priA !== priB) return priA - priB;
+            return ptsB - ptsA;
+        } else if (currentSort === 'friction') {
+            const fA = getFrictionRank(aItem.frictionTag);
+            const fB = getFrictionRank(bItem.frictionTag);
+            if (fA !== fB) return fA - fB;
+            if (priA !== priB) return priA - priB;
+            if (ptsA !== ptsB) return ptsB - ptsA;
+            return nameA.localeCompare(nameB);
+        }
+
+        // Default ('priority'): Priority High -> Medium -> Low, then points desc, newest createdAt, alphabetical
+        if (priA !== priB) return priA - priB;
+        if (ptsA !== ptsB) return ptsB - ptsA;
+        if (dateA !== dateB) return dateB - dateA;
+        return nameA.localeCompare(nameB);
     }
 
     function sortTaskList(list) {
-        return list.slice().sort((a, b) => {
-            if (a.completed !== b.completed) return a.completed ? 1 : -1;
-
-            if (currentSort === 'priority') {
-                const pA = getPriorityWeight(a.priority);
-                const pB = getPriorityWeight(b.priority);
-                if (pA !== pB) return pB - pA;
-                return (b.points || 5) - (a.points || 5);
-            } else if (currentSort === 'points') {
-                const ptA = a.points || 5;
-                const ptB = b.points || 5;
-                if (ptA !== ptB) return ptB - ptA;
-                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-            } else if (currentSort === 'category') {
-                const cA = (a.category || 'General').toLowerCase();
-                const cB = (b.category || 'General').toLowerCase();
-                if (cA !== cB) return cA.localeCompare(cB);
-                return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-            } else if (currentSort === 'age') {
-                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-            }
-            return 0;
-        });
+        return list.slice().sort((a, b) => compareItems(a, false, b, false));
     }
 
     function sortRoutineList(list) {
-        const todayKey = getLocalTodayKey();
-        return list.slice().sort((a, b) => {
-            const aDone = isRoutineCompletedOnDate(a, todayKey);
-            const bDone = isRoutineCompletedOnDate(b, todayKey);
-            if (aDone !== bDone) return aDone ? 1 : -1;
-
-            if (currentSort === 'priority') {
-                const pA = getPriorityWeight(a.priority);
-                const pB = getPriorityWeight(b.priority);
-                if (pA !== pB) return pB - pA;
-                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
-            } else if (currentSort === 'points') {
-                return api.getRoutinePoints(b) - api.getRoutinePoints(a);
-            } else if (currentSort === 'category') {
-                return (a.category || 'Home').localeCompare(b.category || 'Home');
-            } else {
-                return (a.name || '').localeCompare(b.name || '');
-            }
-        });
+        return list.slice().sort((a, b) => compareItems(a, true, b, true));
     }
 
     const staleTasks = getStaleTasks();
@@ -477,11 +572,22 @@ export function renderTodoTasks() {
         `;
     }
 
+    const isCatGrouped = currentGroupBy === 'category';
+    const hasCustomFilters = (
+        currentType !== 'all' ||
+        currentSort !== 'priority' ||
+        isCatGrouped ||
+        categoryFilter !== 'all' ||
+        priorityFilter !== 'all' ||
+        personFilter !== 'all' ||
+        frictionFilter !== 'all'
+    );
+
     let toolbarHtml = `
     ${staleBannerHtml}
     <div class="todo-toolbar-row" style="margin-bottom: 16px;">
         <div class="todo-view-pills">
-            <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View To-Dos, Projects, and Routines in 3 stacked sections">
+            <button class="filter-pill ${currentType === 'all' ? 'active' : ''}" onclick="setTodoTypeFilter('all')" title="View To-Dos, Projects, and Routines">
                 All Types
             </button>
             <button class="filter-pill ${currentType === 'todo' ? 'active' : ''}" onclick="setTodoTypeFilter('todo')" title="Actionable daily/immediate to-dos">
@@ -496,46 +602,60 @@ export function renderTodoTasks() {
         </div>
 
         <div class="todo-secondary-filters" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-            ${currentType === 'todo' ? `
-            <button class="filter-pill" onclick="setTodoGroupBy('${currentGroupBy === 'category' ? 'ownership' : 'category'}')" title="Toggle between Collapsible Categories and Ownership layout" style="font-size: 11px; padding: 4px 8px;">
-                ${currentGroupBy === 'category' ? '&#x1F4C1; By Category' : '&#x1F464; By Ownership'}
+            <button type="button" class="filter-pill ${isCatGrouped ? 'active' : ''}" onclick="setTodoGroupBy('${isCatGrouped ? 'none' : 'category'}')" title="Group visible items into collapsible Category sections" style="font-size: 11px; padding: 4px 10px;">
+                &#x1F4C1; ${isCatGrouped ? 'By Category (On)' : 'Group by Category'}
             </button>
-            ` : ''}
 
-            <select class="todo-compact-select" onchange="setTodoSort(this.value)" title="Sort tasks">
-                <option value="priority" ${currentSort === 'priority' ? 'selected' : ''}>Sort: Priority (High&rarr;Low)</option>
+            <select class="todo-compact-select ${currentSort !== 'priority' ? 'is-filtered' : ''}" onchange="setTodoSort(this.value)" title="Sort tasks">
+                <option value="priority" ${currentSort === 'priority' ? 'selected' : ''}>Sort: Priority (Default)</option>
                 <option value="points" ${currentSort === 'points' ? 'selected' : ''}>Sort: Points</option>
                 <option value="category" ${currentSort === 'category' ? 'selected' : ''}>Sort: Category</option>
                 <option value="age" ${currentSort === 'age' ? 'selected' : ''}>Sort: Newest</option>
+                <option value="oldest" ${currentSort === 'oldest' ? 'selected' : ''}>Sort: Oldest</option>
+                <option value="alpha" ${currentSort === 'alpha' ? 'selected' : ''}>Sort: Alphabetical</option>
+                <option value="friction" ${currentSort === 'friction' ? 'selected' : ''}>Sort: Effort / Friction</option>
             </select>
 
-            <select class="todo-compact-select" onchange="setTodoCategoryFilter(this.value)" title="Filter by Category">
+            <select class="todo-compact-select ${categoryFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoCategoryFilter(this.value)" title="Filter by Category">
                 <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
                 ${uniqueCategories.map(cat => `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
             </select>
 
-            <select class="todo-compact-select" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
+            <select class="todo-compact-select ${priorityFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
                 <option value="all" ${priorityFilter === 'all' ? 'selected' : ''}>Priority: All</option>
                 <option value="high" ${priorityFilter === 'high' ? 'selected' : ''}>&#x1F525; High</option>
                 <option value="medium" ${priorityFilter === 'medium' ? 'selected' : ''}>&#x26A1; Medium</option>
                 <option value="low" ${priorityFilter === 'low' ? 'selected' : ''}>&#x1F53D; Low</option>
             </select>
 
-            <select class="todo-compact-select" onchange="setTodoPersonFilter(this.value)" title="Filter by Ownership">
+            <select class="todo-compact-select ${frictionFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoFrictionFilter(this.value)" title="Filter by Friction / Effort">
+                <option value="all" ${frictionFilter === 'all' ? 'selected' : ''}>Effort: All</option>
+                <option value="quick" ${frictionFilter === 'quick' ? 'selected' : ''}>&#x26A1; Quick (&lt;5m)</option>
+                <option value="low_brain" ${frictionFilter === 'low_brain' ? 'selected' : ''}>&#x1F9E0; Low Brain</option>
+                <option value="deep_focus" ${frictionFilter === 'deep_focus' ? 'selected' : ''}>&#x1F3AF; Deep Focus</option>
+            </select>
+
+            <select class="todo-compact-select ${personFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoPersonFilter(this.value)" title="Filter by Ownership">
                 <option value="all" ${personFilter === 'all' ? 'selected' : ''}>Owner: All</option>
                 <option value="me" ${personFilter === 'me' ? 'selected' : ''}>Me (${escapeHtml(activeName)})</option>
                 <option value="shared_anyone" ${personFilter === 'shared_anyone' ? 'selected' : ''}>Shared / Anyone</option>
                 ${ALL_USERS.map(u => `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
             </select>
+
+            ${hasCustomFilters ? `
+            <button type="button" class="filter-pill is-filtered-reset" onclick="resetTodoFilters()" title="Clear custom filters and restore default view" style="font-size: 11px; padding: 4px 8px;">
+                &#x2715; Reset Filters
+            </button>
+            ` : ''}
         </div>
     </div>
     `;
 
-    const filteredTasks = tasks.filter(t => matchesOwnership(t) && matchesCategory(t) && matchesPriority(t) && matchesFriction(t));
+    const filteredTasks = tasks.filter(t => matchesOwnership(t) && matchesCategory(t, false) && matchesPriority(t) && matchesFriction(t));
     const todosList = sortTaskList(filteredTasks.filter(t => t.type === 'todo'));
     const projectsList = sortTaskList(filteredTasks.filter(t => t.type === 'project'));
 
-    const filteredRoutines = routines.filter(r => matchesOwnership(r) && matchesCategory(r) && matchesPriority(r) && matchesFriction(r));
+    const filteredRoutines = routines.filter(r => matchesOwnership(r) && matchesCategory(r, true) && matchesPriority(r) && matchesFriction(r));
     const routinesList = sortRoutineList(filteredRoutines);
 
     function renderCard(t) {
@@ -543,7 +663,10 @@ export function renderTodoTasks() {
         const assigneePill = formatTodoAssigneePill(t);
         const pri = t.priority || 'medium';
         const priorityClass = `priority-${pri}`;
-        const isAssignedToMe = (t.assignees && t.assignees.length === 1 && t.assignees[0] === activeUid);
+        const own = classifyTaskOwnership(t, activeUid, ALL_USERS);
+        const ownershipClass = !isCompleted
+            ? (own.isAssignedToMe ? 'is-assigned-to-me' : (own.isOtherUsersOnly ? 'is-other-user-task' : ''))
+            : '';
 
         let priorityPill = '';
         if (pri === 'high') {
@@ -572,10 +695,8 @@ export function renderTodoTasks() {
             ? `<span class="todo-pill project-pill">&#x1F4A1; Project</span>`
             : '';
 
-        let categoryBadge = '';
-        if (t.category && currentGroupBy !== 'category') {
-            categoryBadge = `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(t.category)}</span>`;
-        }
+        const displayCategory = (t.category || 'General').trim() || 'General';
+        const categoryBadge = `<span class="todo-pill category-pill" title="Category: ${escapeHtml(displayCategory)}">&#x1F4C1; ${escapeHtml(displayCategory)}</span>`;
 
         const hasSubtasks = Array.isArray(t.subTasks) && t.subTasks.length > 0;
         let ptsDisplay = '';
@@ -632,7 +753,7 @@ export function renderTodoTasks() {
         }
 
         return `
-        <div class="todo-card ${priorityClass} ${isCompleted ? 'completed' : ''} ${isAssignedToMe ? 'is-assigned-to-me' : ''}">
+        <div class="todo-card ${priorityClass} ${isCompleted ? 'completed' : ''} ${ownershipClass}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
                     <button type="button" class="item-checkbox ${isCompleted ? 'checked' : ''}" onclick="toggleTaskStatus('${t.id}', ${isCompleted})" title="${isCompleted ? 'Completed - click to undo' : 'Mark task complete'}" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}">
@@ -666,12 +787,13 @@ export function renderTodoTasks() {
     }
 
     function renderRoutineCard(r) {
-        const todayKey = getLocalTodayKey();
         const isCompletedToday = isRoutineCompletedOnDate(r, todayKey);
         const pri = r.priority || 'medium';
         const priorityClass = `priority-${pri}`;
-        const assignees = r.assignees || [];
-        const isAssignedToMe = (assignees.length === 1 && assignees[0] === activeUid);
+        const own = classifyTaskOwnership(r, activeUid, ALL_USERS);
+        const ownershipClass = !isCompletedToday
+            ? (own.isAssignedToMe ? 'is-assigned-to-me' : (own.isOtherUsersOnly ? 'is-other-user-task' : ''))
+            : '';
         const pts = api.getRoutinePoints(r);
         const sched = r.schedule || {};
         const freqLabel = sched.type === 'weekly' ? 'Weekly' : (sched.type === 'interval' ? 'Interval' : 'Daily');
@@ -686,8 +808,11 @@ export function renderTodoTasks() {
         let creatorPill = '';
         if (r.createdBy) creatorPill = `<span class="todo-pill creator-pill" title="Created by ${escapeHtml(r.createdBy)}">&#x270D;&#xFE0F; ${escapeHtml(r.createdBy)}</span>`;
 
+        const displayCat = (r.category || 'Home').trim() || 'Home';
+        const routineCatBadge = `<span class="todo-pill category-pill" title="Category: ${escapeHtml(displayCat)}">&#x1F4C1; ${escapeHtml(displayCat)}</span>`;
+
         return `
-        <div class="todo-card ${priorityClass} ${isCompletedToday ? 'completed' : ''} ${isAssignedToMe ? 'is-assigned-to-me' : ''}">
+        <div class="todo-card ${priorityClass} ${isCompletedToday ? 'completed' : ''} ${ownershipClass}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
                     <button type="button" class="item-checkbox ${isCompletedToday ? 'checked' : ''}"
@@ -708,7 +833,7 @@ export function renderTodoTasks() {
                 <div class="todo-badges-row">
                     ${formatRoutineAssignees(r, true)}
                     <span class="todo-pill" style="color: var(--primary);">&#x21BB; ${freqLabel}</span>
-                    ${r.category ? `<span class="todo-pill" style="color: var(--text-muted);">&#x1F4C1; ${escapeHtml(r.category)}</span>` : ''}
+                    ${routineCatBadge}
                     <span class="pts-badge">+${pts} pts</span>
                     ${priorityPill}
                     ${creatorPill}
@@ -721,7 +846,78 @@ export function renderTodoTasks() {
 
     let bodyHtml = '';
 
-    if (currentType === 'all') {
+    if (currentGroupBy === 'category') {
+        const collapsedPrefs = state.userPrefs.collapsed || {};
+        const groupsMap = new Map();
+
+        const addEntry = (item, isRoutine) => {
+            const rawCat = (item.category || (isRoutine ? 'Home' : 'General')).trim() || (isRoutine ? 'Home' : 'General');
+            const lowerKey = rawCat.toLowerCase();
+            if (!groupsMap.has(lowerKey)) {
+                groupsMap.set(lowerKey, { label: rawCat, entries: [] });
+            }
+            groupsMap.get(lowerKey).entries.push({ item, isRoutine });
+        };
+
+        if (currentType === 'all' || currentType === 'todo') {
+            todosList.forEach(t => addEntry(t, false));
+        }
+        if (currentType === 'all' || currentType === 'project') {
+            projectsList.forEach(p => addEntry(p, false));
+        }
+        if (currentType === 'all' || currentType === 'routine') {
+            routinesList.forEach(r => addEntry(r, true));
+        }
+
+        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+
+        if (sortedGroups.length === 0) {
+            bodyHtml = `<div class="todo-section-container"><div class="empty-section-muted">No items matching current filters.</div></div>`;
+        } else {
+            bodyHtml = `
+            <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
+                ${sortedGroups.map(group => {
+                    const catKey = group.label;
+                    const sortedEntries = group.entries.slice().sort((a, b) =>
+                        compareItems(a.item, a.isRoutine, b.item, b.isRoutine)
+                    );
+                    const isCollapsed = !!collapsedPrefs[catKey];
+                    const activeCount = sortedEntries.filter(e =>
+                        e.isRoutine ? !isRoutineCompletedOnDate(e.item, todayKey) : !e.item.completed
+                    ).length;
+                    const totalCount = sortedEntries.length;
+
+                    return `
+                    <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
+                        <div class="category-accordion-header" data-cat-key="${escapeHtml(catKey)}" onclick="toggleCategoryCollapse(this.dataset.catKey)" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
+                                    ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
+                                </span>
+                                <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
+                                    &#x1F4C1; ${escapeHtml(catKey)}
+                                </span>
+                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
+                                    ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
+                                </span>
+                            </div>
+                            <span style="font-size: 11px; color: var(--text-muted);">
+                                ${isCollapsed ? 'Click to show' : 'Click to hide'}
+                            </span>
+                        </div>
+
+                        <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
+                            <div class="todo-grid">
+                                ${sortedEntries.map(e => e.isRoutine ? renderRoutineCard(e.item) : renderCard(e.item)).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
+            `;
+        }
+    } else if (currentType === 'all') {
         const isTodosCollapsed = !!collapsedSections['todos'];
         const isProjectsCollapsed = !!collapsedSections['projects'];
         const isRoutinesCollapsed = !!collapsedSections['routines'];
@@ -808,105 +1004,21 @@ export function renderTodoTasks() {
         </div>
         `;
     } else {
-        // currentType === 'todo'
-        if (currentGroupBy === 'category') {
-            const collapsedPrefs = state.userPrefs.collapsed || {};
-            const groups = {};
-            todosList.forEach(t => {
-                const cat = t.category || 'General';
-                if (!groups[cat]) groups[cat] = [];
-                groups[cat].push(t);
-            });
-
-            const categoryKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-
-            bodyHtml = `
-            <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
-                ${categoryKeys.map(catKey => {
-                    const catTasks = sortTaskList(groups[catKey]);
-                    const isCollapsed = !!collapsedPrefs[catKey];
-                    const activeCount = catTasks.filter(t => !t.completed).length;
-                    const totalCount = catTasks.length;
-
-                    return `
-                    <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
-                        <div class="category-accordion-header" onclick="toggleCategoryCollapse('${escapeHtml(catKey)}')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
-                                    ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
-                                </span>
-                                <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
-                                    &#x1F4C1; ${escapeHtml(catKey)}
-                                </span>
-                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
-                                    ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
-                                </span>
-                            </div>
-                            <span style="font-size: 11px; color: var(--text-muted);">
-                                ${isCollapsed ? 'Click to show' : 'Click to hide'}
-                            </span>
-                        </div>
-
-                        <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
-                            <div class="todo-grid">
-                                ${catTasks.map(renderCard).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    `;
-                }).join('')}
+        // currentType === 'todo' (flat view with Tier 1 -> Tier 2 -> Tier 3)
+        bodyHtml = `
+        <div class="todo-section-container">
+            <div class="todo-section-header">
+                <h4 class="todo-section-title">
+                    <span>&#x26A1; To-Dos</span>
+                    <span class="todo-section-count">${todosList.length}</span>
+                </h4>
             </div>
-            `;
-        } else {
-            // By Ownership (Fixed: Individual tasks go to individualTasks, Shared tasks go to sharedTasks)
-            const individualTasks = [];
-            const sharedTasks = [];
-
-            todosList.forEach(t => {
-                const isShared = !t.assignees || t.assignees.length === 0 || t.assignees.length > 1;
-                if (isShared) {
-                    sharedTasks.push(t);
-                } else {
-                    individualTasks.push(t);
-                }
-            });
-
-            let individualSectionTitle = `Assigned to Individuals`;
-            if (personFilter === 'me') {
-                individualSectionTitle = `Assigned to Me (${escapeHtml(activeName)})`;
-            } else if (personFilter !== 'all' && personFilter !== 'shared_anyone') {
-                const u = ALL_USERS.find(user => user.uid === personFilter);
-                individualSectionTitle = `Assigned to ${u ? escapeHtml(u.name) : 'User'}`;
+            ${todosList.length > 0
+                ? `<div class="todo-grid" style="margin-top: 10px;">${todosList.map(renderCard).join('')}</div>`
+                : `<div class="empty-section-muted" style="margin-top: 10px;">No to-dos matching current filters.</div>`
             }
-
-            bodyHtml = `
-            <div class="todo-section-container">
-                <div class="todo-section-header">
-                    <h4 class="todo-section-title">
-                        <span>&#x1F464; ${individualSectionTitle}</span>
-                        <span class="todo-section-count">${individualTasks.length}</span>
-                    </h4>
-                </div>
-                ${individualTasks.length > 0
-                    ? `<div class="todo-grid" style="margin-top: 10px;">${individualTasks.map(renderCard).join('')}</div>`
-                    : `<div class="empty-section-muted" style="margin-top: 10px;">&#x1F464; No individual to-dos matching current filters.</div>`
-                }
-            </div>
-
-            <div class="todo-section-container" style="margin-top: 18px;">
-                <div class="todo-section-header shared-header">
-                    <h4 class="todo-section-title">
-                        <span>&#x1F465; Shared / Anyone Can Do</span>
-                        <span class="todo-section-count">${sharedTasks.length}</span>
-                    </h4>
-                </div>
-                ${sharedTasks.length > 0
-                    ? `<div class="todo-grid" style="margin-top: 10px;">${sharedTasks.map(renderCard).join('')}</div>`
-                    : `<div class="empty-section-muted" style="margin-top: 10px;">&#x1F465; No shared to-dos matching current filters.</div>`
-                }
-            </div>
-            `;
-        }
+        </div>
+        `;
     }
 
     container.innerHTML = toolbarHtml + bodyHtml;
@@ -1794,6 +1906,8 @@ if (typeof window !== 'undefined') {
     window.setTodoBucketFilter = setTodoBucketFilter;
     window.setTodoSort = setTodoSort;
     window.setTodoGroupBy = setTodoGroupBy;
+    window.resetTodoFilters = resetTodoFilters;
+    window.classifyTaskOwnership = classifyTaskOwnership;
     window.toggleCategoryCollapse = toggleCategoryCollapse;
     window.toggleMainSectionCollapse = toggleMainSectionCollapse;
     window.toggleTaskDescription = toggleTaskDescription;

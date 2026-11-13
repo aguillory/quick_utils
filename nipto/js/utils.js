@@ -170,6 +170,31 @@ export function setTimeOffset(minutes) {
 // ==========================================
 // SEARCHABLE / CREATABLE CATEGORY COMBOBOX
 // ==========================================
+const pendingCategoryWrites = new Set();
+
+export async function loadCustomCategoriesFromFirestore() {
+    if (typeof window === 'undefined' || typeof window.getNiptoCollection !== 'function') {
+        return state.customCategories || [];
+    }
+    try {
+        const snapshot = await window.getNiptoCollection('custom_categories').get();
+        const loaded = [];
+        const seen = new Set();
+        snapshot.forEach(doc => {
+            const name = (doc.data()?.name || '').trim();
+            if (!name) return;
+            const lower = name.toLowerCase();
+            if (!seen.has(lower)) {
+                seen.add(lower);
+                loaded.push(name);
+            }
+        });
+        state.customCategories = loaded;
+    } catch (e) {
+        console.warn("Error loading custom_categories:", e);
+    }
+    return state.customCategories || [];
+}
 
 export function getAllKnownCategories() {
     const seenLower = new Map();
@@ -198,8 +223,22 @@ export function registerCustomCategory(catName) {
     const clean = catName.trim();
     if (!clean) return '';
     if (!Array.isArray(state.customCategories)) state.customCategories = [];
-    const exists = state.customCategories.some(c => c.toLowerCase() === clean.toLowerCase());
-    if (!exists) state.customCategories.push(clean);
+    const lower = clean.toLowerCase();
+    const isDefault = DEFAULT_CATEGORIES.some(c => c.toLowerCase() === lower);
+    const exists = state.customCategories.some(c => c.toLowerCase() === lower);
+    if (!exists && !isDefault) {
+        state.customCategories.push(clean);
+        if (!pendingCategoryWrites.has(lower) && typeof window !== 'undefined' && typeof window.getNiptoCollection === 'function') {
+            pendingCategoryWrites.add(lower);
+            window.getNiptoCollection('custom_categories').add({
+                name: clean,
+                createdAt: new Date().toISOString()
+            }).catch(e => {
+                pendingCategoryWrites.delete(lower);
+                console.warn("Could not persist custom category:", e);
+            });
+        }
+    }
     return clean;
 }
 
@@ -371,6 +410,7 @@ if (typeof window !== 'undefined') {
     window.getLocalWeekBounds = getLocalWeekBounds;
     window.isDateInLocalWeek = isDateInLocalWeek;
     window.getAllKnownCategories = getAllKnownCategories;
+    window.loadCustomCategoriesFromFirestore = loadCustomCategoriesFromFirestore;
     window.registerCustomCategory = registerCustomCategory;
     window.renderCategoryCombobox = renderCategoryCombobox;
     window.openCategoryCombobox = openCategoryCombobox;

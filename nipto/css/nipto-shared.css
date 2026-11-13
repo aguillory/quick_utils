@@ -1652,12 +1652,54 @@ input[list]:focus {
 }
 
 .todo-card.is-assigned-to-me {
+    border-color: rgba(37, 99, 235, 0.55);
     box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.4), 0 2px 6px rgba(37, 99, 235, 0.08);
-    background: linear-gradient(90deg, rgba(37, 99, 235, 0.06) 0%, var(--card-bg) 40%);
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.07) 0%, var(--card-bg) 42%);
 }
 
 .todo-card.is-assigned-to-me:hover {
     box-shadow: 0 0 0 2px var(--primary), 0 3px 8px rgba(37, 99, 235, 0.15);
+}
+
+.todo-card.is-other-user-task {
+    opacity: 0.68;
+    filter: saturate(0.75);
+    transition: opacity 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+}
+
+.todo-card.is-other-user-task * {
+    pointer-events: auto;
+}
+
+.todo-card.is-other-user-task:hover,
+.todo-card.is-other-user-task:focus-within {
+    opacity: 0.96;
+    filter: saturate(1);
+}
+
+.todo-pill.category-pill {
+    background: rgba(15, 118, 110, 0.1);
+    color: #0f766e;
+    border: 1px solid rgba(15, 118, 110, 0.28);
+    font-weight: 700;
+}
+
+.todo-compact-select.is-filtered {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.filter-pill.is-filtered-reset {
+    border-color: rgba(220, 38, 38, 0.45);
+    color: #b91c1c;
+    background: rgba(254, 226, 226, 0.55);
+    font-weight: 700;
+}
+
+.filter-pill.is-filtered-reset:hover {
+    background: rgba(254, 202, 202, 0.75);
 }
 
 .todo-pill.priority-pill.high {

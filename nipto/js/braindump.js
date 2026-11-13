@@ -876,7 +876,7 @@ export async function applyUnifiedStagingToFirestore() {
                     name: item.title,
                     type: 'routine',
                     completionType: 'shared',
-                    assignees: assigneeUids.length ? assigneeUids : ALL_USERS.map(u => u.uid),
+                    assignees: assigneeUids,
                     schedule: scheduleData,
                     timeOfDay: scheduleData.timeOfDay,
                     linkedNiptoTask: null,
@@ -1014,11 +1014,16 @@ export async function applyUnifiedStagingToFirestore() {
                 if (item.type === 'routine') {
                     const newRoutineRef = window.getNiptoCollection('routines').doc();
                     const scheduleData = buildCleanRoutineSchedule(item);
+                    const convertedAssignees = [];
+                    if (item.assignee && item.assignee !== 'Anyone') {
+                        const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
+                        if (userObj) convertedAssignees.push(userObj.uid);
+                    }
                     batch.set(newRoutineRef, {
                         name: item.title,
                         type: 'routine',
                         completionType: 'shared',
-                        assignees: ALL_USERS.map(u => u.uid),
+                        assignees: convertedAssignees,
                         schedule: scheduleData,
                         timeOfDay: scheduleData.timeOfDay,
                         points: api.clampStep5Points(item.points, 5),
@@ -1760,18 +1765,21 @@ export async function executeBulkAction(actionType) {
 
         for (const id of todoIds) {
             const t = state.todoTasksData?.find(item => item.id === id);
-            const pts = t ? (Number(t.points) || 5) : 5;
+            const isContainer = Array.isArray(t?.subTasks) && t.subTasks.length > 0;
+            const pts = isContainer ? 0 : api.clampStep5Points(t?.points, 5);
             let activityUids = [];
-            try {
-                activityUids = await api.logCustomPointsToNipto(
-                    pts,
-                    t ? t.name : 'To-Do',
-                    [doerUid],
-                    nowIso,
-                    t?.linkedNiptoTask || null
-                );
-            } catch (niptoErr) {
-                console.warn("Could not log bulk To-Do points to Nipto API:", niptoErr);
+            if (!isContainer && pts > 0) {
+                try {
+                    activityUids = await api.logCustomPointsToNipto(
+                        pts,
+                        t ? t.name : 'To-Do',
+                        [doerUid],
+                        nowIso,
+                        t?.linkedNiptoTask || null
+                    );
+                } catch (niptoErr) {
+                    console.warn("Could not log bulk To-Do points to Nipto API:", niptoErr);
+                }
             }
 
             batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
@@ -1793,17 +1801,20 @@ export async function executeBulkAction(actionType) {
             if (pts > 0 && activityUids.length === 0) {
                 await api.awardAllowancePoints(doerUid, pts);
             }
-            await api.recordDailyCompletion({
-                id: `todo_${id}`,
-                itemId: id,
-                sourceType: 'todo',
-                title: t ? t.name : 'To-Do',
-                user: doerName,
-                userUid: doerUid,
-                points: pts,
-                completedAt: nowIso,
-                dateKey: todayKey
-            });
+            if (!isContainer && pts > 0) {
+                await api.recordDailyCompletion({
+                    id: `todo_${id}`,
+                    itemId: id,
+                    sourceType: 'todo',
+                    title: t ? t.name : 'To-Do',
+                    user: doerName,
+                    userUid: doerUid,
+                    points: pts,
+                    completedAt: nowIso,
+                    dateKey: todayKey,
+                    ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
+                });
+            }
         }
         await batch.commit();
         state.selectedTodoIds.clear();
@@ -1825,7 +1836,7 @@ export async function executeBulkAction(actionType) {
         }
         const batch = window.db.batch();
         todoIds.forEach(id => batch.update(window.getNiptoCollection('custom_tasks').doc(id), { assignees, updatedAt: nowIso }));
-        routineIds.forEach(id => batch.update(window.getNiptoCollection('routines').doc(id), { assignees: assignees.length ? assignees : ALL_USERS.map(u => u.uid), updatedAt: nowIso }));
+        routineIds.forEach(id => batch.update(window.getNiptoCollection('routines').doc(id), { assignees, updatedAt: nowIso }));
         await batch.commit();
         state.selectedTodoIds.clear();
         state.selectedRoutineIds.clear();
