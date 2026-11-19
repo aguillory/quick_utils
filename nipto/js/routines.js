@@ -882,7 +882,7 @@ function rebuildLastCompletedExcludingDate(routine, excludedDateKey, updatedComp
 }
 
 // Idempotent completion check-off & bidirectional Nipto point sync (or dismiss when awardPoints = false)
-export async function completeRoutineForDate(routineId, dateKey, awardPoints = true) {
+export async function completeRoutineForDate(routineId, dateKey, awardPoints = true, overrideDoerUid = null) {
     const routine = state.routines?.find(r => r.uid === routineId);
     if (!routine || !dateKey) return false;
 
@@ -900,13 +900,16 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
     try {
         let creditedUid = '';
         let creditedName = 'User';
-        if (routine.assignees && routine.assignees.length === 1) {
+        const overrideUser = overrideDoerUid ? ALL_USERS.find(u => u.uid === overrideDoerUid) : null;
+        if (overrideUser) {
+            creditedUid = overrideUser.uid;
+        } else if (routine.assignees && routine.assignees.length === 1) {
             creditedUid = routine.assignees[0];
         } else {
             creditedUid = state.activeUsers[0] || ALL_USERS[0].uid;
         }
         const creditedUids = [creditedUid];
-        const userObj = ALL_USERS.find(u => u.uid === creditedUid);
+        const userObj = overrideUser || ALL_USERS.find(u => u.uid === creditedUid);
         if (userObj) creditedName = userObj.name;
 
         const nowIso = new Date().toISOString();

@@ -4,7 +4,49 @@
 
 import { state } from './state.js';
 
-const DEFAULT_CATEGORIES = ['Home', 'Farm', 'Errands', 'Tech', 'Kids', 'Project', 'General'];
+export const DEFAULT_CATEGORIES = ['Home', 'Farm', 'Errands', 'Tech', 'Kids', 'Project', 'General'];
+export const COMPLETED_TODO_HIDE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function toMillisSafe(val) {
+    if (val === null || val === undefined || val === '') return NaN;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (!trimmed) return NaN;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return new Date(`${trimmed}T12:00:00`).getTime();
+        }
+        return Date.parse(trimmed);
+    }
+    if (typeof val === 'object') {
+        if (typeof val.toMillis === 'function') {
+            const ms = val.toMillis();
+            return Number.isFinite(ms) ? ms : NaN;
+        }
+        if (typeof val.toDate === 'function') {
+            const d = val.toDate();
+            return (d instanceof Date) ? d.getTime() : NaN;
+        }
+        const secs = (val.seconds !== undefined) ? val.seconds : val._seconds;
+        if (secs !== undefined && secs !== null && Number.isFinite(Number(secs))) {
+            const ns = Number(val.nanoseconds ?? val._nanoseconds ?? 0);
+            return (Number(secs) * 1000) + (Number.isFinite(ns) ? Math.floor(ns / 1e6) : 0);
+        }
+    }
+    return NaN;
+}
+
+export function isCompletedTodoExpired(task, nowMs = Date.now()) {
+    if (!task || !task.completed) return false;
+    let ms = toMillisSafe(task.completedAt);
+    if (!Number.isFinite(ms)) ms = toMillisSafe(task.updatedAt);
+    if (!Number.isFinite(ms)) ms = toMillisSafe(task.createdAt);
+    if (Number.isFinite(ms)) {
+        return (nowMs - ms) >= COMPLETED_TODO_HIDE_AFTER_MS;
+    }
+    return true;
+}
 
 export function escapeHtmlAttr(str) {
     if (str === null || str === undefined) return '';
@@ -172,6 +214,89 @@ export function setTimeOffset(minutes) {
 // ==========================================
 const pendingCategoryWrites = new Set();
 
+export function isInternalLockedCategory(catName) {
+    if (!catName || typeof catName !== 'string') return true;
+    const trimmed = catName.trim();
+    if (!trimmed) return true;
+    const lower = trimmed.toLowerCase();
+    return trimmed === '\u2705' ||
+        lower.includes('quick add') ||
+        lower.includes('&#x26a1;') ||
+        trimmed.includes('\u26A1');
+}
+
+export async function loadCategoryConfigFromFirestore() {
+    if (typeof window === 'undefined' || typeof window.getNiptoCollection !== 'function') {
+        return state.categoryConfig;
+    }
+    try {
+        const doc = await window.getNiptoCollection('config').doc('categories').get();
+        if (doc.exists) {
+            const data = doc.data() || {};
+            state.categoryConfig = {
+                hiddenCategories: Array.isArray(data.hiddenCategories) ? data.hiddenCategories.filter(Boolean) : [],
+                unhiddenNiptoCategories: Array.isArray(data.unhiddenNiptoCategories) ? data.unhiddenNiptoCategories.filter(Boolean) : []
+            };
+        } else {
+            state.categoryConfig = {
+                hiddenCategories: [],
+                unhiddenNiptoCategories: []
+            };
+        }
+    } catch (e) {
+        console.warn("Error loading category config:", e);
+    }
+    return state.categoryConfig;
+}
+
+export async function saveCategoryConfigToFirestore(patch = {}) {
+    const curr = state.categoryConfig || { hiddenCategories: [], unhiddenNiptoCategories: [] };
+    state.categoryConfig = {
+        hiddenCategories: Array.isArray(patch.hiddenCategories) ? patch.hiddenCategories : (curr.hiddenCategories || []),
+        unhiddenNiptoCategories: Array.isArray(patch.unhiddenNiptoCategories) ? patch.unhiddenNiptoCategories : (curr.unhiddenNiptoCategories || [])
+    };
+    if (typeof window !== 'undefined' && typeof window.getNiptoCollection === 'function') {
+        try {
+            await window.getNiptoCollection('config').doc('categories').set(state.categoryConfig, { merge: true });
+        } catch (e) {
+            console.warn("Could not save category config:", e);
+        }
+    }
+    return state.categoryConfig;
+}
+
+export function getNiptoOnlyLowerSet() {
+    const knownTaskCatsLower = new Set([
+        ...DEFAULT_CATEGORIES.map(c => c.toLowerCase()),
+        ...(state.customCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean),
+        ...(state.categoryConfig?.unhiddenNiptoCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean)
+    ]);
+    const niptoOnly = new Set();
+    (state.tasks || []).forEach(t => {
+        const raw = (t?.category || '').trim();
+        if (!raw || isInternalLockedCategory(raw)) return;
+        const lower = raw.toLowerCase();
+        if (!knownTaskCatsLower.has(lower)) {
+            niptoOnly.add(lower);
+        }
+    });
+    return niptoOnly;
+}
+
+export function isCategoryVisibleForTasks(catName) {
+    if (!catName || typeof catName !== 'string') return false;
+    const clean = catName.trim();
+    if (!clean || isInternalLockedCategory(clean)) return false;
+    const lower = clean.toLowerCase();
+    const hiddenLower = new Set(
+        (state.categoryConfig?.hiddenCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean)
+    );
+    if (hiddenLower.has(lower)) return false;
+    const niptoOnlyLower = getNiptoOnlyLowerSet();
+    if (niptoOnlyLower.has(lower)) return false;
+    return true;
+}
+
 export async function loadCustomCategoriesFromFirestore() {
     if (typeof window === 'undefined' || typeof window.getNiptoCollection !== 'function') {
         return state.customCategories || [];
@@ -182,7 +307,7 @@ export async function loadCustomCategoriesFromFirestore() {
         const seen = new Set();
         snapshot.forEach(doc => {
             const name = (doc.data()?.name || '').trim();
-            if (!name) return;
+            if (!name || isInternalLockedCategory(name)) return;
             const lower = name.toLowerCase();
             if (!seen.has(lower)) {
                 seen.add(lower);
@@ -196,12 +321,12 @@ export async function loadCustomCategoriesFromFirestore() {
     return state.customCategories || [];
 }
 
-export function getAllKnownCategories() {
+export function getEligibleTaskCategories() {
     const seenLower = new Map();
     const addCat = (raw) => {
         if (!raw || typeof raw !== 'string') return;
         const trimmed = raw.trim();
-        if (!trimmed || trimmed.includes('Quick Add') || trimmed.includes('&#x26A1;')) return;
+        if (!trimmed || !isCategoryVisibleForTasks(trimmed)) return;
         const lower = trimmed.toLowerCase();
         if (!seenLower.has(lower)) {
             seenLower.set(lower, trimmed);
@@ -210,20 +335,51 @@ export function getAllKnownCategories() {
 
     DEFAULT_CATEGORIES.forEach(addCat);
     (state.customCategories || []).forEach(addCat);
-    (state.todoTasksData || []).forEach(t => addCat(t.category));
+    (state.categoryConfig?.unhiddenNiptoCategories || []).forEach(addCat);
+    (state.todoTasksData || []).forEach(t => {
+        if (!isCompletedTodoExpired(t)) addCat(t.category);
+    });
     (state.routines || []).forEach(r => addCat(r.category));
-    (state.tasks || []).forEach(t => addCat(t.category));
     (state.brainDumpStaging || []).forEach(it => addCat(it.category));
 
     return Array.from(seenLower.values()).sort((a, b) => a.localeCompare(b));
 }
 
-export function registerCustomCategory(catName) {
+export function getAllKnownCategories() {
+    return getEligibleTaskCategories();
+}
+
+export function registerCustomCategory(catName, isExplicitCreate = false) {
     if (!catName || typeof catName !== 'string') return '';
     const clean = catName.trim();
     if (!clean) return '';
+    if (isInternalLockedCategory(clean)) return 'Home';
+
     if (!Array.isArray(state.customCategories)) state.customCategories = [];
     const lower = clean.toLowerCase();
+    const hiddenList = Array.isArray(state.categoryConfig?.hiddenCategories) ? state.categoryConfig.hiddenCategories : [];
+    const hiddenLowerSet = new Set(hiddenList.map(c => String(c || '').trim().toLowerCase()).filter(Boolean));
+    const niptoOnlyLowerSet = getNiptoOnlyLowerSet();
+
+    if (!isExplicitCreate && (hiddenLowerSet.has(lower) || niptoOnlyLowerSet.has(lower))) {
+        return clean;
+    }
+
+    if (isExplicitCreate) {
+        if (hiddenLowerSet.has(lower)) {
+            const nextHidden = hiddenList.filter(c => String(c || '').trim().toLowerCase() !== lower);
+            saveCategoryConfigToFirestore({ hiddenCategories: nextHidden });
+        }
+        if (niptoOnlyLowerSet.has(lower)) {
+            const prevUnhidden = Array.isArray(state.categoryConfig?.unhiddenNiptoCategories)
+                ? state.categoryConfig.unhiddenNiptoCategories
+                : [];
+            if (!prevUnhidden.some(c => String(c || '').trim().toLowerCase() === lower)) {
+                saveCategoryConfigToFirestore({ unhiddenNiptoCategories: [...prevUnhidden, clean] });
+            }
+        }
+    }
+
     const isDefault = DEFAULT_CATEGORIES.some(c => c.toLowerCase() === lower);
     const exists = state.customCategories.some(c => c.toLowerCase() === lower);
     if (!exists && !isDefault) {
@@ -271,14 +427,56 @@ export function renderCategoryCombobox(opts = {}) {
     return `<div class="category-combobox-wrapper ${compactClass}" style="${escapeHtmlAttr(style)}">
         <div class="category-combobox-input-wrap">
             <input type="text" ${idAttr} class="category-combobox-input ${compactClass}" value="${valAttr}" placeholder="${phAttr}" autocomplete="off"
-                onfocus="openCategoryCombobox(this, false)"
+                onfocus="openCategoryCombobox(this, true)"
+                onclick="openCategoryCombobox(this, true)"
                 oninput="filterCategoryCombobox(this)"
                 onkeydown="handleCategoryComboboxKeydown(event, this)"
                 ${changeAttr}>
+            <button type="button" class="category-combobox-clear" tabindex="-1" onclick="clearCategoryComboboxInput(event, this)" title="Clear to type a new category">&times;</button>
             <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
         </div>
         <div class="category-combobox-menu" style="display: none;"></div>
     </div>`;
+}
+
+function positionCategoryComboboxMenu(inputEl, menu) {
+    if (!inputEl || !menu || typeof window === 'undefined') return;
+    const rect = inputEl.getBoundingClientRect();
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 800;
+    const viewportW = window.innerWidth || document.documentElement.clientWidth || 1200;
+    const spaceBelow = viewportH - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    const openUpward = spaceBelow < 160 && spaceAbove > spaceBelow;
+    const maxH = Math.max(100, Math.min(220, openUpward ? spaceAbove : spaceBelow));
+    const menuWidth = Math.max(180, rect.width);
+    let desiredLeft = rect.left;
+    if (desiredLeft + menuWidth > viewportW - 8) {
+        desiredLeft = Math.max(8, viewportW - menuWidth - 8);
+    }
+
+    // Measure containing-block origin so themes with ancestor backdrop-filter/transform (e.g. blackops.css .card) align accurately
+    menu.style.position = 'fixed';
+    menu.style.top = '0px';
+    menu.style.left = '0px';
+    menu.style.bottom = 'auto';
+    menu.style.maxHeight = `${maxH}px`;
+    const cbOrigin = menu.getBoundingClientRect();
+    const offsetLeft = cbOrigin.left || 0;
+    const offsetTop = cbOrigin.top || 0;
+
+    menu.style.left = `${desiredLeft - offsetLeft}px`;
+    menu.style.width = `${menuWidth}px`;
+    menu.style.zIndex = '5000';
+    menu.style.overflowY = 'auto';
+
+    if (openUpward) {
+        const menuHeight = Math.min(maxH, menu.scrollHeight || maxH);
+        const desiredTop = Math.max(8, rect.top - 3 - menuHeight);
+        menu.style.top = `${desiredTop - offsetTop}px`;
+    } else {
+        const desiredTop = rect.bottom + 3;
+        menu.style.top = `${desiredTop - offsetTop}px`;
+    }
 }
 
 function populateCategoryComboboxMenu(inputEl, showAll = false) {
@@ -287,23 +485,36 @@ function populateCategoryComboboxMenu(inputEl, showAll = false) {
     const menu = wrapper ? wrapper.querySelector('.category-combobox-menu') : null;
     if (!menu) return;
 
+    menu.dataset.mode = showAll ? 'all' : 'filtered';
     const rawQuery = (inputEl.value || '').trim();
     const queryLower = rawQuery.toLowerCase();
-    const allCats = getAllKnownCategories();
-
-    const filtered = showAll || !queryLower
-        ? allCats
-        : allCats.filter(c => c.toLowerCase().includes(queryLower));
-
+    const allCats = getEligibleTaskCategories();
     const exactMatch = allCats.find(c => c.toLowerCase() === queryLower);
 
+    let listToRender = [];
+    if (showAll || !queryLower) {
+        if (exactMatch) {
+            listToRender = [exactMatch, ...allCats.filter(c => c.toLowerCase() !== queryLower)];
+        } else {
+            listToRender = allCats;
+        }
+    } else {
+        const matched = allCats.filter(c => c.toLowerCase().includes(queryLower));
+        if (exactMatch) {
+            listToRender = [exactMatch, ...matched.filter(c => c.toLowerCase() !== queryLower)];
+        } else {
+            listToRender = matched;
+        }
+    }
+
     let html = '';
-    filtered.forEach(cat => {
-        const isCurrent = cat.toLowerCase() === queryLower;
+    listToRender.forEach(cat => {
+        const isCurrent = Boolean(queryLower && cat.toLowerCase() === queryLower);
+        const checkHtml = isCurrent ? '<span class="cat-check">&#x2714;</span>' : '';
         html += `<button type="button" class="category-combobox-option ${isCurrent ? 'active' : ''}"
             onmousedown="selectCategoryComboboxOption(event, this, '${escapeHtmlAttr(cat)}', false)">
             <span>&#x1F4C1; ${escapeHtmlAttr(cat)}</span>
-            ${isCurrent ? '<span class="cat-check">&#x2714;</span>' : ''}
+            ${checkHtml}
         </button>`;
     });
 
@@ -320,6 +531,8 @@ function populateCategoryComboboxMenu(inputEl, showAll = false) {
 
     menu.innerHTML = html;
     menu.style.display = 'flex';
+    positionCategoryComboboxMenu(inputEl, menu);
+    menu.scrollTop = 0;
 }
 
 export function openCategoryCombobox(inputEl, showAll = true) {
@@ -343,11 +556,30 @@ export function toggleCategoryComboboxDropdown(event, btnEl) {
     if (!inputEl || !menu) return;
 
     if (menu.style.display === 'flex') {
-        menu.style.display = 'none';
+        if (menu.dataset.mode === 'filtered') {
+            inputEl.focus();
+            openCategoryCombobox(inputEl, true);
+        } else {
+            menu.style.display = 'none';
+        }
     } else {
         inputEl.focus();
         openCategoryCombobox(inputEl, true);
     }
+}
+
+export function clearCategoryComboboxInput(event, btnEl) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const wrapper = btnEl ? btnEl.closest('.category-combobox-wrapper') : null;
+    if (!wrapper) return;
+    const inputEl = wrapper.querySelector('.category-combobox-input');
+    if (!inputEl) return;
+    inputEl.value = '';
+    inputEl.focus();
+    openCategoryCombobox(inputEl, true);
 }
 
 export function filterCategoryCombobox(inputEl) {
@@ -364,7 +596,7 @@ export function selectCategoryComboboxOption(event, optionEl, chosenValue, isNew
     const inputEl = wrapper.querySelector('.category-combobox-input');
     const menu = wrapper.querySelector('.category-combobox-menu');
 
-    const finalValue = registerCustomCategory(chosenValue);
+    const finalValue = registerCustomCategory(chosenValue, isNew);
     if (inputEl) {
         inputEl.value = finalValue;
         inputEl.dispatchEvent(new Event('change', { bubbles: true }));
@@ -384,9 +616,9 @@ export function handleCategoryComboboxKeydown(event, inputEl) {
         event.preventDefault();
         const rawVal = (inputEl.value || '').trim();
         if (rawVal) {
-            const allCats = getAllKnownCategories();
+            const allCats = getEligibleTaskCategories();
             const existing = allCats.find(c => c.toLowerCase() === rawVal.toLowerCase());
-            const finalVal = existing || registerCustomCategory(rawVal);
+            const finalVal = existing || registerCustomCategory(rawVal, true);
             inputEl.value = finalVal;
             inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -394,7 +626,7 @@ export function handleCategoryComboboxKeydown(event, inputEl) {
     }
 }
 
-// Close any open category combobox dropdown when clicking outside
+// Close any open category combobox dropdown when clicking outside or scrolling external containers
 if (typeof document !== 'undefined') {
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.category-combobox-wrapper')) {
@@ -404,17 +636,41 @@ if (typeof document !== 'undefined') {
         }
     });
 }
+if (typeof window !== 'undefined') {
+    window.addEventListener('scroll', (e) => {
+        if (e.target && typeof e.target.closest === 'function' && e.target.closest('.category-combobox-menu')) {
+            return;
+        }
+        document.querySelectorAll('.category-combobox-menu').forEach(m => {
+            if (m.style.display === 'flex') m.style.display = 'none';
+        });
+    }, true);
+    window.addEventListener('resize', () => {
+        document.querySelectorAll('.category-combobox-menu').forEach(m => {
+            if (m.style.display === 'flex') m.style.display = 'none';
+        });
+    });
+}
 
 if (typeof window !== 'undefined') {
+    window.toMillisSafe = toMillisSafe;
+    window.isCompletedTodoExpired = isCompletedTodoExpired;
     window.getLocalTodayKey = getLocalTodayKey;
     window.getLocalWeekBounds = getLocalWeekBounds;
     window.isDateInLocalWeek = isDateInLocalWeek;
+    window.isInternalLockedCategory = isInternalLockedCategory;
+    window.loadCategoryConfigFromFirestore = loadCategoryConfigFromFirestore;
+    window.saveCategoryConfigToFirestore = saveCategoryConfigToFirestore;
+    window.getNiptoOnlyLowerSet = getNiptoOnlyLowerSet;
+    window.isCategoryVisibleForTasks = isCategoryVisibleForTasks;
+    window.getEligibleTaskCategories = getEligibleTaskCategories;
     window.getAllKnownCategories = getAllKnownCategories;
     window.loadCustomCategoriesFromFirestore = loadCustomCategoriesFromFirestore;
     window.registerCustomCategory = registerCustomCategory;
     window.renderCategoryCombobox = renderCategoryCombobox;
     window.openCategoryCombobox = openCategoryCombobox;
     window.toggleCategoryComboboxDropdown = toggleCategoryComboboxDropdown;
+    window.clearCategoryComboboxInput = clearCategoryComboboxInput;
     window.filterCategoryCombobox = filterCategoryCombobox;
     window.selectCategoryComboboxOption = selectCategoryComboboxOption;
     window.handleCategoryComboboxKeydown = handleCategoryComboboxKeydown;

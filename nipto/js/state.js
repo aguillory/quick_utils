@@ -18,6 +18,10 @@ export const state = {
     todoTasksData: [],     // Active To-Dos from Firestore
     routines: [],          // Routines from Firestore
     customCategories: [],  // User-created categories in combobox
+    categoryConfig: {
+        hiddenCategories: [],
+        unhiddenNiptoCategories: []
+    },
 
     // Week browsing & history
     selectedWeekUid: 'current',
@@ -63,7 +67,7 @@ export const state = {
     // Integrations Config (Gemini AI & Home Assistant Webhook)
     integrationsConfig: {
         geminiApiKey: "",
-        geminiModel: "gemini-3.8-flash",
+        geminiModel: "gemini-4-hydrogen",
         haWebhookUrl: "",
         haWebhookToken: "",
         publicAppUrl: "https://aguillory.github.io/quick_utils/nipto/common.html"
@@ -135,6 +139,7 @@ export const state = {
     bulkPriorityFilter: 'all',       // 'all' | 'high' | 'medium' | 'low'
     bulkOwnershipFilter: 'all',      // 'all' | 'me' | 'individual' | 'shared' | 'unassigned'
     bulkSortBy: 'default',           // 'default' | 'priority' | 'points' | 'category' | 'title'
+    showArchivedDoneInBulk: false,
 
     // Bulk triage selection
     selectedTodoIds: new Set(),

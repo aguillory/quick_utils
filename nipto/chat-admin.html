@@ -3,103 +3,684 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat Audit Log</title>
-<link rel="stylesheet" href="css/nipto-shared.css">
+<title>Nipto Admin Console</title>
+<link rel="stylesheet" href="css/nipto-shared.css?v=20261119a">
 <style>
-    body { align-items: flex-start; }
-    .admin-wrap { width: 100%; max-width: 1100px; margin: 0 auto; }
+    body { align-items: flex-start; padding: 16px; box-sizing: border-box; }
+    .admin-wrap { width: 100%; max-width: 1120px; margin: 0 auto; }
+    .admin-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .admin-back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        color: var(--text-main);
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: border-color 0.15s, color 0.15s;
+    }
+    .admin-back-link:hover { border-color: var(--primary); color: var(--primary); }
+    .admin-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+        padding: 6px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+    }
     .admin-card {
         background: var(--card-bg); border: 1px solid var(--border-color);
         border-radius: 16px; padding: 20px; margin-bottom: 20px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     .admin-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .admin-bar input[type="text"] {
-        flex: 1; min-width: 200px; padding: 10px; font-size: 14px;
-        border: 2px solid var(--border-color); border-radius: 8px;
+    .admin-bar input[type="text"], .admin-bar select {
+        padding: 8px 12px; font-size: 13px;
+        border: 1px solid var(--border-color); border-radius: 8px;
         background: var(--bg-color); color: var(--text-main);
     }
-    .pill { padding: 8px 14px; border-radius: 999px; border: 2px solid var(--border-color);
-            background: var(--card-bg); color: var(--text-main); font-weight: 700;
-            font-size: 13px; cursor: pointer; }
+    .admin-bar input[type="text"] { flex: 1; min-width: 190px; }
+    .pill {
+        padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border-color);
+        background: var(--bg-color); color: var(--text-main); font-weight: 700;
+        font-size: 12px; cursor: pointer; transition: all 0.15s;
+    }
+    .pill:hover { border-color: var(--primary); color: var(--primary); }
     .pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
     .stat { font-size: 13px; color: var(--text-muted); font-weight: 600; }
-    .msg-card { border: 1px solid var(--border-color); border-left: 6px solid var(--text-muted);
-                border-radius: 12px; padding: 14px; margin-bottom: 14px; background: var(--card-bg); }
+    .msg-card {
+        border: 1px solid var(--border-color); border-left: 6px solid var(--text-muted);
+        border-radius: 12px; padding: 14px; margin-bottom: 14px; background: var(--card-bg);
+    }
     .msg-card.is-deleted { border-left-color: var(--danger); background: rgba(239,68,68,0.04); }
-    .msg-card.is-edited  { border-left-color: var(--primary); }
+    .msg-card.is-edited { border-left-color: var(--primary); }
     .msg-top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
     .msg-sender { font-weight: 800; font-size: 15px; }
     .msg-when { font-size: 12px; color: var(--text-muted); }
-    .tag { display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase;
-           letter-spacing: .5px; padding: 3px 8px; border-radius: 999px; margin-left: 6px; color: #fff; }
+    .tag {
+        display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: .5px; padding: 3px 8px; border-radius: 999px; margin-left: 6px; color: #fff;
+    }
     .tag.del { background: var(--danger); }
     .tag.edit { background: var(--primary); }
-    .msg-text { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg-color);
-                white-space: pre-wrap; word-break: break-word; font-size: 15px; }
+    .tag.ok { background: var(--success, #10b981); }
+    .tag.warn { background: #d97706; }
+    .tag.muted { background: var(--text-muted); }
+    .msg-text {
+        margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg-color);
+        white-space: pre-wrap; word-break: break-word; font-size: 14px;
+    }
     .msg-text.struck { text-decoration: line-through; opacity: .75; }
     .hist { margin-top: 12px; border-top: 1px dashed var(--border-color); padding-top: 10px; }
     .hist h5 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
-    .hist-row { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--bg-color);
-                margin-bottom: 6px; border-left: 3px solid var(--border-color); }
+    .hist-row {
+        font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--bg-color);
+        margin-bottom: 6px; border-left: 3px solid var(--border-color);
+    }
     .hist-meta { font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
     .hist-text { white-space: pre-wrap; word-break: break-word; }
     .row-actions { margin-top: 10px; display: flex; gap: 8px; }
     code.uid { font-size: 11px; color: var(--text-muted); }
+
+    /* Category Visibility Manager */
+    .cat-mgr-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .cat-mgr-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-color);
+    }
+    .cat-mgr-row.is-hidden { opacity: 0.72; }
+    .cat-mgr-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+    .cat-mgr-name { font-weight: 800; font-size: 14px; color: var(--text-main); word-break: break-word; }
+    .cat-origin-pill {
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .cat-origin-pill.nipto { color: #0284c7; border-color: rgba(2,132,199,0.35); background: rgba(2,132,199,0.08); }
+    .cat-origin-pill.custom { color: #7c3aed; border-color: rgba(124,58,237,0.35); background: rgba(124,58,237,0.08); }
+    .cat-origin-pill.locked { color: #b45309; border-color: rgba(217,119,6,0.35); background: rgba(245,158,11,0.1); }
+    .cat-mgr-counts {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+    .cat-mgr-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-top: 2px;
+    }
+    .cat-toggle-btn {
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        background: var(--card-bg);
+        color: var(--text-main);
+    }
+    .cat-toggle-btn.is-visible {
+        border-color: var(--success, #10b981);
+        background: rgba(16,185,129,0.12);
+        color: #047857;
+    }
+    .cat-toggle-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .cat-del-btn {
+        padding: 5px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(239,68,68,0.35);
+        background: rgba(239,68,68,0.08);
+        color: var(--danger, #dc2626);
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    /* Gemini Log Cards & Accordions */
+    .gemini-log-card {
+        border: 1px solid var(--border-color);
+        border-left: 6px solid var(--success, #10b981);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 14px;
+        background: var(--card-bg);
+    }
+    .gemini-log-card.is-error { border-left-color: var(--danger, #ef4444); background: rgba(239,68,68,0.03); }
+    .gemini-log-card.is-parse-error { border-left-color: #d97706; background: rgba(245,158,11,0.04); }
+    .gemini-details {
+        margin-top: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-color);
+        padding: 8px 10px;
+    }
+    .gemini-details summary {
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-main);
+        user-select: none;
+    }
+    .gemini-pre {
+        margin: 8px 0 0 0;
+        padding: 10px;
+        border-radius: 6px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 320px;
+        overflow-y: auto;
+        color: var(--text-main);
+    }
+    .gemini-copy-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+    .gemini-action-summary-item {
+        font-size: 12px;
+        padding: 5px 8px;
+        margin-top: 5px;
+        border-radius: 6px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    @media (max-width: 768px) {
+        body { padding: 10px; }
+        .cat-mgr-list { grid-template-columns: 1fr; }
+    }
 </style>
 </head>
 <body>
 <div class="admin-wrap">
-    <div class="admin-card">
-        <h2 style="margin:0 0 6px 0;">&#x1F575;️ Chat Audit Log</h2>
-        <p class="stat" style="margin:0 0 14px 0;">
-            Every deleted or edited message, with its full version history. Nothing is ever really deleted.
-        </p>
-        <div class="admin-bar">
-            <button class="pill active" id="f-flagged" onclick="setFilter('flagged')">&#x1F6A9; Deleted or Edited</button>
-            <button class="pill" id="f-deleted" onclick="setFilter('deleted')">&#x1F5D1;️ Deleted only</button>
-            <button class="pill" id="f-edited" onclick="setFilter('edited')">[Edit] Edited only</button>
-            <button class="pill" id="f-all" onclick="setFilter('all')">&#x1F4DC; All messages</button>
-            <input type="text" id="search" placeholder="Search text or sender…" oninput="render()">
-            <button class="pill" onclick="exportJson()">⬇️ Export JSON</button>
+    <div class="admin-header-bar">
+        <div>
+            <h2 style="margin:0;">&#x1F6E1;&#xFE0F; Nipto Admin Console</h2>
+            <div class="stat" style="margin-top: 4px;">Manage category visibility, inspect chat audit history, and review Gemini AI prompt logs.</div>
         </div>
-        <div class="stat" id="stats" style="margin-top:12px;">Loading…</div>
+        <a href="common.html" class="admin-back-link">&#x2190; Back to Dashboard</a>
     </div>
-    <div id="list"></div>
+
+    <div class="admin-tabs" role="tablist">
+        <button type="button" class="nav-tab active" id="adminTabBtn-chat" onclick="switchAdminTab('chat')" role="tab" aria-selected="true">
+            &#x1F4AC; Chat &amp; Categories
+        </button>
+        <button type="button" class="nav-tab" id="adminTabBtn-gemini" onclick="switchAdminTab('gemini')" role="tab" aria-selected="false">
+            &#x2728; Gemini Activity Log
+        </button>
+    </div>
+
+    <!-- TAB 1: CHAT & CATEGORIES -->
+    <div id="adminPane-chat">
+        <!-- Category Visibility Manager -->
+        <div class="admin-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                <div>
+                    <h3 style="margin:0 0 4px 0;">&#x1F4C1; Category Visibility Manager</h3>
+                    <p class="stat" style="margin:0;">
+                        Control which categories appear in To-Do, Routine, and Brain Dump dropdowns. Nipto Chore categories stay hidden from To-Dos by default unless unhidden here.
+                    </p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="newAdminCategoryInput" placeholder="New category name..." style="padding:7px 10px; font-size:13px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-color); color:var(--text-main);">
+                    <button type="button" class="pill active" onclick="addAdminCategory()">+ Add Category</button>
+                </div>
+            </div>
+            <div class="admin-bar" style="margin-top:8px;">
+                <input type="text" id="catSearch" placeholder="Filter categories..." oninput="renderCategoryManager()">
+                <span class="stat" id="catStats">Loading categories...</span>
+            </div>
+            <div id="categoryManagerList" class="cat-mgr-list"></div>
+        </div>
+
+        <!-- Household Chat Audit Log -->
+        <div class="admin-card">
+            <h3 style="margin:0 0 6px 0;">&#x1F575;&#xFE0F; Chat Audit Log</h3>
+            <p class="stat" style="margin:0 0 14px 0;">
+                Every deleted or edited message, with its full version history. Nothing is ever really deleted.
+            </p>
+            <div class="admin-bar">
+                <button type="button" class="pill active" id="f-flagged" onclick="setFilter('flagged')">&#x1F6A9; Deleted or Edited</button>
+                <button type="button" class="pill" id="f-deleted" onclick="setFilter('deleted')">&#x1F5D1;&#xFE0F; Deleted only</button>
+                <button type="button" class="pill" id="f-edited" onclick="setFilter('edited')">[Edit] Edited only</button>
+                <button type="button" class="pill" id="f-all" onclick="setFilter('all')">&#x1F4DC; All messages</button>
+                <input type="text" id="search" placeholder="Search text or sender..." oninput="render()">
+                <button type="button" class="pill" onclick="exportJson()">&#x2B07;&#xFE0F; Export JSON</button>
+            </div>
+            <div class="stat" id="stats" style="margin-top:12px;">Loading...</div>
+        </div>
+        <div id="list"></div>
+    </div>
+
+    <!-- TAB 2: GEMINI ACTIVITY LOG (LAZY LOADED) -->
+    <div id="adminPane-gemini" style="display:none;">
+        <div class="admin-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                <div>
+                    <h3 style="margin:0 0 4px 0;">&#x2728; Gemini Activity Log</h3>
+                    <p class="stat" style="margin:0;">Outbound prompts, model fallbacks, and raw responses (loaded 50 at a time on tab open).</p>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="pill" onclick="refreshGeminiLogs()">&#x21BB; Refresh</button>
+                    <button type="button" class="pill" onclick="exportGeminiLogsJson()">&#x2B07;&#xFE0F; Export JSON</button>
+                </div>
+            </div>
+            <div class="admin-bar">
+                <select id="geminiActorFilter" onchange="renderGeminiLogs()" title="Filter by user">
+                    <option value="all">User: All</option>
+                </select>
+                <select id="geminiStatusFilter" onchange="renderGeminiLogs()" title="Filter by status">
+                    <option value="all">Status: All</option>
+                    <option value="success">Success Only</option>
+                    <option value="error">Errors / Parse Errors</option>
+                </select>
+                <select id="geminiSourceFilter" onchange="renderGeminiLogs()" title="Filter by source">
+                    <option value="all">Source: All</option>
+                    <option value="brain_dump">Brain Dump</option>
+                    <option value="stale_simplify">Stale Simplify</option>
+                    <option value="settings_test">Settings Test</option>
+                </select>
+                <input type="text" id="geminiSearch" placeholder="Search input, prompt, model, or response..." oninput="renderGeminiLogs()">
+            </div>
+            <div class="stat" id="geminiStats" style="margin-top:12px;">Open this tab to load Gemini logs.</div>
+        </div>
+        <div id="geminiList"></div>
+        <div style="text-align:center; margin-bottom:24px;">
+            <button type="button" id="geminiLoadMoreBtn" class="pill" onclick="loadMoreGeminiLogs()" style="display:none; padding:10px 20px;">Load More (50)</button>
+        </div>
+    </div>
 </div>
+
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
+const DEFAULT_CATEGORIES = ['Home', 'Farm', 'Errands', 'Tech', 'Kids', 'Project', 'General'];
+
 let ALL = [];
 let filter = 'flagged';
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function ms(v, fb){ if(!v) return fb||0; if(typeof v==='number') return v;
-    if(typeof v==='string'){ const p = Date.parse(v); return isNaN(p) ? (fb||0) : p; }
-    if(typeof v.toMillis==='function') return v.toMillis();
-    if(v.seconds) return v.seconds*1000; return fb||0; }
-function fmt(t){ return t ? new Date(t).toLocaleString() : '—'; }
-function setFilter(f){
+
+let catConfig = { hiddenCategories: [], unhiddenNiptoCategories: [] };
+let customCategoryDocs = []; // [{ id, name }]
+let customTaskDocs = [];     // [{ id, category }]
+let routineDocs = [];        // [{ id, category }]
+let niptoTaskDocs = [];      // [{ id, category }]
+let categoriesDataLoaded = false;
+
+let geminiLogsLoaded = false;
+let geminiLogs = [];
+let lastGeminiDocSnap = null;
+let hasMoreGeminiLogs = false;
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function ms(v, fb) {
+    if (!v) return fb || 0;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') { const p = Date.parse(v); return isNaN(p) ? (fb || 0) : p; }
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.toDate === 'function') return v.toDate().getTime();
+    if (v.seconds) return v.seconds * 1000;
+    if (v._seconds) return v._seconds * 1000;
+    return fb || 0;
+}
+
+function fmt(t) { return t ? new Date(t).toLocaleString() : '\u2014'; }
+
+function isInternalLockedCat(name) {
+    if (!name || typeof name !== 'string') return true;
+    const trimmed = name.trim();
+    if (!trimmed) return true;
+    const lower = trimmed.toLowerCase();
+    return trimmed === '\u2705' || lower.includes('quick add') || lower.includes('&#x26a1;') || trimmed.includes('\u26A1');
+}
+
+function switchAdminTab(tab) {
+    const isChat = tab === 'chat';
+    document.getElementById('adminPane-chat').style.display = isChat ? 'block' : 'none';
+    document.getElementById('adminPane-gemini').style.display = isChat ? 'none' : 'block';
+    document.getElementById('adminTabBtn-chat').classList.toggle('active', isChat);
+    document.getElementById('adminTabBtn-gemini').classList.toggle('active', !isChat);
+    document.getElementById('adminTabBtn-chat').setAttribute('aria-selected', String(isChat));
+    document.getElementById('adminTabBtn-gemini').setAttribute('aria-selected', String(!isChat));
+
+    if (!isChat && !geminiLogsLoaded) {
+        loadGeminiLogs(false);
+    }
+}
+
+// ==========================================
+// CATEGORY VISIBILITY MANAGER (TAB 1)
+// ==========================================
+function buildCategoryInventory() {
+    const map = new Map();
+    const defaultLowerSet = new Set(DEFAULT_CATEGORIES.map(c => c.toLowerCase()));
+    const customLowerSet = new Set(customCategoryDocs.map(d => (d.name || '').trim().toLowerCase()).filter(Boolean));
+    const hiddenLowerSet = new Set((catConfig.hiddenCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean));
+    const unhiddenNiptoLowerSet = new Set((catConfig.unhiddenNiptoCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean));
+
+    const ensureEntry = (rawName, originHint) => {
+        const name = (rawName || '').trim();
+        if (!name) return null;
+        const lower = name.toLowerCase();
+        if (!map.has(lower)) {
+            map.set(lower, {
+                name: name,
+                lower: lower,
+                todoCount: 0,
+                routineCount: 0,
+                niptoCount: 0,
+                isDefault: defaultLowerSet.has(lower),
+                isCustom: customLowerSet.has(lower),
+                isNipto: false,
+                isLocked: isInternalLockedCat(name)
+            });
+        }
+        const entry = map.get(lower);
+        if (originHint === 'nipto') entry.isNipto = true;
+        return entry;
+    };
+
+    DEFAULT_CATEGORIES.forEach(c => ensureEntry(c, 'default'));
+    customCategoryDocs.forEach(d => ensureEntry(d.name, 'custom'));
+    customTaskDocs.forEach(t => {
+        const entry = ensureEntry(t.category || 'General', 'todo');
+        if (entry) entry.todoCount++;
+    });
+    routineDocs.forEach(r => {
+        const entry = ensureEntry(r.category || 'Home', 'routine');
+        if (entry) entry.routineCount++;
+    });
+    niptoTaskDocs.forEach(n => {
+        const entry = ensureEntry(n.category || 'General', 'nipto');
+        if (entry) entry.niptoCount++;
+    });
+    (catConfig.hiddenCategories || []).forEach(c => ensureEntry(c, 'config'));
+    (catConfig.unhiddenNiptoCategories || []).forEach(c => ensureEntry(c, 'nipto'));
+
+    const rows = Array.from(map.values()).map(entry => {
+        const isNiptoOnly = entry.isNipto && !entry.isDefault && !entry.isCustom;
+        let origin = 'Task';
+        if (entry.isLocked) origin = 'System Locked';
+        else if (entry.isDefault) origin = 'Default';
+        else if (entry.isCustom) origin = 'Custom';
+        else if (isNiptoOnly) origin = 'Nipto Sync';
+
+        let isVisible = false;
+        if (entry.isLocked) {
+            isVisible = false;
+        } else if (isNiptoOnly) {
+            isVisible = unhiddenNiptoLowerSet.has(entry.lower) && !hiddenLowerSet.has(entry.lower);
+        } else {
+            isVisible = !hiddenLowerSet.has(entry.lower);
+        }
+
+        return {
+            ...entry,
+            origin,
+            isNiptoOnly,
+            isVisible,
+            canDelete: entry.isCustom && !entry.isDefault && !entry.isLocked && entry.todoCount === 0 && entry.routineCount === 0
+        };
+    });
+
+    rows.sort((a, b) => {
+        if (a.isLocked !== b.isLocked) return a.isLocked ? 1 : -1;
+        if (a.isVisible !== b.isVisible) return a.isVisible ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+    return rows;
+}
+
+function renderCategoryManager() {
+    const listEl = document.getElementById('categoryManagerList');
+    const statsEl = document.getElementById('catStats');
+    if (!listEl) return;
+
+    if (!categoriesDataLoaded) {
+        if (statsEl) statsEl.textContent = 'Loading categories...';
+        return;
+    }
+
+    const q = (document.getElementById('catSearch')?.value || '').trim().toLowerCase();
+    const allRows = buildCategoryInventory();
+    const rows = q ? allRows.filter(r => r.lower.includes(q) || r.origin.toLowerCase().includes(q)) : allRows;
+
+    const visibleCount = allRows.filter(r => r.isVisible).length;
+    const hiddenCount = allRows.length - visibleCount;
+    if (statsEl) {
+        statsEl.textContent = `${allRows.length} categories \u2022 ${visibleCount} visible \u2022 ${hiddenCount} hidden (showing ${rows.length})`;
+    }
+
+    if (!rows.length) {
+        listEl.innerHTML = '<div class="stat" style="grid-column:1/-1;text-align:center;padding:16px;">No matching categories.</div>';
+        return;
+    }
+
+    listEl.innerHTML = rows.map(r => {
+        let originClass = '';
+        if (r.origin === 'Nipto Sync') originClass = 'nipto';
+        else if (r.origin === 'Custom') originClass = 'custom';
+        else if (r.origin === 'System Locked') originClass = 'locked';
+
+        const statusBadge = r.isLocked
+            ? '<span class="tag muted">Locked Hidden</span>'
+            : (r.isVisible ? '<span class="tag ok">Visible</span>' : '<span class="tag warn">Hidden</span>');
+
+        const toggleBtnHtml = r.isLocked
+            ? '<button type="button" class="cat-toggle-btn" disabled title="Internal system category">Locked</button>'
+            : `<button type="button" class="cat-toggle-btn ${r.isVisible ? 'is-visible' : ''}" data-cat="${esc(r.name)}" data-nipto="${r.isNiptoOnly ? '1' : '0'}" onclick="toggleCategoryVisibility(this.dataset.cat, this.dataset.nipto === '1')">${r.isVisible ? 'Visible (Click to Hide)' : 'Hidden (Click to Show)'}</button>`;
+
+        const deleteBtnHtml = r.canDelete
+            ? `<button type="button" class="cat-del-btn" data-cat="${esc(r.name)}" onclick="deleteUnusedCustomCategory(this.dataset.cat)" title="Delete unused custom category">&#x1F5D1; Delete</button>`
+            : '';
+
+        return `
+        <div class="cat-mgr-row ${r.isVisible ? '' : 'is-hidden'}">
+            <div class="cat-mgr-top">
+                <span class="cat-mgr-name">&#x1F4C1; ${esc(r.name)}</span>
+                <span class="cat-origin-pill ${originClass}">${esc(r.origin)}</span>
+            </div>
+            <div class="cat-mgr-counts">
+                <span>To-Dos: <strong>${r.todoCount}</strong></span>
+                <span>Routines: <strong>${r.routineCount}</strong></span>
+                <span>Nipto Chores: <strong>${r.niptoCount}</strong></span>
+                ${statusBadge}
+            </div>
+            <div class="cat-mgr-actions">
+                ${toggleBtnHtml}
+                ${deleteBtnHtml}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleCategoryVisibility(catName, isNiptoOnly) {
+    if (!catName || isInternalLockedCat(catName)) return;
+    const lower = catName.trim().toLowerCase();
+    let hidden = [...(catConfig.hiddenCategories || [])];
+    let unhiddenNipto = [...(catConfig.unhiddenNiptoCategories || [])];
+
+    if (isNiptoOnly) {
+        const currentlyVisible = unhiddenNipto.some(c => String(c).trim().toLowerCase() === lower) &&
+            !hidden.some(c => String(c).trim().toLowerCase() === lower);
+        if (currentlyVisible) {
+            unhiddenNipto = unhiddenNipto.filter(c => String(c).trim().toLowerCase() !== lower);
+            hidden = hidden.filter(c => String(c).trim().toLowerCase() !== lower);
+        } else {
+            hidden = hidden.filter(c => String(c).trim().toLowerCase() !== lower);
+            if (!unhiddenNipto.some(c => String(c).trim().toLowerCase() === lower)) {
+                unhiddenNipto.push(catName.trim());
+            }
+        }
+    } else {
+        const currentlyHidden = hidden.some(c => String(c).trim().toLowerCase() === lower);
+        if (currentlyHidden) {
+            hidden = hidden.filter(c => String(c).trim().toLowerCase() !== lower);
+        } else {
+            hidden.push(catName.trim());
+        }
+    }
+
+    catConfig = { hiddenCategories: hidden, unhiddenNiptoCategories: unhiddenNipto };
+    renderCategoryManager();
+    await window.getNiptoCollection('config').doc('categories').set(catConfig, { merge: true });
+}
+
+async function addAdminCategory() {
+    const inp = document.getElementById('newAdminCategoryInput');
+    const clean = (inp ? inp.value : '').trim();
+    if (!clean) {
+        alert('Enter a category name first.');
+        return;
+    }
+    if (isInternalLockedCat(clean)) {
+        alert('That category name is reserved for system tasks.');
+        return;
+    }
+    const lower = clean.toLowerCase();
+    const isDefault = DEFAULT_CATEGORIES.some(c => c.toLowerCase() === lower);
+    const existsCustom = customCategoryDocs.some(d => (d.name || '').trim().toLowerCase() === lower);
+    if (!isDefault && !existsCustom) {
+        const docRef = await window.getNiptoCollection('custom_categories').add({
+            name: clean,
+            createdAt: new Date().toISOString()
+        });
+        customCategoryDocs.push({ id: docRef.id, name: clean });
+    }
+    const nextHidden = (catConfig.hiddenCategories || []).filter(c => String(c).trim().toLowerCase() !== lower);
+    if (nextHidden.length !== (catConfig.hiddenCategories || []).length) {
+        catConfig = { ...catConfig, hiddenCategories: nextHidden };
+        await window.getNiptoCollection('config').doc('categories').set(catConfig, { merge: true });
+    }
+    if (inp) inp.value = '';
+    renderCategoryManager();
+}
+
+async function deleteUnusedCustomCategory(catName) {
+    const clean = (catName || '').trim();
+    if (!clean) return;
+    if (!confirm(`Delete unused custom category "${clean}"?`)) return;
+    const lower = clean.toLowerCase();
+    const matchingDocs = customCategoryDocs.filter(d => (d.name || '').trim().toLowerCase() === lower);
+    await Promise.all(matchingDocs.map(d => window.getNiptoCollection('custom_categories').doc(d.id).delete()));
+    customCategoryDocs = customCategoryDocs.filter(d => (d.name || '').trim().toLowerCase() !== lower);
+    const nextHidden = (catConfig.hiddenCategories || []).filter(c => String(c).trim().toLowerCase() !== lower);
+    if (nextHidden.length !== (catConfig.hiddenCategories || []).length) {
+        catConfig = { ...catConfig, hiddenCategories: nextHidden };
+        await window.getNiptoCollection('config').doc('categories').set(catConfig, { merge: true });
+    }
+    renderCategoryManager();
+}
+
+async function initCategoryManager() {
+    try {
+        window.getNiptoCollection('config').doc('categories').onSnapshot(doc => {
+            const d = (doc && doc.exists) ? (doc.data() || {}) : {};
+            catConfig = {
+                hiddenCategories: Array.isArray(d.hiddenCategories) ? d.hiddenCategories.filter(Boolean) : [],
+                unhiddenNiptoCategories: Array.isArray(d.unhiddenNiptoCategories) ? d.unhiddenNiptoCategories.filter(Boolean) : []
+            };
+            if (categoriesDataLoaded) renderCategoryManager();
+        });
+
+        const [customSnap, todoSnap, routineSnap, niptoSnap] = await Promise.all([
+            window.getNiptoCollection('custom_categories').get(),
+            window.getNiptoCollection('custom_tasks').get(),
+            window.getNiptoCollection('routines').get(),
+            window.getNiptoCollection('nipto_tasks').get()
+        ]);
+
+        customCategoryDocs = customSnap.docs.map(d => ({ id: d.id, name: (d.data()?.name || '').trim() })).filter(d => d.name);
+        customTaskDocs = todoSnap.docs.map(d => ({ id: d.id, category: (d.data()?.category || 'General').trim() }));
+        routineDocs = routineSnap.docs.map(d => ({ id: d.id, category: (d.data()?.category || 'Home').trim() }));
+        niptoTaskDocs = niptoSnap.docs.map(d => ({ id: d.id, category: (d.data()?.group || 'General').trim() }));
+        categoriesDataLoaded = true;
+        renderCategoryManager();
+    } catch (e) {
+        const statsEl = document.getElementById('catStats');
+        if (statsEl) statsEl.textContent = 'Error loading categories: ' + e.message;
+    }
+}
+
+// ==========================================
+// CHAT AUDIT LOG (TAB 1)
+// ==========================================
+function setFilter(f) {
     filter = f;
-    ['flagged','deleted','edited','all'].forEach(k =>
-        document.getElementById('f-'+k).classList.toggle('active', k===f));
+    ['flagged', 'deleted', 'edited', 'all'].forEach(k =>
+        document.getElementById('f-' + k).classList.toggle('active', k === f));
     render();
 }
-function render(){
+
+function render() {
     const q = (document.getElementById('search').value || '').toLowerCase().trim();
     const rows = ALL.filter(m => {
         if (filter === 'deleted' && !m.deleted) return false;
-        if (filter === 'edited'  && !m.edited)  return false;
+        if (filter === 'edited' && !m.edited) return false;
         if (filter === 'flagged' && !m.deleted && !m.edited) return false;
         if (!q) return true;
-        const hay = [m.senderName, m.text, m.originalText,
-            ...(m.history||[]).map(h => h.text)].join(' ').toLowerCase();
+        const hay = [m.senderName, m.text, m.originalText, ...(m.history || []).map(h => h.text)].join(' ').toLowerCase();
         return hay.includes(q);
     });
     document.getElementById('stats').textContent =
-        `${ALL.length} total messages • ${ALL.filter(m=>m.deleted).length} deleted • ` +
-        `${ALL.filter(m=>m.edited).length} edited • showing ${rows.length}`;
+        `${ALL.length} total messages \u2022 ${ALL.filter(m => m.deleted).length} deleted \u2022 ` +
+        `${ALL.filter(m => m.edited).length} edited \u2022 showing ${rows.length}`;
     const list = document.getElementById('list');
     if (!rows.length) {
         list.innerHTML = '<div class="admin-card" style="text-align:center;color:var(--text-muted);font-style:italic;">Nothing to show. &#x1F389;</div>';
@@ -107,37 +688,51 @@ function render(){
     }
     list.innerHTML = rows.map(m => {
         const rawHist = (m.editHistory && m.editHistory.length) ? m.editHistory : (m.history || []);
-        const hist = rawHist.slice().sort((a,b) =>
+        const hist = rawHist.slice().sort((a, b) =>
             new Date(a.at || a.editedAt || 0) - new Date(b.at || b.editedAt || 0));
+        const histRowsHtml = hist.map(h => {
+            const action = h.action || 'edited';
+            const who = h.byName || h.editedByName || m.senderName || 'Unknown';
+            const when = h.at || h.editedAt;
+            const borderCol = action === 'deleted' ? 'var(--danger)' : 'var(--primary)';
+            const badge = action === 'deleted' ? '&#x1F5D1;&#xFE0F; DELETED' : (action === 'restored' ? '&#x21A9;&#xFE0F; RESTORED' : '[Edit] EDITED');
+            return `
+            <div class="hist-row" style="border-left-color:${borderCol};">
+                <div class="hist-meta">
+                    ${badge}
+                    by ${esc(who)} \u00B7 ${esc(fmt(ms(when)))}
+                    \u2014 text at that moment was:
+                </div>
+                <div class="hist-text">${esc(h.text)}</div>
+            </div>`;
+        }).join('');
+
         const histHtml = hist.length ? `
             <div class="hist">
                 <h5>Version history (oldest first)</h5>
                 <div class="hist-row">
-                    <div class="hist-meta">V1 · ORIGINAL · ${esc(m.senderName)} · ${esc(fmt(m.createdTs))}</div>
+                    <div class="hist-meta">V1 \u00B7 ORIGINAL \u00B7 ${esc(m.senderName)} \u00B7 ${esc(fmt(m.createdTs))}</div>
                     <div class="hist-text">${esc(m.originalText || hist[0].text || m.text)}</div>
                 </div>
-                ${hist.map(h => {
-                    const action = h.action || 'edited';
-                    const who = h.byName || h.editedByName || m.senderName || 'Unknown';
-                    const when = h.at || h.editedAt;
-                    const borderCol = action === 'deleted' ? 'var(--danger)' : 'var(--primary)';
-                    const badge = action === 'deleted' ? '&#x1F5D1;&#xFE0F; DELETED' : (action === 'restored' ? '&#x21A9;&#xFE0F; RESTORED' : '[Edit] EDITED');
-                    return `
-                    <div class="hist-row" style="border-left-color:${borderCol};">
-                        <div class="hist-meta">
-                            ${badge}
-                            by ${esc(who)} · ${esc(fmt(ms(when)))}
-                            — text at that moment was:
-                        </div>
-                        <div class="hist-text">${esc(h.text)}</div>
-                    </div>`;
-                }).join('')}
+                ${histRowsHtml}
                 <div class="hist-row" style="border-left-color:var(--success);">
                     <div class="hist-meta">CURRENT STORED TEXT ${m.deleted ? '(hidden from chat)' : '(shown in chat)'}</div>
                     <div class="hist-text">${esc(m.text)}</div>
                 </div>
             </div>` : '';
+
         const editCount = hist.filter(h => (h.action || 'edited') === 'edited').length;
+        const senderUidBadge = m.senderUid ? ` &nbsp;\u00B7&nbsp; <code class="uid">${esc(m.senderUid)}</code>` : '';
+        const deletedMetaHtml = m.deleted ? `<div class="msg-when" style="margin-top:6px;">
+            &#x1F5D1;&#xFE0F; Removed by <strong>${esc(m.deletedByName || 'Unknown')}</strong> on ${esc(fmt(m.deletedTs))}
+        </div>` : '';
+        const editedMetaHtml = (m.edited && !m.deleted) ? `<div class="msg-when" style="margin-top:6px;">
+            [Edit] Last edited ${esc(fmt(m.editedTs))} \u00B7 ${editCount} edit(s)
+        </div>` : '';
+        const restoreBtnHtml = m.deleted ? `<div class="row-actions">
+            <button type="button" class="pill" onclick="restore('${m.id}')">&#x21A9;&#xFE0F; Restore to chat</button>
+        </div>` : '';
+
         return `
         <div class="msg-card ${m.deleted ? 'is-deleted' : (m.edited ? 'is-edited' : '')}">
             <div class="msg-top">
@@ -146,23 +741,18 @@ function render(){
                     ${m.deleted ? '<span class="tag del">deleted</span>' : ''}
                     ${m.edited ? '<span class="tag edit">edited</span>' : ''}
                 </div>
-                <div class="msg-when">sent ${esc(fmt(m.createdTs))} &nbsp;·&nbsp; <code class="uid">${esc(m.id)}</code>${m.senderUid ? ` &nbsp;·&nbsp; <code class="uid">${esc(m.senderUid)}</code>` : ''}</div>
+                <div class="msg-when">sent ${esc(fmt(m.createdTs))} &nbsp;\u00B7&nbsp; <code class="uid">${esc(m.id)}</code>${senderUidBadge}</div>
             </div>
             <div class="msg-text ${m.deleted ? 'struck' : ''}">${esc(m.text)}</div>
-            ${m.deleted ? `<div class="msg-when" style="margin-top:6px;">
-                &#x1F5D1;️ Removed by <strong>${esc(m.deletedByName || 'Unknown')}</strong> on ${esc(fmt(m.deletedTs))}
-            </div>` : ''}
-            ${m.edited && !m.deleted ? `<div class="msg-when" style="margin-top:6px;">
-                [Edit] Last edited ${esc(fmt(m.editedTs))} · ${editCount} edit(s)
-            </div>` : ''}
+            ${deletedMetaHtml}
+            ${editedMetaHtml}
             ${histHtml}
-            ${m.deleted ? `<div class="row-actions">
-                <button class="pill" onclick="restore('${m.id}')">↩️ Restore to chat</button>
-            </div>` : ''}
+            ${restoreBtnHtml}
         </div>`;
     }).join('');
 }
-async function restore(id){
+
+async function restore(id) {
     if (!confirm('Put this message back in the chat?')) return;
     const nowIso = new Date().toISOString();
     await window.getNiptoCollection('chat_messages').doc(id).update({
@@ -175,14 +765,210 @@ async function restore(id){
         })
     });
 }
-function exportJson(){
-    const blob = new Blob([JSON.stringify(ALL, null, 2)], {type:'application/json'});
+
+function exportJson() {
+    const blob = new Blob([JSON.stringify(ALL, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'chat-log-' + new Date().toISOString().slice(0,10) + '.json';
+    a.download = 'chat-log-' + new Date().toISOString().slice(0, 10) + '.json';
     a.click();
 }
+
+// ==========================================
+// GEMINI ACTIVITY LOG (TAB 2 - LAZY LOADED)
+// ==========================================
+async function loadGeminiLogs(append = false) {
+    const statsEl = document.getElementById('geminiStats');
+    const loadMoreBtn = document.getElementById('geminiLoadMoreBtn');
+    if (statsEl && !append) statsEl.textContent = 'Loading Gemini logs...';
+
+    try {
+        let query = window.getNiptoCollection('gemini_logs').orderBy('createdAt', 'desc').limit(50);
+        if (append && lastGeminiDocSnap) {
+            query = query.startAfter(lastGeminiDocSnap);
+        }
+        const snap = await query.get();
+        if (!append) {
+            geminiLogs = [];
+        }
+        snap.docs.forEach(doc => {
+            geminiLogs.push({ id: doc.id, ...doc.data() });
+        });
+        lastGeminiDocSnap = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+        hasMoreGeminiLogs = snap.docs.length === 50;
+        geminiLogsLoaded = true;
+
+        if (loadMoreBtn) loadMoreBtn.style.display = hasMoreGeminiLogs ? 'inline-block' : 'none';
+        populateGeminiActorFilter();
+        renderGeminiLogs();
+    } catch (e) {
+        if (statsEl) statsEl.textContent = 'Error loading Gemini logs: ' + e.message;
+    }
+}
+
+function refreshGeminiLogs() {
+    lastGeminiDocSnap = null;
+    loadGeminiLogs(false);
+}
+
+function loadMoreGeminiLogs() {
+    loadGeminiLogs(true);
+}
+
+function populateGeminiActorFilter() {
+    const sel = document.getElementById('geminiActorFilter');
+    if (!sel) return;
+    const prev = sel.value || 'all';
+    const actors = Array.from(new Set(geminiLogs.map(l => (l.actorName || 'Unknown').trim()).filter(Boolean))).sort();
+    const optsHtml = actors.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+    sel.innerHTML = `<option value="all">User: All</option>${optsHtml}`;
+    if (actors.includes(prev)) sel.value = prev;
+}
+
+function copyGeminiField(idx, fieldType) {
+    const log = geminiLogs[idx];
+    if (!log) return;
+    const text = fieldType === 'prompt'
+        ? `=== SYSTEM INSTRUCTION ===\n${log.systemInstructionSent || '(none)'}\n\n=== FULL PROMPT ===\n${log.fullPromptSent || ''}`
+        : (log.rawResponseText || log.errorMessage || '');
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById(`copy-${fieldType}-${idx}`);
+            if (btn) {
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
+            }
+        }).catch(() => {});
+    }
+}
+
+function renderGeminiLogs() {
+    const listEl = document.getElementById('geminiList');
+    const statsEl = document.getElementById('geminiStats');
+    if (!listEl) return;
+
+    const actorFilter = document.getElementById('geminiActorFilter')?.value || 'all';
+    const statusFilter = document.getElementById('geminiStatusFilter')?.value || 'all';
+    const sourceFilter = document.getElementById('geminiSourceFilter')?.value || 'all';
+    const q = (document.getElementById('geminiSearch')?.value || '').trim().toLowerCase();
+
+    const filtered = geminiLogs.map((log, rawIdx) => ({ log, rawIdx })).filter(({ log }) => {
+        if (actorFilter !== 'all' && (log.actorName || 'Unknown') !== actorFilter) return false;
+        if (statusFilter === 'success' && log.status !== 'success') return false;
+        if (statusFilter === 'error' && log.status === 'success') return false;
+        if (sourceFilter !== 'all' && log.source !== sourceFilter) return false;
+        if (q) {
+            const hay = [
+                log.actorName, log.userInput, log.modelUsed, log.requestedModel,
+                log.fullPromptSent, log.rawResponseText, log.errorMessage, log.parseError
+            ].join(' ').toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+
+    const errCount = geminiLogs.filter(l => l.status !== 'success').length;
+    if (statsEl) {
+        statsEl.textContent = `${geminiLogs.length} loaded entries \u2022 ${errCount} errors/parse errors \u2022 showing ${filtered.length}`;
+    }
+
+    if (!filtered.length) {
+        listEl.innerHTML = '<div class="admin-card" style="text-align:center;color:var(--text-muted);font-style:italic;">No Gemini activity logs match the current filters.</div>';
+        return;
+    }
+
+    listEl.innerHTML = filtered.map(({ log, rawIdx }) => {
+        const whenMs = ms(log.createdAt, ms(log.createdAtIso));
+        const srcLabel = log.source === 'brain_dump'
+            ? 'Brain Dump'
+            : (log.source === 'stale_simplify' ? 'Stale Simplify' : (log.source === 'settings_test' ? 'Settings Test' : (log.source || 'Unknown')));
+        const isParseErr = log.status === 'parse_error';
+        const isErr = log.status !== 'success';
+        const statusTag = log.status === 'success'
+            ? '<span class="tag ok">Success</span>'
+            : (isParseErr ? '<span class="tag warn">Parse Error</span>' : '<span class="tag del">Error</span>');
+
+        const fallbackAttempts = Array.isArray(log.fallbackAttempts) ? log.fallbackAttempts : [];
+        const fallbackNote = (log.requestedModel && log.modelUsed && log.requestedModel !== log.modelUsed)
+            ? ` (fallback from ${log.requestedModel})`
+            : (fallbackAttempts.length > 0 && isErr ? ` (${fallbackAttempts.length} attempt${fallbackAttempts.length > 1 ? 's' : ''})` : '');
+
+        const durationStr = Number.isFinite(Number(log.durationMs)) ? `${log.durationMs} ms` : '\u2014';
+
+        const errBannerHtml = (log.errorMessage || log.parseError)
+            ? `<div class="msg-text" style="border:1px solid rgba(239,68,68,0.35); color:var(--danger); margin-top:8px;"><strong>Error:</strong> ${esc(log.parseError || log.errorMessage)}</div>`
+            : '';
+
+        let parsedSummaryHtml = '';
+        if (Array.isArray(log.parsedSummary) && log.parsedSummary.length > 0) {
+            const actionRows = log.parsedSummary.map(a =>
+                `<div class="gemini-action-summary-item">
+                    <strong>${esc(String(a.action || '').toUpperCase())}</strong>
+                    <span>[${esc(a.type || 'todo')}]</span>
+                    <span><strong>${esc(a.title || '')}</strong></span>
+                    <span style="color:var(--text-muted);">Cat: ${esc(a.category || 'Home')}</span>
+                    <span style="color:var(--text-muted);">Who: ${esc(a.assignee || 'Anyone')}</span>
+                    <span style="color:var(--primary); font-weight:700;">${Number(a.points) || 0} pts</span>
+                </div>`
+            ).join('');
+            parsedSummaryHtml = `
+            <details class="gemini-details" open>
+                <summary>Parsed Actions Summary (${log.parsedActionCount ?? log.parsedSummary.length})</summary>
+                ${actionRows}
+            </details>`;
+        }
+
+        const promptBody = `=== SYSTEM INSTRUCTION ===\n${log.systemInstructionSent || '(none)'}\n\n=== FULL PROMPT ===\n${log.fullPromptSent || ''}`;
+        const rawBody = log.rawResponseText || log.errorMessage || '(empty)';
+
+        return `
+        <div class="gemini-log-card ${isParseErr ? 'is-parse-error' : (isErr ? 'is-error' : '')}">
+            <div class="msg-top">
+                <div>
+                    <span class="msg-sender">${esc(log.actorName || 'Unknown')}</span>
+                    <span class="tag muted">${esc(srcLabel)}</span>
+                    ${statusTag}
+                </div>
+                <div class="msg-when">
+                    ${esc(fmt(whenMs))} \u00B7 <strong>${esc(log.modelUsed || log.requestedModel || 'unknown')}</strong>${esc(fallbackNote)} \u00B7 ${esc(durationStr)}
+                </div>
+            </div>
+            <div class="msg-text"><strong>User Input:</strong>\n${esc(log.userInput || '(none)')}</div>
+            ${errBannerHtml}
+            ${parsedSummaryHtml}
+            <details class="gemini-details">
+                <summary>Full Prompt &amp; System Instruction Sent</summary>
+                <div class="gemini-copy-row">
+                    <button type="button" id="copy-prompt-${rawIdx}" class="pill" onclick="copyGeminiField(${rawIdx}, 'prompt')">Copy Prompt</button>
+                </div>
+                <pre class="gemini-pre">${esc(promptBody)}</pre>
+            </details>
+            <details class="gemini-details">
+                <summary>Raw Gemini Response / Error</summary>
+                <div class="gemini-copy-row">
+                    <button type="button" id="copy-response-${rawIdx}" class="pill" onclick="copyGeminiField(${rawIdx}, 'response')">Copy Response</button>
+                </div>
+                <pre class="gemini-pre">${esc(rawBody)}</pre>
+            </details>
+        </div>`;
+    }).join('');
+}
+
+function exportGeminiLogsJson() {
+    const blob = new Blob([JSON.stringify(geminiLogs, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'gemini-logs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+}
+
+// ==========================================
+// STARTUP AUTH & LISTENERS
+// ==========================================
 firebase.auth().signInAnonymously().then(() => {
+    initCategoryManager();
+
     window.getNiptoCollection('chat_messages')
         .orderBy('createdAt', 'desc')
         .onSnapshot(snap => {
@@ -208,7 +994,7 @@ firebase.auth().signInAnonymously().then(() => {
                     history: rawHistory,
                     editHistory: rawHistory,
                     createdTs: ms(d.createdAt, d.createdAtMs),
-                    editedTs:  ms(d.editedAt || editedFallback, d.editedAtMs),
+                    editedTs: ms(d.editedAt || editedFallback, d.editedAtMs),
                     deletedTs: ms(d.deletedAt, d.deletedAtMs)
                 });
             });
@@ -219,8 +1005,21 @@ firebase.auth().signInAnonymously().then(() => {
 }).catch(e => {
     document.getElementById('stats').textContent = 'Auth error: ' + e.message;
 });
-window.setFilter = setFilter; window.render = render;
-window.restore = restore; window.exportJson = exportJson;
+
+window.switchAdminTab = switchAdminTab;
+window.setFilter = setFilter;
+window.render = render;
+window.restore = restore;
+window.exportJson = exportJson;
+window.renderCategoryManager = renderCategoryManager;
+window.toggleCategoryVisibility = toggleCategoryVisibility;
+window.addAdminCategory = addAdminCategory;
+window.deleteUnusedCustomCategory = deleteUnusedCustomCategory;
+window.refreshGeminiLogs = refreshGeminiLogs;
+window.loadMoreGeminiLogs = loadMoreGeminiLogs;
+window.renderGeminiLogs = renderGeminiLogs;
+window.copyGeminiField = copyGeminiField;
+window.exportGeminiLogsJson = exportGeminiLogsJson;
 </script>
 </body>
 </html>

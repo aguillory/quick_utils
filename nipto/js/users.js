@@ -9,6 +9,7 @@ import { renderTodoTasks } from './todos.js';
 import { renderRollingSchedule } from './routines.js';
 import { renderDoneTodayFeed } from './leaderboard.js';
 import { refreshChatUser } from './chat.js';
+import { refreshBrainDumpUser } from './braindump.js';
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -121,6 +122,7 @@ export async function setActiveUser(uid, skipSave = false) {
     renderRollingSchedule();
     renderDoneTodayFeed();
     refreshChatUser();
+    refreshBrainDumpUser();
 }
 
 export function renderActiveUserPill() {
@@ -173,6 +175,7 @@ export function toggleTogetherMode() {
     renderRollingSchedule();
     renderDoneTodayFeed();
     refreshChatUser();
+    refreshBrainDumpUser();
 }
 
 function setTogetherState(uids) {
@@ -180,6 +183,7 @@ function setTogetherState(uids) {
     state.isTogetherMode = true;
     state.currentSplitDivisor = Math.max(1, uids.length);
     renderActiveUserPill();
+    refreshBrainDumpUser();
 }
 
 // Bind to window for HTML onclicks

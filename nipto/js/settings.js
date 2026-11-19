@@ -22,7 +22,7 @@ export function openSettingsModal() {
     if (geminiInput) geminiInput.value = cfg.geminiApiKey || '';
 
     let currentModel = (cfg.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-    if (!currentModel || currentModel.includes('2.5')) {
+    if (!currentModel || /(2\.5|3\.8)/i.test(currentModel)) {
         currentModel = DEFAULT_GEMINI_MODEL;
     }
     if (geminiModelInput) geminiModelInput.value = currentModel;
@@ -34,6 +34,12 @@ export function openSettingsModal() {
     if (testBadge) {
         testBadge.style.display = 'none';
         testBadge.textContent = '';
+    }
+
+    const syncStatus = document.getElementById('settingsSyncStatus');
+    if (syncStatus) {
+        syncStatus.style.display = 'none';
+        syncStatus.textContent = '';
     }
 
     // Load Adult Notification Profiles (Alyssa, Devyn, Carrina have phones; Kenny does not)
@@ -72,7 +78,7 @@ export function closeSettingsModal() {
 export async function saveSettingsModal() {
     const geminiKey = document.getElementById('settingGeminiApiKey')?.value.trim() || '';
     let geminiModel = document.getElementById('settingGeminiModel')?.value.trim() || DEFAULT_GEMINI_MODEL;
-    if (!geminiModel || geminiModel.includes('2.5')) {
+    if (!geminiModel || /(2\.5|3\.8)/i.test(geminiModel)) {
         geminiModel = DEFAULT_GEMINI_MODEL;
     }
     const haWebhook = document.getElementById('settingHaWebhookUrl')?.value.trim() || '';
@@ -143,7 +149,7 @@ export async function testGeminiConnection() {
     }
 
     let model = (modelInput?.value || state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-    if (!model || model.includes('2.5')) {
+    if (!model || /(2\.5|3\.8)/i.test(model)) {
         model = DEFAULT_GEMINI_MODEL;
         if (modelInput) modelInput.value = model;
     }
@@ -168,7 +174,8 @@ export async function testGeminiConnection() {
             { maxOutputTokens: 5 },
             (statusMsg) => {
                 if (badge) badge.textContent = statusMsg;
-            }
+            },
+            { source: 'settings_test', userInput: 'Respond "OK"' }
         );
 
         if (modelInput && modelUsed) {

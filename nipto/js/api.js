@@ -902,24 +902,31 @@ function pingActivitySignal() {
 // Explicit Nipto Task Sync (Only called when clicking the Sync button)
 export async function syncNiptoTasks() {
     const statusText = document.getElementById('status');
+    const settingsSyncStatus = document.getElementById('settingsSyncStatus');
     const syncBtn = document.getElementById('syncNiptoBtn');
     const apiToken = localStorage.getItem("nipto_api_token") || state.apiToken;
 
-    if (!apiToken) {
+    const setSyncStatus = (msg, color = 'var(--text-muted)', isVisible = true) => {
         if (statusText) {
-            statusText.innerText = "Error: Please unlock the dashboard first.";
-            statusText.style.color = "#cf6679";
+            statusText.innerText = msg;
+            if (color) statusText.style.color = color;
         }
+        if (settingsSyncStatus) {
+            settingsSyncStatus.style.display = (isVisible && msg) ? 'block' : 'none';
+            settingsSyncStatus.textContent = msg;
+            if (color) settingsSyncStatus.style.color = color;
+        }
+    };
+
+    if (!apiToken) {
+        setSyncStatus("Error: Please unlock the dashboard first.", "var(--danger, #dc2626)");
         const pinModal = document.getElementById('pinModal');
         if (pinModal) pinModal.style.display = 'flex';
-        return;
+        return false;
     }
 
     if (syncBtn) syncBtn.disabled = true;
-    if (statusText) {
-        statusText.innerText = "Connecting to Nipto API...";
-        statusText.style.color = "#e0e0e0";
-    }
+    setSyncStatus("Connecting to Nipto API...", "var(--primary, #2563eb)");
 
     const QUERY = `query GetTasks { tasks { uid group name value } }`;
 
@@ -943,7 +950,7 @@ export async function syncNiptoTasks() {
             throw new Error("No tasks returned from Nipto.");
         }
 
-        if (statusText) statusText.innerText = `Found ${tasks.length} live tasks. Syncing to Firebase...`;
+        setSyncStatus(`Found ${tasks.length} live tasks. Syncing to Firebase...`, "var(--primary, #2563eb)");
 
         const activeNiptoTaskIds = new Set(tasks.map(task => task.uid));
         const firebaseSnapshot = await window.getNiptoCollection('nipto_tasks').get();
@@ -988,21 +995,20 @@ export async function syncNiptoTasks() {
             await batch.commit();
         }
 
-        if (statusText) {
-            statusText.innerText = `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`;
-            statusText.style.color = "var(--success, #03dac6)";
-            setTimeout(() => {
-                if (statusText.innerText.includes("Success!")) {
-                    statusText.innerText = "";
-                }
-            }, 4000);
-        }
+        setSyncStatus(
+            `Success! Synced ${totalSynced} tasks and removed ${totalDeleted} deleted tasks.`,
+            "var(--success, #059669)"
+        );
+        setTimeout(() => {
+            if (statusText && statusText.innerText.includes("Success!")) {
+                statusText.innerText = "";
+            }
+        }, 4000);
+        return true;
     } catch (error) {
         console.error("Error syncing Nipto tasks:", error);
-        if (statusText) {
-            statusText.innerText = `Error: ${error.message}`;
-            statusText.style.color = "var(--danger, #cf6679)";
-        }
+        setSyncStatus(`Error: ${error.message}`, "var(--danger, #dc2626)");
+        return false;
     } finally {
         if (syncBtn) syncBtn.disabled = false;
     }
@@ -1148,9 +1154,9 @@ export async function loadIntegrationsConfigFromFirestore() {
         const doc = await window.getNiptoCollection('config').doc('integrations').get();
         if (doc.exists) {
             const data = doc.data() || {};
-            if (!data.geminiModel || String(data.geminiModel).includes('2.5')) {
-                data.geminiModel = 'gemini-3.8-flash';
-                window.getNiptoCollection('config').doc('integrations').set({ geminiModel: 'gemini-3.8-flash' }, { merge: true }).catch(() => {});
+            if (!data.geminiModel || /(2\.5|3\.8)/i.test(String(data.geminiModel))) {
+                data.geminiModel = 'gemini-4-hydrogen';
+                window.getNiptoCollection('config').doc('integrations').set({ geminiModel: 'gemini-4-hydrogen' }, { merge: true }).catch(() => {});
             }
             state.integrationsConfig = { ...state.integrationsConfig, ...data };
         } else {
@@ -1164,10 +1170,13 @@ export async function loadIntegrationsConfigFromFirestore() {
 
 export async function saveIntegrationsConfigToFirestore(cfg) {
     const sanitized = { ...cfg };
-    if (sanitized.geminiModel && String(sanitized.geminiModel).includes('2.5')) {
-        sanitized.geminiModel = 'gemini-3.8-flash';
+    if ('geminiModel' in sanitized && (!sanitized.geminiModel || /(2\.5|3\.8)/i.test(String(sanitized.geminiModel)))) {
+        sanitized.geminiModel = 'gemini-4-hydrogen';
     }
     state.integrationsConfig = { ...state.integrationsConfig, ...sanitized };
+    if (!state.integrationsConfig.geminiModel || /(2\.5|3\.8)/i.test(String(state.integrationsConfig.geminiModel))) {
+        state.integrationsConfig.geminiModel = 'gemini-4-hydrogen';
+    }
     try {
         await window.getNiptoCollection('config').doc('integrations').set(state.integrationsConfig, { merge: true });
     } catch (e) {

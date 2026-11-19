@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unified Nipto Dashboard</title>
-    <link rel="stylesheet" href="css/nipto-shared.css?v=20261113b">
+    <link rel="stylesheet" href="css/nipto-shared.css?v=20261119a">
 </head>
 <body>
 
@@ -61,13 +61,10 @@
             </button>
         </nav>
 
-        <!-- Right: Actions, Sync, Settings & Theme -->
+        <!-- Right: Actions, Settings & Theme -->
         <div class="nav-right">
             <button class="nav-icon-btn" onclick="openQuickAddModal()" style="background: var(--primary); color: #ffffff;" title="Quick Add Points">
                 &#x26A1; Quick Add
-            </button>
-            <button id="syncNiptoBtn" class="nav-icon-btn" onclick="runSync()" title="Sync Nipto Tasks from API">
-                &#x21BB; Sync
             </button>
             <button class="nav-icon-btn" onclick="openSettingsModal()" title="Settings: Integrations &amp; Notifications">
                 &#x2699; Settings
@@ -151,20 +148,28 @@
 
                 <!-- Gemini AI Unified Brain Dump Omnibox Card -->
                 <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
-                    <h3 style="margin: 0 0 6px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-                        &#x2728; Gemini AI Brain Dump &amp; Task Omnibox
-                    </h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;">
+                        <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                            &#x2728; Gemini AI Brain Dump &amp; Task Omnibox
+                        </h3>
+                        <span class="braindump-user-pill">Posting as: <strong id="brainDumpActiveUser">&mdash;</strong></span>
+                    </div>
                     <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted);">
                         Type or dictate anything in plain English: add new chores or routines, brainstorm projects, update existing task details, change points, or cross off completed items.
                     </p>
 
-                    <textarea id="brainDumpInput" rows="5" placeholder="e.g.
-- Wash truck on Saturday
-- Put trash cans by road Mondays and Thursdays
-- Move greenhouse shelves to projects
-- Feeding goats should be 10 points
-- Finished buying bran
-- Devyn: research replacement well pump (someday project)" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+                    <textarea id="brainDumpInput" rows="5" placeholder="Examples:
+- I need to order chicken feed (10 pts)
+- Devyn: fix tractor gate [Farm] 20 pts steps: 1. inspect hinge (5 pts), 2. weld bracket (15 pts)
+- Create category Garden and add plant tomatoes (10 pts)" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+
+                    <div class="braindump-hint-bar" aria-label="Brain Dump syntax hints">
+                        <span class="braindump-hint-label">Click to insert:</span>
+                        <button type="button" class="braindump-hint-chip" onclick="insertBrainDumpHint('I need to ')">&#x1F464; Who: &quot;Devyn:&quot; or &quot;I need to...&quot;</button>
+                        <button type="button" class="braindump-hint-chip" onclick="insertBrainDumpHint(' 15 pts')">&#x2B50; Points: &quot;15 pts&quot; (steps of 5)</button>
+                        <button type="button" class="braindump-hint-chip" onclick="insertBrainDumpHint(' [Farm]')">&#x1F4C1; Category: &quot;[Farm]&quot; or &quot;create category Garden&quot;</button>
+                        <button type="button" class="braindump-hint-chip" onclick="insertBrainDumpHint(' steps: 1. prep (5 pts), 2. build (10 pts)')">&#x2611;&#xFE0F; Subtasks: &quot;steps: 1. prep (5 pts), 2. build (10 pts)&quot;</button>
+                    </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center;">
                         <button id="btnParseGemini" class="action-btn save-mode" onclick="parseWithGemini()" style="padding: 8px 16px; font-weight: 800;">
@@ -376,9 +381,9 @@
                 <input type="password" id="settingGeminiApiKey" placeholder="AIzaSy..." style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
 
                 <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-top: 10px;">Gemini Model (Auto-falls back on quota/404):</label>
-                <input type="text" id="settingGeminiModel" value="gemini-3.8-flash" placeholder="gemini-3.8-flash" list="geminiModelOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
+                <input type="text" id="settingGeminiModel" value="gemini-4-hydrogen" placeholder="gemini-4-hydrogen" list="geminiModelOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; box-sizing: border-box; margin-top: 4px;">
                 <datalist id="geminiModelOptions">
-                    <option value="gemini-3.8-flash"></option>
+                    <option value="gemini-4-hydrogen"></option>
                 </datalist>
 
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
@@ -495,6 +500,22 @@
                 </div>
             </div>
 
+            <!-- Section 3: Nipto Cloud Sync & Admin Tools -->
+            <div style="background: var(--bg-color); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-size: 13px; font-weight: 800; color: var(--text-main); text-transform: uppercase;">
+                    3. Nipto Cloud Sync &amp; Admin Tools
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" id="syncNiptoBtn" class="action-btn" onclick="runSync()" style="padding: 8px 14px; font-size: 13px; font-weight: 700;" title="Sync Nipto Tasks from API">
+                        &#x21BB; Sync Nipto Chores &amp; Activity
+                    </button>
+                    <a href="chat-admin.html" class="action-btn" style="padding: 8px 14px; font-size: 13px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                        &#x1F6E1;&#xFE0F; Open Admin Console
+                    </a>
+                </div>
+                <div id="settingsSyncStatus" style="display: none; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border-color);"></div>
+            </div>
+
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
                 <button type="button" class="action-btn" onclick="closeSettingsModal()">Cancel</button>
                 <button type="button" class="action-btn save-mode" onclick="saveSettingsModal()">Save Settings</button>
@@ -578,9 +599,11 @@
                     <div class="category-combobox-wrapper" style="margin-top: 2px;">
                         <div class="category-combobox-input-wrap">
                             <input type="text" id="taskCategory" class="category-combobox-input" value="Home" placeholder="Search or create category..." autocomplete="off"
-                                onfocus="openCategoryCombobox(this, false)"
+                                onfocus="openCategoryCombobox(this, true)"
+                                onclick="openCategoryCombobox(this, true)"
                                 oninput="filterCategoryCombobox(this)"
                                 onkeydown="handleCategoryComboboxKeydown(event, this)">
+                            <button type="button" class="category-combobox-clear" tabindex="-1" onclick="clearCategoryComboboxInput(event, this)" title="Clear to type a new category">&times;</button>
                             <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
                         </div>
                         <div class="category-combobox-menu" style="display: none;"></div>
@@ -667,9 +690,11 @@
                     <div class="category-combobox-wrapper" style="margin-top: 2px;">
                         <div class="category-combobox-input-wrap">
                             <input type="text" id="routineCategory" class="category-combobox-input" value="Home" placeholder="Search or create..." autocomplete="off"
-                                onfocus="openCategoryCombobox(this, false)"
+                                onfocus="openCategoryCombobox(this, true)"
+                                onclick="openCategoryCombobox(this, true)"
                                 oninput="filterCategoryCombobox(this)"
                                 onkeydown="handleCategoryComboboxKeydown(event, this)">
+                            <button type="button" class="category-combobox-clear" tabindex="-1" onclick="clearCategoryComboboxInput(event, this)" title="Clear to type a new category">&times;</button>
                             <button type="button" class="category-combobox-toggle" tabindex="-1" onclick="toggleCategoryComboboxDropdown(event, this)" title="Show categories">&#x25BE;</button>
                         </div>
                         <div class="category-combobox-menu" style="display: none;"></div>
@@ -804,7 +829,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="js/firebase-config.js"></script>
-    <script type="module" src="js/dashboard.js?v=20261112d"></script>
+    <script type="module" src="js/dashboard.js?v=20261119a"></script>
 
 </body>
 </html>

@@ -9,6 +9,10 @@ import { renderRoutines } from './routines.js';
 import { enableDragSort } from './dragSort.js';
 import { getLocalTodayKey } from './utils.js';
 
+function isQuickAddCategory(cat) {
+    return cat === '\u26A1 Quick Add' || cat === '&#x26A1; Quick Add';
+}
+
 // Logs a task to Nipto for the active users and cross-wires linked routines.
 export async function logTask(buttonElement, taskUid, taskName) {
     if (!state.apiToken) { document.getElementById('pinModal').style.display = 'flex'; return false; }
@@ -144,7 +148,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
         ) : null;
 
         if (linkedTodo) {
-            if (linkedTodo.category === '&#x26A1; Quick Add' || linkedTodo.notes === 'Quick added points') {
+            if (isQuickAddCategory(linkedTodo.category) || linkedTodo.notes === 'Quick added points') {
                 await api.deleteFirestoreDocument('custom_tasks', linkedTodo.id);
                 state.todoTasksData = state.todoTasksData.filter(t => t.id !== linkedTodo.id);
             } else {
@@ -167,7 +171,7 @@ export async function deleteTaskActivity(activityUid, btnElement) {
                 .where('completedActivityUids', 'array-contains', activityUid).get();
             snap.forEach(async doc => {
                 const data = doc.data();
-                if (data.category === '&#x26A1; Quick Add' || data.notes === 'Quick added points') {
+                if (isQuickAddCategory(data.category) || data.notes === 'Quick added points') {
                     await api.deleteFirestoreDocument('custom_tasks', doc.id);
                 } else {
                     await api.updateFirestoreDocument('custom_tasks', doc.id, {
@@ -770,7 +774,7 @@ export async function submitQuickAdd() {
 
         await api.addFirestoreDocument('custom_tasks', {
             name: description,
-            category: '&#x26A1; Quick Add',
+            category: '\u26A1 Quick Add',
             priority: 'medium',
             points: pointsPerUser,
             assignees: selectedUids,

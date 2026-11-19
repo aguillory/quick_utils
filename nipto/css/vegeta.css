@@ -340,3 +340,18 @@ span[style*="#f3f4f6"] {
     opacity: 0.96;
     filter: saturate(1);
 }
+
+.braindump-hint-chip,
+.braindump-user-pill,
+.filter-pill:not(.active),
+.todo-compact-select {
+    background: rgba(255, 255, 255, 0.92);
+    color: #000000;
+    border-color: var(--primary);
+}
+
+.braindump-hint-chip:hover,
+.braindump-hint-chip:focus-visible {
+    background: #ffffff;
+    color: var(--primary);
+}

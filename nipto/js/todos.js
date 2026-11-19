@@ -8,7 +8,7 @@ import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed, drawLeaderboard, rebuildCompletedThisWeek } from './leaderboard.js';
-import { getLocalTodayKey, registerCustomCategory } from './utils.js';
+import { getLocalTodayKey, registerCustomCategory, toMillisSafe, isCompletedTodoExpired, getEligibleTaskCategories, isCategoryVisibleForTasks } from './utils.js';
 import { saveCloudPreference, saveCloudPreferencesBatch, saveCloudCollapsed } from './preferences.js';
 import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate } from './routines.js';
 import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
@@ -178,11 +178,10 @@ export function isTaskStale(task) {
     if (norm.priority === 'low') return false;
     // 3. 21+ days since last reviewed or updated
     const reviewStr = norm.lastReviewedAt || norm.updatedAt || norm.createdAt;
-    if (!reviewStr) return false;
-    const reviewDate = new Date(reviewStr);
-    if (isNaN(reviewDate.getTime())) return false;
+    const reviewMs = toMillisSafe(reviewStr);
+    if (!Number.isFinite(reviewMs)) return false;
 
-    const diffDays = (Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24);
+    const diffDays = (Date.now() - reviewMs) / (1000 * 60 * 60 * 24);
     return diffDays >= 21;
 }
 
@@ -259,24 +258,61 @@ export function setTodoSort(val) {
 
 export function classifyTaskOwnership(item, activeUid, allUsers = ALL_USERS) {
     const rawAssignees = Array.isArray(item?.assignees) ? item.assignees : [];
-    const assignees = rawAssignees
-        .map(a => (typeof a === 'string' ? a.trim() : ''))
-        .filter(Boolean);
-    const lowerSet = new Set(assignees.map(a => a.toLowerCase()));
-    const totalUsers = Array.isArray(allUsers) ? allUsers.length : 0;
+    const usersList = Array.isArray(allUsers) ? allUsers : [];
+    const seenUids = new Set();
+    const assignees = [];
+    let hasAnyoneToken = false;
 
+    rawAssignees.forEach(entry => {
+        const trimmed = (typeof entry === 'string') ? entry.trim() : '';
+        if (!trimmed) return;
+        if (trimmed.toLowerCase() === 'anyone') {
+            hasAnyoneToken = true;
+            return;
+        }
+        const matched = usersList.find(u => u.uid === trimmed || (u.name && u.name.toLowerCase() === trimmed.toLowerCase()));
+        const canonical = matched ? matched.uid : trimmed;
+        if (!seenUids.has(canonical)) {
+            seenUids.add(canonical);
+            assignees.push(canonical);
+        }
+    });
+
+    const totalUsers = usersList.length;
     const isAnyone =
         assignees.length === 0 ||
-        lowerSet.has('anyone') ||
+        hasAnyoneToken ||
         (totalUsers > 0 && assignees.length >= totalUsers);
 
-    const isAssignedToMe = !isAnyone && Boolean(activeUid) && assignees.includes(activeUid);
-    const isOtherUsersOnly = !isAnyone && Boolean(activeUid) && !assignees.includes(activeUid);
+    const isSharedMulti = !isAnyone && assignees.length > 1;
+    const activeList = Array.isArray(state.activeUsers) ? state.activeUsers : [];
+
+    const isAssignedToMe =
+        !state.isTogetherMode &&
+        Boolean(activeUid) &&
+        !isAnyone &&
+        assignees.length === 1 &&
+        assignees[0] === activeUid;
+
+    const isSharedWithMe =
+        Boolean(activeUid) &&
+        isSharedMulti &&
+        (state.isTogetherMode
+            ? assignees.some(id => activeList.includes(id))
+            : assignees.includes(activeUid));
+
+    const isOtherUsersOnly =
+        !isAnyone &&
+        (state.isTogetherMode
+            ? (activeList.length > 0 && !assignees.some(id => activeList.includes(id)))
+            : (Boolean(activeUid) && !assignees.includes(activeUid)));
 
     return {
         assignees,
         isAnyone,
+        isSharedMulti,
         isAssignedToMe,
+        isSharedWithMe,
         isOtherUsersOnly
     };
 }
@@ -395,7 +431,7 @@ export function renderTodoTasks() {
     const container = document.getElementById('todoContainer');
     if (!container) return;
 
-    const tasks = (state.todoTasksData || []).map(normalizeTask);
+    const tasks = (state.todoTasksData || []).filter(t => !isCompletedTodoExpired(t)).map(normalizeTask);
     const routines = state.routines || [];
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
@@ -405,6 +441,9 @@ export function renderTodoTasks() {
     if (!state.todoSort) state.todoSort = 'priority';
     if (state.todoGroupBy !== 'category') state.todoGroupBy = 'none';
     if (!state.todoCategoryFilter) state.todoCategoryFilter = 'all';
+    if (state.todoCategoryFilter !== 'all' && !isCategoryVisibleForTasks(state.todoCategoryFilter)) {
+        state.todoCategoryFilter = 'all';
+    }
     if (!state.todoPersonFilter) state.todoPersonFilter = 'all';
     if (!state.todoPriorityFilter) state.todoPriorityFilter = 'all';
     if (!state.todoFrictionFilter) state.todoFrictionFilter = 'all';
@@ -420,9 +459,9 @@ export function renderTodoTasks() {
     const todayKey = getLocalTodayKey();
 
     const uniqueCategories = Array.from(new Set([
-        ...tasks.map(t => t.category || 'General').filter(Boolean),
-        ...routines.map(r => r.category || 'Home').filter(Boolean),
-        ...(categoryFilter && categoryFilter !== 'all' ? [categoryFilter] : [])
+        ...getEligibleTaskCategories(),
+        ...tasks.map(t => (t.category || 'General').trim()).filter(isCategoryVisibleForTasks),
+        ...routines.map(r => (r.category || 'Home').trim()).filter(isCategoryVisibleForTasks)
     ])).sort((a, b) => a.localeCompare(b));
 
     const isExplicitOtherUserFilter = Boolean(
@@ -435,7 +474,7 @@ export function renderTodoTasks() {
         if (personFilter === 'all') return true;
         const own = classifyTaskOwnership(item, activeUid, ALL_USERS);
         if (personFilter === 'me') {
-            return own.isAssignedToMe;
+            return own.isAssignedToMe || own.isSharedWithMe;
         } else if (personFilter === 'shared_anyone') {
             return own.isAnyone || own.assignees.length > 1;
         } else if (personFilter === 'unassigned') {
@@ -503,8 +542,8 @@ export function renderTodoTasks() {
         const ptsB = getEffectivePoints(bItem, bIsRoutine);
         const catA = (aItem.category || (aIsRoutine ? 'Home' : 'General')).toLowerCase();
         const catB = (bItem.category || (bIsRoutine ? 'Home' : 'General')).toLowerCase();
-        const dateA = new Date(aItem.createdAt || 0).getTime() || 0;
-        const dateB = new Date(bItem.createdAt || 0).getTime() || 0;
+        const dateA = toMillisSafe(aItem.createdAt) || 0;
+        const dateB = toMillisSafe(bItem.createdAt) || 0;
         const nameA = (aItem.name || '').toLowerCase();
         const nameB = (bItem.name || '').toLowerCase();
 
@@ -583,6 +622,16 @@ export function renderTodoTasks() {
         frictionFilter !== 'all'
     );
 
+    const categoryOptionsHtml = uniqueCategories.map(cat =>
+        `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`
+    ).join('');
+    const userOptionsHtml = ALL_USERS.map(u =>
+        `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`
+    ).join('');
+    const resetFilterBtnHtml = hasCustomFilters
+        ? `<button type="button" class="filter-pill is-filtered-reset" onclick="resetTodoFilters()" title="Clear custom filters and restore default view" style="font-size: 11px; padding: 4px 8px;">&#x2715; Reset Filters</button>`
+        : '';
+
     let toolbarHtml = `
     ${staleBannerHtml}
     <div class="todo-toolbar-row" style="margin-bottom: 16px;">
@@ -618,7 +667,7 @@ export function renderTodoTasks() {
 
             <select class="todo-compact-select ${categoryFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoCategoryFilter(this.value)" title="Filter by Category">
                 <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
-                ${uniqueCategories.map(cat => `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
+                ${categoryOptionsHtml}
             </select>
 
             <select class="todo-compact-select ${priorityFilter !== 'all' ? 'is-filtered' : ''}" onchange="setTodoPriorityFilter(this.value)" title="Filter by Priority">
@@ -639,14 +688,10 @@ export function renderTodoTasks() {
                 <option value="all" ${personFilter === 'all' ? 'selected' : ''}>Owner: All</option>
                 <option value="me" ${personFilter === 'me' ? 'selected' : ''}>Me (${escapeHtml(activeName)})</option>
                 <option value="shared_anyone" ${personFilter === 'shared_anyone' ? 'selected' : ''}>Shared / Anyone</option>
-                ${ALL_USERS.map(u => `<option value="${u.uid}" ${personFilter === u.uid ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
+                ${userOptionsHtml}
             </select>
 
-            ${hasCustomFilters ? `
-            <button type="button" class="filter-pill is-filtered-reset" onclick="resetTodoFilters()" title="Clear custom filters and restore default view" style="font-size: 11px; padding: 4px 8px;">
-                &#x2715; Reset Filters
-            </button>
-            ` : ''}
+            ${resetFilterBtnHtml}
         </div>
     </div>
     `;
@@ -1070,8 +1115,8 @@ export function renderStaleRefresherModalContent() {
 
     const currentTask = staleTasks[state.staleCurrentIndex];
     const norm = normalizeTask(currentTask);
-    const reviewDate = new Date(norm.lastReviewedAt || norm.updatedAt || norm.createdAt);
-    const daysOld = Math.floor((Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24));
+    const reviewMs = toMillisSafe(norm.lastReviewedAt || norm.updatedAt || norm.createdAt);
+    const daysOld = Number.isFinite(reviewMs) ? Math.floor((Date.now() - reviewMs) / (1000 * 60 * 60 * 24)) : 0;
 
     container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -1258,7 +1303,10 @@ Output JSON: { "suggestedTitle": "...", "suggestedDescription": "..." }`;
             apiKey,
             preferredModel,
             prompt,
-            "You are a concise household task assistant. Return pure JSON only."
+            "You are a concise household task assistant. Return pure JSON only.",
+            null,
+            null,
+            { source: 'stale_simplify', userInput: task.name }
         );
 
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;

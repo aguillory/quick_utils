@@ -7,9 +7,12 @@ import * as api from './api.js';
 import { initChat, onChatTabOpened, sendChatMessage, editChatMessage, deleteChatMessage } from './chat.js';
 import {
     savePin, setMode, setTimeOffset, getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek,
-    loadCustomCategoriesFromFirestore, getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
-    openCategoryCombobox, toggleCategoryComboboxDropdown, filterCategoryCombobox,
-    selectCategoryComboboxOption, handleCategoryComboboxKeydown
+    toMillisSafe, isCompletedTodoExpired,
+    loadCustomCategoriesFromFirestore, loadCategoryConfigFromFirestore, saveCategoryConfigToFirestore,
+    isCategoryVisibleForTasks, getEligibleTaskCategories,
+    getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
+    openCategoryCombobox, toggleCategoryComboboxDropdown, clearCategoryComboboxInput,
+    filterCategoryCombobox, selectCategoryComboboxOption, handleCategoryComboboxKeydown
 } from './utils.js';
 import { toggleThemeMenu, setTheme, initTheme } from './theme.js';
 import {
@@ -40,6 +43,7 @@ import {
     toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine
 } from './routines.js';
 import {
+    refreshBrainDumpUser, insertBrainDumpHint,
     parseWithGemini, rawLineByLineAdd, renderBrainDumpStaging,
     updateStagingItem, updateStagingRoutineSchedule, deleteStagingItem,
     addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask,
@@ -52,7 +56,7 @@ import {
     executeBulkAction, openBulkCategoryModal, confirmBulkCategoryModal,
     switchManageSubtab, filterManageList, updateInlineTaskField, updateRoutineScheduleInline,
     setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter,
-    setBulkSortBy
+    setBulkSortBy, toggleBulkShowArchivedDone
 } from './braindump.js';
 import {
     initUsers, setActiveUser, toggleTogetherMode,
@@ -68,6 +72,7 @@ let unsubTodos = null;
 let unsubRoutines = null;
 let unsubDailyComp = null;
 let unsubSyncSignal = null;
+let unsubCategoryConfig = null;
 
 // ==========================================
 // NAVIGATION TAB SWITCHER
@@ -101,6 +106,7 @@ export function switchNavTab(tabName) {
         renderRollingSchedule();
         renderTodoTasks();
     } else if (tabName === 'braindump') {
+        refreshBrainDumpUser();
         renderBrainDumpStaging();
         renderBulkTriageList();
     } else if (tabName === 'nipto') {
@@ -157,7 +163,7 @@ Object.assign(window, {
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi,
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine, deleteRoutineFromModal,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
-    switchBrainDumpMode, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
+    switchBrainDumpMode, refreshBrainDumpUser, insertBrainDumpHint, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     applyUnifiedStagingToFirestore, toggleSectionStagingRows,
     updateStagingItem, updateStagingRoutineSchedule, deleteStagingItem, addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask, toggleAllStagingRows,
     analyzeRambleWithGemini, renderRambleDiffStaging, updateRambleRow, updateRambleProp,
@@ -166,12 +172,14 @@ Object.assign(window, {
     openBulkCategoryModal, confirmBulkCategoryModal,
     updateInlineTaskField, updateRoutineScheduleInline,
     switchManageSubtab, filterManageList,
-    setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter, setBulkSortBy,
+    setBulkTypeFilter, setBulkCategoryFilter, setBulkPriorityFilter, setBulkOwnershipFilter, setBulkSortBy, toggleBulkShowArchivedDone,
     openSettingsModal, closeSettingsModal, saveSettingsModal, testGeminiConnection,
     setTheme, toggleThemeMenu, setMode, setTimeOffset, savePin,
+    toMillisSafe, isCompletedTodoExpired,
     getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek,
+    loadCategoryConfigFromFirestore, saveCategoryConfigToFirestore, isCategoryVisibleForTasks, getEligibleTaskCategories,
     getAllKnownCategories, registerCustomCategory, renderCategoryCombobox,
-    openCategoryCombobox, toggleCategoryComboboxDropdown, filterCategoryCombobox,
+    openCategoryCombobox, toggleCategoryComboboxDropdown, clearCategoryComboboxInput, filterCategoryCombobox,
     selectCategoryComboboxOption, handleCategoryComboboxKeydown,
     setDoneTodayView, changeDoneWeekOffset, resetDoneWeekToCurrent,
     rebuildCompletedThisWeek, renderDoneThisWeekFeed,
@@ -187,15 +195,34 @@ window.submitPin = async () => {
 
 window.runSync = async () => {
     const statusText = document.getElementById('status');
+    const settingsSyncStatus = document.getElementById('settingsSyncStatus');
     if (statusText) statusText.innerText = "Syncing with Nipto...";
-    await api.syncNiptoTasks();
+    if (settingsSyncStatus) {
+        settingsSyncStatus.style.display = 'block';
+        settingsSyncStatus.style.color = 'var(--primary, #2563eb)';
+        settingsSyncStatus.textContent = "Syncing with Nipto...";
+    }
+    const syncedOk = await api.syncNiptoTasks();
+    if (!syncedOk) return;
+
     await api.loadTasksFromFirestore();
     renderTasks();
     const reconcileRes = await api.reconcileNiptoActivitiesToFirestore(true);
     if (statusText) statusText.innerText = "";
     if (reconcileRes && reconcileRes.reconciledCount > 0) {
+        const msg = `Synced Nipto tasks and reconciled ${reconcileRes.reconciledCount} external activities (+${reconcileRes.newPoints} pts)!`;
+        if (settingsSyncStatus) {
+            settingsSyncStatus.style.display = 'block';
+            settingsSyncStatus.style.color = 'var(--success, #059669)';
+            settingsSyncStatus.textContent = msg;
+        }
         showToast("sync_ok", `Synced Nipto tasks and reconciled ${reconcileRes.reconciledCount} external activities!`, reconcileRes.newPoints, "Nipto Sync");
     } else {
+        if (settingsSyncStatus) {
+            settingsSyncStatus.style.display = 'block';
+            settingsSyncStatus.style.color = 'var(--success, #059669)';
+            settingsSyncStatus.textContent = "Nipto tasks synchronized successfully!";
+        }
         showToast("sync_ok", "Nipto tasks synchronized successfully!", 0, "");
     }
 };
@@ -212,6 +239,7 @@ async function startDashboardData() {
         if (unsubRoutines) { unsubRoutines(); unsubRoutines = null; }
         if (unsubDailyComp) { unsubDailyComp(); unsubDailyComp = null; }
         if (unsubSyncSignal) { unsubSyncSignal(); unsubSyncSignal = null; }
+        if (unsubCategoryConfig) { unsubCategoryConfig(); unsubCategoryConfig = null; }
 
         let resolveTodosInitial, resolveRoutinesInitial;
         const todosInitialPromise = new Promise(resolve => { resolveTodosInitial = resolve; });
@@ -269,6 +297,7 @@ async function startDashboardData() {
         await Promise.all([
             api.loadTasksFromFirestore(),
             loadCustomCategoriesFromFirestore(),
+            loadCategoryConfigFromFirestore(),
             todosInitialPromise,
             routinesInitialPromise,
             api.loadAllowanceLedgerFromFirestore(),
@@ -278,6 +307,7 @@ async function startDashboardData() {
         ]);
 
         await initUsers();
+        refreshBrainDumpUser();
         renderRollingSchedule();
         renderTodoTasks();
         renderTasks();
@@ -316,6 +346,24 @@ async function startDashboardData() {
         }
     }, err => {
         console.error("Error in daily_completions listener:", err);
+    });
+
+    // Real-time listener for category visibility config
+    let firstCategoryConfigSnap = true;
+    unsubCategoryConfig = window.getNiptoCollection('config').doc('categories').onSnapshot(doc => {
+        const data = (doc && doc.exists) ? (doc.data() || {}) : {};
+        state.categoryConfig = {
+            hiddenCategories: Array.isArray(data.hiddenCategories) ? data.hiddenCategories.filter(Boolean) : [],
+            unhiddenNiptoCategories: Array.isArray(data.unhiddenNiptoCategories) ? data.unhiddenNiptoCategories.filter(Boolean) : []
+        };
+        if (firstCategoryConfigSnap) {
+            firstCategoryConfigSnap = false;
+            return;
+        }
+        renderTodoTasks();
+        renderBulkTriageList();
+    }, err => {
+        console.warn("Error in category config listener:", err);
     });
 
     // Real-time listener for cross-device activity sync signal

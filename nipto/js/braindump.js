@@ -5,11 +5,15 @@
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { renderTodoTasks, normalizeTask } from './todos.js';
+import { renderTodoTasks, normalizeTask, classifyTaskOwnership } from './todos.js';
 import { renderRollingSchedule, isDailyRoutine, completeRoutineForDate, isRoutineCompletedOnDate } from './routines.js';
 import { rebuildCompletedToday, renderDoneTodayFeed, updateLeaderboardUI } from './leaderboard.js';
 import { saveCloudPreference } from './preferences.js';
-import { getLocalTodayKey, renderCategoryCombobox, registerCustomCategory } from './utils.js';
+import {
+    getLocalTodayKey, renderCategoryCombobox, registerCustomCategory,
+    toMillisSafe, isCompletedTodoExpired, getEligibleTaskCategories,
+    isCategoryVisibleForTasks, getNiptoOnlyLowerSet, isInternalLockedCategory
+} from './utils.js';
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -24,30 +28,100 @@ function escapeHtml(str) {
 // ==========================================
 // 1. GEMINI AI PARSER & MULTI-MODEL FALLBACK
 // ==========================================
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
+const GEMINI_LOG_MAX_CHARS = 40000;
+const pendingGeminiLogWrites = new Map();
+
+function truncateLogStr(val, maxLen = GEMINI_LOG_MAX_CHARS) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.length <= maxLen) return str;
+    return str.slice(0, maxLen) + `\n... [truncated ${str.length - maxLen} chars]`;
+}
+
+function getCurrentActorContext() {
+    const isTogether = Boolean(state.isTogetherMode);
+    if (!isTogether && Array.isArray(state.activeUsers) && state.activeUsers.length === 1) {
+        const uid = state.activeUsers[0];
+        const u = ALL_USERS.find(user => user.uid === uid);
+        if (u) {
+            return { actorUid: u.uid, actorName: u.name, isTogetherMode: false, activeUserObj: u };
+        }
+    }
+    const uid = (Array.isArray(state.activeUsers) && state.activeUsers[0]) ? state.activeUsers[0] : '';
+    const fallbackName = ALL_USERS.find(u => u.uid === uid)?.name || 'Unknown';
+    return {
+        actorUid: uid,
+        actorName: isTogether ? 'Anyone (Together Mode)' : fallbackName,
+        isTogetherMode: isTogether,
+        activeUserObj: null
+    };
+}
+
+function writeGeminiLogNonBlocking(logData) {
+    try {
+        if (typeof window === 'undefined' || typeof window.getNiptoCollection !== 'function') return null;
+        const docRef = window.getNiptoCollection('gemini_logs').doc();
+        const logDocId = docRef.id;
+        const payload = {
+            ...logData,
+            createdAt: window.firebase?.firestore?.FieldValue?.serverTimestamp
+                ? window.firebase.firestore.FieldValue.serverTimestamp()
+                : new Date().toISOString()
+        };
+        const writePromise = docRef.set(payload).catch(e => {
+            console.warn("Could not write gemini_logs entry:", e);
+        });
+        pendingGeminiLogWrites.set(logDocId, writePromise);
+        return logDocId;
+    } catch (e) {
+        console.warn("Could not initialize gemini_logs write:", e);
+        return null;
+    }
+}
+
+function updateGeminiLogNonBlocking(logDocId, patch) {
+    if (!logDocId || typeof window === 'undefined' || typeof window.getNiptoCollection !== 'function') return;
+    const prior = pendingGeminiLogWrites.get(logDocId) || Promise.resolve();
+    prior.then(() => {
+        return window.getNiptoCollection('gemini_logs').doc(logDocId).update(patch);
+    }).catch(e => {
+        console.warn("Could not update gemini_logs entry:", e);
+    }).finally(() => {
+        pendingGeminiLogWrites.delete(logDocId);
+    });
+}
 
 const BRAINDUMP_UNIFIED_INSTRUCTION = `You are an expert AI task manager for a household chore system.
-You are given a JSON array of CURRENT_TASKS and an unstructured natural language BRAIN DUMP / RAMBLE from the user.
+You are given CURRENT_LOGGED_IN_USER, AVAILABLE_USERS, AVAILABLE_CATEGORIES, a JSON array of CURRENT_TASKS, and an unstructured natural language BRAIN DUMP / RAMBLE from the user.
 Analyze every mentioned item in the ramble against CURRENT_TASKS and output a JSON array of operations:
 [
   {
-    "action": "create" | "update" | "complete" | "delete",
-    "id": "matched_task_id_if_updating_completing_or_deleting (null for create)",
+    "action": "create" | "update" | "complete" | "delete" | "create_category",
+    "id": "matched_task_id_if_updating_completing_or_deleting (null for create or create_category)",
     "type": "todo" | "routine" | "project",
-    "title": "Task title",
-    "description": "Any extra notes, context, or instructions mentioned (empty string if none)",
+    "title": "Task title (or new category name when action is create_category)",
+    "description": "Any extra notes, context, or instructions mentioned (empty string if none; null on update if unchanged)",
     "subtasks": [{"name": "Subtask step 1", "points": 5}, {"name": "Subtask step 2", "points": 10}],
-    "assignee": "Alyssa" | "Devyn" | "Carrina" | "Kenny" | "Ayden" | "DJ" | "Anyone",
-    "category": "Home" | "Farm" | "Errands" | "Tech" | "Kids" | "Project",
+    "assignee": "One of AVAILABLE_USERS or 'Anyone' (or null on update/complete if not specified)",
+    "category": "Any category from AVAILABLE_CATEGORIES, OR a new concise Title-Case category name when the user asks to create/use a new category",
     "points": 5,
     "priority": "high" | "medium" | "low",
     "frictionTag": "" | "quick" | "low_brain" | "deep_focus",
     "schedule": {"type": "daily"|"weekly", "daysOfWeek": [0,1,2,3,4,5,6], "timeOfDay": "Morning"|"Afternoon"|"Evening"|"Anytime", "points": 5},
-    "reason": "Short summary of why this action was proposed (e.g. 'New To-Do with 3 steps', 'Increased points to 10', 'Marked completed')"
+    "reason": "Short summary of why this action was proposed (e.g. 'New To-Do with 3 steps', 'New custom category', 'Increased points to 10', 'Marked completed')"
   }
 ]
 
 Action Rules:
+- First-Person Pronoun Resolution:
+  - When CURRENT_LOGGED_IN_USER is a specific user (not "Anyone (Together Mode)"), first-person pronouns ("I", "me", "my", "myself", "I need to...", "assign to me", "I finished...") MUST set "assignee" to CURRENT_LOGGED_IN_USER.
+  - When CURRENT_LOGGED_IN_USER is "Anyone (Together Mode)", first-person pronouns map "assignee" to "Anyone".
+  - On "create", if no person or first-person pronoun is mentioned, default "assignee" to "Anyone".
+- Category Creation & Assignment:
+  - When the user asks to create a category AND create or move tasks into it, set "category": "<NewCategory>" directly on those "create" or "update" task operations — do NOT emit a dummy task named "Create category <NewCategory>".
+  - When the user asks ONLY to create a category with no tasks mentioned, emit {"action": "create_category", "id": null, "type": "todo", "title": "<NewCategory>", "category": "<NewCategory>", "reason": "New custom category"}.
+  - Otherwise choose the best category from AVAILABLE_CATEGORIES.
 - "create": Brand new items not matching any existing task.
   - subtasks: If the task/project has multiple steps, components, or instructions, output an array of objects {"name": "...", "points": 5..100 step 5} (default points: 5 per subtask). When subtasks is non-empty, set parent points = 0 (points are awarded per subtask).
   - type: "routine" for recurring/scheduled chores (e.g. daily animal feedings, weekly trash), "project" for big ideas/someday items, "todo" for actionable one-off tasks (default).
@@ -55,8 +129,10 @@ Action Rules:
   - points: Must ALWAYS be a multiple of 5 from 5 to 100 (5, 10, 15, ..., 100). Default to 5 if not specified; set parent points to 0 ONLY when subtasks is non-empty.
   - priority: Default to "low" when type is "project" unless the user explicitly asks for medium/high urgency; otherwise default to "medium".
   - frictionTag: "" (standard), "quick" (<5m), "low_brain", or "deep_focus".
-- "update": The user wants to modify fields on an existing task (e.g. change points, add subtasks, move to projects, edit title, set priority, or change schedule). Match its exact id in CURRENT_TASKS.
-- "complete": The user mentioned crossing off, finishing, or completing an existing task. Match its exact id.
+- "update": The user wants to modify fields on an existing task (e.g. change category, change points, add subtasks, move to projects, edit title, set priority, or change schedule). Match its exact id in CURRENT_TASKS.
+  - On "update", set "assignee": null unless the user explicitly asked to assign or reassign the task.
+  - On "update", set "subtasks": null unless the user explicitly asked to add, edit, or replace subtasks.
+- "complete": The user mentioned crossing off, finishing, or completing an existing task. Match its exact id. Set "assignee" to the user who completed it (or CURRENT_LOGGED_IN_USER for "I finished..."), or null if unspecified.
 - "delete": The user explicitly asked to delete or remove an existing task. Match its exact id.
 Output pure JSON array only.`;
 
@@ -73,7 +149,7 @@ export async function discoverEligibleGeminiModels(apiKey) {
     const eligible = models.filter(m => {
         const id = (m.name || '').replace(/^models\//, '').toLowerCase();
         const supportsGen = Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent');
-        const isExcluded = /(tts|image|imagen|veo|embed|aqa|audio|robotics|computer-use|learnlm|2\.5)/i.test(id);
+        const isExcluded = /(tts|image|imagen|veo|embed|aqa|audio|robotics|computer-use|learnlm|2\.5|3\.8)/i.test(id);
         const isGemini = id.startsWith('gemini-');
         return supportsGen && isGemini && !isExcluded;
     }).map(m => (m.name || '').replace(/^models\//, ''));
@@ -83,11 +159,21 @@ export async function discoverEligibleGeminiModels(apiKey) {
     }
 
     eligible.sort((a, b) => {
-        if (a === DEFAULT_GEMINI_MODEL) return -1;
-        if (b === DEFAULT_GEMINI_MODEL) return 1;
+        const al = a.toLowerCase();
+        const bl = b.toLowerCase();
+        if (al === DEFAULT_GEMINI_MODEL) return -1;
+        if (bl === DEFAULT_GEMINI_MODEL) return 1;
 
-        const aIsFlash = a.toLowerCase().includes('flash') ? 1 : 0;
-        const bIsFlash = b.toLowerCase().includes('flash') ? 1 : 0;
+        const aIsHydrogen = al.includes('hydrogen') ? 1 : 0;
+        const bIsHydrogen = bl.includes('hydrogen') ? 1 : 0;
+        if (aIsHydrogen !== bIsHydrogen) return bIsHydrogen - aIsHydrogen;
+
+        const aIsG4 = al.includes('gemini-4') ? 1 : 0;
+        const bIsG4 = bl.includes('gemini-4') ? 1 : 0;
+        if (aIsG4 !== bIsG4) return bIsG4 - aIsG4;
+
+        const aIsFlash = al.includes('flash') ? 1 : 0;
+        const bIsFlash = bl.includes('flash') ? 1 : 0;
         if (aIsFlash !== bIsFlash) return bIsFlash - aIsFlash;
 
         const parseVer = (str) => {
@@ -98,8 +184,8 @@ export async function discoverEligibleGeminiModels(apiKey) {
         const verB = parseVer(b);
         if (verA !== verB) return verB - verA;
 
-        const isStandardA = a.endsWith('-flash') ? 1 : 0;
-        const isStandardB = b.endsWith('-flash') ? 1 : 0;
+        const isStandardA = al.endsWith('-flash') ? 1 : 0;
+        const isStandardB = bl.endsWith('-flash') ? 1 : 0;
         return isStandardB - isStandardA;
     });
 
@@ -151,16 +237,56 @@ async function callGeminiGenerateSingle(apiKey, model, text, customInstruction =
 }
 
 // Calls Gemini with automatic fallback across eligible free-tier models on 404, 400, 429 (quota), or 503
-export async function callGeminiWithFallback(apiKey, preferredModel, promptText, customInstruction = null, customGenConfig = null, onStatusUpdate = null) {
+export async function callGeminiWithFallback(
+    apiKey,
+    preferredModel,
+    promptText,
+    customInstruction = null,
+    customGenConfig = null,
+    onStatusUpdate = null,
+    auditMeta = {}
+) {
     let primary = (preferredModel || DEFAULT_GEMINI_MODEL).trim().replace(/^models\//, '');
-    if (!primary || primary.includes('2.5')) {
+    if (!primary || /(2\.5|3\.8)/i.test(primary)) {
         primary = DEFAULT_GEMINI_MODEL;
     }
 
+    const startedMs = Date.now();
+    const actor = getCurrentActorContext();
+    const fallbackAttempts = [];
+    const baseLog = {
+        createdAtIso: new Date().toISOString(),
+        source: auditMeta?.source || 'unknown',
+        actorUid: actor.actorUid,
+        actorName: actor.actorName,
+        isTogetherMode: actor.isTogetherMode,
+        requestedModel: primary,
+        userInput: truncateLogStr(auditMeta?.userInput || '', 10000),
+        systemInstructionSent: truncateLogStr(customInstruction || ''),
+        fullPromptSent: truncateLogStr(promptText || '')
+    };
+
     try {
         const data = await callGeminiGenerateSingle(apiKey, primary, promptText, customInstruction, customGenConfig);
-        return { data, modelUsed: primary };
+        const rawResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data || '');
+        const logDocId = writeGeminiLogNonBlocking({
+            ...baseLog,
+            modelUsed: primary,
+            fallbackAttempts,
+            rawResponseText: truncateLogStr(rawResponseText),
+            status: 'success',
+            errorMessage: '',
+            httpStatus: 200,
+            durationMs: Date.now() - startedMs
+        });
+        return { data, modelUsed: primary, logDocId };
     } catch (firstErr) {
+        fallbackAttempts.push({
+            model: primary,
+            errorMessage: firstErr.message || String(firstErr),
+            httpStatus: firstErr.status || null
+        });
+
         const isRecoverable =
             firstErr.status === 404 ||
             firstErr.status === 429 ||
@@ -170,6 +296,16 @@ export async function callGeminiWithFallback(apiKey, preferredModel, promptText,
             /RESOURCE_EXHAUSTED/i.test(firstErr.statusText || '');
 
         if (!isRecoverable) {
+            writeGeminiLogNonBlocking({
+                ...baseLog,
+                modelUsed: primary,
+                fallbackAttempts,
+                rawResponseText: '',
+                status: 'error',
+                errorMessage: firstErr.message || String(firstErr),
+                httpStatus: firstErr.status || null,
+                durationMs: Date.now() - startedMs
+            });
             throw firstErr;
         }
 
@@ -178,8 +314,17 @@ export async function callGeminiWithFallback(apiKey, preferredModel, promptText,
             onStatusUpdate(`Primary model (${primary}) unavailable or quota reached. Trying eligible fallback model...`);
         }
 
-        const candidates = await discoverEligibleGeminiModels(apiKey);
-        const fallbackQueue = candidates.filter(m => m !== primary);
+        let fallbackQueue = [];
+        try {
+            const candidates = await discoverEligibleGeminiModels(apiKey);
+            fallbackQueue = candidates.filter(m => m !== primary);
+        } catch (discErr) {
+            fallbackAttempts.push({
+                model: 'models_discovery',
+                errorMessage: discErr.message || String(discErr),
+                httpStatus: discErr.status || null
+            });
+        }
 
         let lastErr = firstErr;
         for (const candidateModel of fallbackQueue) {
@@ -193,12 +338,38 @@ export async function callGeminiWithFallback(apiKey, preferredModel, promptText,
                 if (firstErr.status === 404 || /not found|no longer available|deprecated/i.test(firstErr.message || '')) {
                     api.saveIntegrationsConfigToFirestore({ geminiModel: candidateModel }).catch(() => {});
                 }
-                return { data, modelUsed: candidateModel };
+                const rawResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data || '');
+                const logDocId = writeGeminiLogNonBlocking({
+                    ...baseLog,
+                    modelUsed: candidateModel,
+                    fallbackAttempts,
+                    rawResponseText: truncateLogStr(rawResponseText),
+                    status: 'success',
+                    errorMessage: '',
+                    httpStatus: 200,
+                    durationMs: Date.now() - startedMs
+                });
+                return { data, modelUsed: candidateModel, logDocId };
             } catch (candErr) {
+                fallbackAttempts.push({
+                    model: candidateModel,
+                    errorMessage: candErr.message || String(candErr),
+                    httpStatus: candErr.status || null
+                });
                 lastErr = candErr;
             }
         }
 
+        writeGeminiLogNonBlocking({
+            ...baseLog,
+            modelUsed: primary,
+            fallbackAttempts,
+            rawResponseText: '',
+            status: 'error',
+            errorMessage: lastErr.message || String(lastErr),
+            httpStatus: lastErr.status || null,
+            durationMs: Date.now() - startedMs
+        });
         throw lastErr;
     }
 }
@@ -206,6 +377,53 @@ export async function callGeminiWithFallback(apiKey, preferredModel, promptText,
 // ==========================================
 // 2. UNIFIED BRAIN DUMP OMNIBOX PARSER
 // ==========================================
+export function refreshBrainDumpUser() {
+    const el = document.getElementById('brainDumpActiveUser');
+    if (!el) return;
+    const actor = getCurrentActorContext();
+    if (actor.activeUserObj) {
+        el.textContent = actor.activeUserObj.name;
+        el.style.color = actor.activeUserObj.color || 'var(--primary)';
+    } else if (state.isTogetherMode) {
+        el.textContent = 'Anyone (Together Mode)';
+        el.style.color = 'var(--text-muted)';
+    } else {
+        el.textContent = actor.actorName || 'Anyone';
+        el.style.color = 'var(--primary)';
+    }
+}
+
+export function insertBrainDumpHint(snippet) {
+    const input = document.getElementById('brainDumpInput');
+    if (!input) return;
+    const val = input.value || '';
+    const start = typeof input.selectionStart === 'number' ? input.selectionStart : val.length;
+    const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : val.length;
+    const before = val.slice(0, start);
+    const after = val.slice(end);
+    const needsLeadingSpace = before.length > 0 && !/[\s\n]$/.test(before);
+    const insertText = (needsLeadingSpace ? ' ' : '') + snippet;
+    input.value = before + insertText + after;
+    const nextPos = before.length + insertText.length;
+    input.focus();
+    if (typeof input.setSelectionRange === 'function') {
+        input.setSelectionRange(nextPos, nextPos);
+    }
+}
+
+function normalizeStagingAssignee(rawAssignee, selfUserName) {
+    if (rawAssignee === null || rawAssignee === undefined) return null;
+    const str = String(rawAssignee).trim();
+    if (!str) return null;
+    const lower = str.toLowerCase();
+    if (['i', 'me', 'my', 'myself', 'current_user', 'current user'].includes(lower)) {
+        return selfUserName || 'Anyone';
+    }
+    if (lower === 'anyone' || lower === 'everyone' || lower === 'unassigned') return 'Anyone';
+    const matchedUser = ALL_USERS.find(u => (u.name && u.name.toLowerCase() === lower) || u.uid === str);
+    return matchedUser ? matchedUser.name : str;
+}
+
 export async function parseWithGemini() {
     const inputEl = document.getElementById('brainDumpInput');
     const parseBtn = document.getElementById('btnParseGemini');
@@ -224,6 +442,12 @@ export async function parseWithGemini() {
         return;
     }
 
+    const mapUidsToNames = (uids = []) => {
+        if (!Array.isArray(uids) || uids.length === 0) return ['Anyone'];
+        const names = uids.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || uid).filter(Boolean);
+        return names.length > 0 ? names : ['Anyone'];
+    };
+
     const activeTodos = (state.todoTasksData || []).filter(t => !t.completed).map(t => {
         const norm = normalizeTask(t);
         return {
@@ -233,6 +457,13 @@ export async function parseWithGemini() {
             category: norm.category || 'Home',
             points: norm.points || 5,
             priority: norm.priority || 'medium',
+            assignees: mapUidsToNames(norm.assignees),
+            subtasks: Array.isArray(norm.subTasks) ? norm.subTasks.map(st => ({
+                id: st.id || null,
+                name: st.name || st.text || '',
+                points: api.clampStep5Points(st.points, 5),
+                completed: Boolean(st.completed)
+            })) : [],
             schedule: null,
             description: norm.description || ''
         };
@@ -245,14 +476,20 @@ export async function parseWithGemini() {
         category: r.category || 'Home',
         points: api.getRoutinePoints(r),
         priority: r.priority || 'medium',
+        assignees: mapUidsToNames(r.assignees),
         schedule: isDailyRoutine(r) ? 'daily' : 'weekly',
         description: ''
     }));
 
     const tasksContext = [...activeTodos, ...activeRoutines];
+    const actor = getCurrentActorContext();
+    const currentLoggedInUser = actor.activeUserObj ? actor.activeUserObj.name : 'Anyone (Together Mode)';
+    const selfUserName = actor.activeUserObj ? actor.activeUserObj.name : 'Anyone';
+    const availableUsers = [...ALL_USERS.map(u => u.name), 'Anyone'];
+    const availableCategories = getEligibleTaskCategories();
 
     let configuredModel = (state.integrationsConfig?.geminiModel || DEFAULT_GEMINI_MODEL).trim();
-    if (configuredModel.includes('2.5')) {
+    if (!configuredModel || /(2\.5|3\.8)/i.test(configuredModel)) {
         configuredModel = DEFAULT_GEMINI_MODEL;
     }
 
@@ -265,14 +502,18 @@ export async function parseWithGemini() {
         statusEl.style.color = "var(--primary)";
     }
 
-    const payloadText = `CURRENT_TASKS:
+    const payloadText = `CURRENT_LOGGED_IN_USER: ${currentLoggedInUser}
+AVAILABLE_USERS: ${JSON.stringify(availableUsers)}
+AVAILABLE_CATEGORIES: ${JSON.stringify(availableCategories)}
+
+CURRENT_TASKS:
 ${JSON.stringify(tasksContext, null, 2)}
 
 USER BRAIN DUMP / RAMBLE:
 "${text}"`;
 
     try {
-        const { data, modelUsed } = await callGeminiWithFallback(
+        const { data, modelUsed, logDocId } = await callGeminiWithFallback(
             apiKey,
             configuredModel,
             payloadText,
@@ -283,18 +524,39 @@ USER BRAIN DUMP / RAMBLE:
                     statusEl.textContent = msg;
                     statusEl.style.color = "var(--warning, #f59e0b)";
                 }
-            }
+            },
+            { source: 'brain_dump', userInput: text }
         );
 
         const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!candidateText) throw new Error("Gemini returned empty response.");
+        if (!candidateText) {
+            if (logDocId) {
+                updateGeminiLogNonBlocking(logDocId, {
+                    status: 'parse_error',
+                    parseError: 'Gemini returned empty response.'
+                });
+            }
+            throw new Error("Gemini returned empty response.");
+        }
 
         let cleanedText = candidateText.trim();
         if (cleanedText.startsWith('```')) {
             cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
         }
 
-        let parsedItems = JSON.parse(cleanedText);
+        let parsedItems;
+        try {
+            parsedItems = JSON.parse(cleanedText);
+        } catch (parseErr) {
+            if (logDocId) {
+                updateGeminiLogNonBlocking(logDocId, {
+                    status: 'parse_error',
+                    parseError: parseErr.message || String(parseErr)
+                });
+            }
+            throw parseErr;
+        }
+
         if (!Array.isArray(parsedItems)) {
             if (parsedItems.items && Array.isArray(parsedItems.items)) parsedItems = parsedItems.items;
             else if (parsedItems.tasks && Array.isArray(parsedItems.tasks)) parsedItems = parsedItems.tasks;
@@ -302,17 +564,81 @@ USER BRAIN DUMP / RAMBLE:
             else parsedItems = [parsedItems];
         }
 
-        state.brainDumpStaging = parsedItems.map((item, idx) => {
+        const createCatTitleRe = /^(?:create|add|make|new)\s+(?:a\s+|the\s+)?category(?:\s+called|\s+named)?\s*[:\-]?\s*["']?(.+?)["']?$/i;
+        const usedCatsLower = new Set(
+            parsedItems
+                .filter(it => it && it.action !== 'create_category' && it.category && !createCatTitleRe.test(it.title || ''))
+                .map(it => String(it.category).trim().toLowerCase())
+        );
+
+        const cleanedOperations = [];
+        for (const rawItem of parsedItems) {
+            if (!rawItem || typeof rawItem !== 'object') continue;
+            const copy = { ...rawItem };
+            const dummyMatch = (copy.title || '').trim().match(createCatTitleRe);
+            if (dummyMatch && copy.action === 'create') {
+                const targetCat = (dummyMatch[1] || copy.category || '').trim();
+                if (targetCat && usedCatsLower.has(targetCat.toLowerCase())) {
+                    continue;
+                }
+                if (targetCat) {
+                    copy.action = 'create_category';
+                    copy.category = targetCat;
+                    copy.title = targetCat;
+                    copy.reason = copy.reason || 'New custom category';
+                }
+            }
+            cleanedOperations.push(copy);
+        }
+
+        const niptoOnlyLower = getNiptoOnlyLowerSet();
+        const hiddenCatsLower = new Set(
+            (state.categoryConfig?.hiddenCategories || []).map(c => String(c || '').trim().toLowerCase()).filter(Boolean)
+        );
+
+        state.brainDumpStaging = cleanedOperations.map((item, idx) => {
             const current = item.id ? tasksContext.find(t => t.id === item.id) : null;
-            const action = ['create', 'update', 'complete', 'delete'].includes(item.action)
+            const rawTodo = item.id ? (state.todoTasksData || []).find(t => t.id === item.id) : null;
+            const rawRoutine = item.id ? (state.routines || []).find(r => r.uid === item.id) : null;
+            const rawDoc = rawTodo || rawRoutine;
+
+            const action = ['create', 'update', 'complete', 'delete', 'create_category'].includes(item.action)
                 ? item.action
                 : (current ? 'update' : 'create');
+
+            if (action === 'create_category') {
+                const newCatName = (item.category || item.title || '').trim();
+                return {
+                    stagingId: 'stage_' + Date.now() + '_' + idx,
+                    selected: Boolean(newCatName),
+                    action: 'create_category',
+                    id: null,
+                    type: 'todo',
+                    title: newCatName || 'New Category',
+                    description: '',
+                    subtasks: [],
+                    assignee: 'Anyone',
+                    category: newCatName || 'Home',
+                    isExplicitCategoryCreate: true,
+                    points: 0,
+                    _prevPoints: 5,
+                    priority: 'medium',
+                    priorityTouched: false,
+                    frictionTag: '',
+                    schedule: null,
+                    reason: item.reason || 'New custom category',
+                    current: null
+                };
+            }
 
             const itemType = ['todo', 'project', 'routine'].includes(item.type)
                 ? item.type
                 : (current ? current.type : (item.targetType === 'routine' ? 'routine' : 'todo'));
 
-            const existingSubs = (current && Array.isArray(current.subTasks)) ? current.subTasks : [];
+            const existingSubs = (rawTodo && Array.isArray(rawTodo.subTasks))
+                ? rawTodo.subTasks
+                : ((current && Array.isArray(current.subtasks)) ? current.subtasks : []);
+
             const normalizeSubItem = (s) => {
                 const subName = (typeof s === 'string' ? s : (s?.name || s?.text || '')).trim();
                 if (!subName) return null;
@@ -331,7 +657,11 @@ USER BRAIN DUMP / RAMBLE:
             };
 
             let subtasks = [];
-            if (Array.isArray(item.subtasks)) {
+            if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
+                subtasks = item.subtasks.map(normalizeSubItem).filter(Boolean);
+            } else if (action === 'update' && existingSubs.length > 0) {
+                subtasks = existingSubs.map(normalizeSubItem).filter(Boolean);
+            } else if (Array.isArray(item.subtasks)) {
                 subtasks = item.subtasks.map(normalizeSubItem).filter(Boolean);
             } else if (existingSubs.length > 0) {
                 subtasks = existingSubs.map(normalizeSubItem).filter(Boolean);
@@ -359,11 +689,47 @@ USER BRAIN DUMP / RAMBLE:
                 }
             }
 
-            const catVal = registerCustomCategory(item.category || (current ? current.category : 'Home')) || 'Home';
+            const existingAssigneeUids = Array.isArray(rawDoc?.assignees)
+                ? rawDoc.assignees.map(a => String(a || '').trim()).filter(Boolean)
+                : [];
+            const existingAssigneesLabel = existingAssigneeUids.length > 0
+                ? mapUidsToNames(existingAssigneeUids).join(' & ')
+                : 'Anyone';
+
+            const normAssignee = normalizeStagingAssignee(item.assignee, selfUserName);
+            let finalAssignee = 'Anyone';
+            if (action === 'update') {
+                if (normAssignee === null && existingAssigneeUids.length > 0) {
+                    finalAssignee = '__KEEP__';
+                } else {
+                    finalAssignee = normAssignee || 'Anyone';
+                }
+            } else {
+                finalAssignee = normAssignee || 'Anyone';
+            }
+
+            const rawProposedCat = (item.category || (current ? current.category : 'Home') || 'Home').trim();
+            const proposedLower = rawProposedCat.toLowerCase();
+            const escapedCat = rawProposedCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const userMentionedCat = Boolean(rawProposedCat && new RegExp(`\\b${escapedCat}\\b`, 'i').test(text));
+            const isHiddenOrNipto = hiddenCatsLower.has(proposedLower) || niptoOnlyLower.has(proposedLower);
+            let catVal = rawProposedCat || 'Home';
+            let isExplicitCategoryCreate = false;
+
+            if (isInternalLockedCategory(catVal)) {
+                catVal = (current && isCategoryVisibleForTasks(current.category)) ? current.category : 'Home';
+            } else if (isHiddenOrNipto && !userMentionedCat && !(current && current.category && current.category.toLowerCase() === proposedLower)) {
+                catVal = (current && isCategoryVisibleForTasks(current.category)) ? current.category : 'Home';
+            } else if (userMentionedCat || !availableCategories.some(c => c.toLowerCase() === proposedLower)) {
+                isExplicitCategoryCreate = Boolean(
+                    action === 'create' || action === 'update'
+                ) && !availableCategories.some(c => c.toLowerCase() === proposedLower);
+            }
+
             const isContainer = itemType !== 'routine' && subtasks.length > 0;
             const resolvedPoints = isContainer
                 ? 0
-                : api.clampStep5Points(item.points !== undefined ? item.points : (current ? current.points : 5), 5);
+                : api.clampStep5Points(item.points !== undefined && item.points !== null ? item.points : (current ? current.points : 5), 5);
             const defaultPri = itemType === 'project' ? 'low' : 'medium';
             const resolvedPri = ['high', 'medium', 'low'].includes(item.priority)
                 ? item.priority
@@ -376,10 +742,13 @@ USER BRAIN DUMP / RAMBLE:
                 id: item.id || (current ? current.id : null),
                 type: itemType,
                 title: item.title || (current ? current.title : 'Untitled Task'),
-                description: item.description !== undefined ? item.description : (current ? current.description : ''),
+                description: (item.description !== undefined && item.description !== null) ? item.description : (current ? current.description : ''),
                 subtasks,
-                assignee: item.assignee || 'Anyone',
+                assignee: finalAssignee,
+                existingAssigneeUids,
+                existingAssigneesLabel,
                 category: catVal,
+                isExplicitCategoryCreate,
                 points: resolvedPoints,
                 _prevPoints: current ? api.clampStep5Points(current.points, 5) : 5,
                 priority: resolvedPri,
@@ -391,9 +760,24 @@ USER BRAIN DUMP / RAMBLE:
             };
         });
 
+        if (logDocId) {
+            const parsedSummary = state.brainDumpStaging.slice(0, 50).map(st => ({
+                action: st.action,
+                type: st.type,
+                title: st.title,
+                category: st.category,
+                assignee: st.assignee,
+                points: st.points
+            }));
+            updateGeminiLogNonBlocking(logDocId, {
+                parsedActionCount: state.brainDumpStaging.length,
+                parsedSummary
+            });
+        }
+
         renderBrainDumpStaging();
         if (statusEl) {
-            const newCount = state.brainDumpStaging.filter(i => i.action === 'create').length;
+            const newCount = state.brainDumpStaging.filter(i => i.action === 'create' || i.action === 'create_category').length;
             const updateCount = state.brainDumpStaging.length - newCount;
             statusEl.textContent = `Analyzed ${state.brainDumpStaging.length} operations (${newCount} new, ${updateCount} updates) via ${modelUsed}. Review below.`;
             statusEl.style.color = "var(--success)";
@@ -424,29 +808,58 @@ export function rawLineByLineAdd() {
     }
 
     const lines = text.split('\n')
-        .map(l => l.trim().replace(/^[-*•]\s*/, ''))
+        .map(l => l.trim().replace(/^[-*\u2022]\s*/, ''))
         .filter(l => l.length > 0);
 
     if (lines.length === 0) return;
 
-    state.brainDumpStaging = lines.map((line, idx) => ({
-        stagingId: 'stage_' + Date.now() + '_' + idx,
-        selected: true,
-        action: 'create',
-        id: null,
-        type: 'todo',
-        title: line,
-        description: '',
-        subtasks: [],
-        assignee: 'Anyone',
-        category: 'Home',
-        points: 5,
-        priority: 'medium',
-        frictionTag: '',
-        schedule: null,
-        reason: 'Raw line item',
-        current: null
-    }));
+    const actor = getCurrentActorContext();
+    const selfAssignee = actor.activeUserObj ? actor.activeUserObj.name : 'Anyone';
+
+    state.brainDumpStaging = lines.map((line, idx) => {
+        let cleanTitle = line;
+        let assignee = 'Anyone';
+
+        const meMatch = cleanTitle.match(/^(?:i\s+(?:need|have|want|gotta)\s+to\s+|me\s*:\s*)/i);
+        if (meMatch) {
+            assignee = selfAssignee;
+            cleanTitle = cleanTitle.slice(meMatch[0].length).trim();
+        } else {
+            const colonMatch = cleanTitle.match(/^([A-Za-z]+)\s*:\s*(.+)$/);
+            if (colonMatch) {
+                const matchedUser = ALL_USERS.find(u => u.name.toLowerCase() === colonMatch[1].toLowerCase());
+                if (matchedUser) {
+                    assignee = matchedUser.name;
+                    cleanTitle = colonMatch[2].trim();
+                }
+            }
+        }
+
+        if (!cleanTitle) {
+            cleanTitle = line;
+        } else {
+            cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+        }
+
+        return {
+            stagingId: 'stage_' + Date.now() + '_' + idx,
+            selected: true,
+            action: 'create',
+            id: null,
+            type: 'todo',
+            title: cleanTitle,
+            description: '',
+            subtasks: [],
+            assignee,
+            category: 'Home',
+            points: 5,
+            priority: 'medium',
+            frictionTag: '',
+            schedule: null,
+            reason: assignee !== 'Anyone' ? `Raw line item (${assignee})` : 'Raw line item',
+            current: null
+        };
+    });
 
     renderBrainDumpStaging();
     if (statusEl) {
@@ -537,8 +950,8 @@ export function renderBrainDumpStaging() {
         return;
     }
 
-    const newItems = state.brainDumpStaging.filter(item => item.action === 'create');
-    const existingItems = state.brainDumpStaging.filter(item => item.action !== 'create');
+    const newItems = state.brainDumpStaging.filter(item => item.action === 'create' || item.action === 'create_category');
+    const existingItems = state.brainDumpStaging.filter(item => item.action !== 'create' && item.action !== 'create_category');
 
     const userOptionsHtml = `<option value="Anyone">Anyone</option>` +
         ALL_USERS.map(u => `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join('');
@@ -558,6 +971,24 @@ export function renderBrainDumpStaging() {
     `;
 
     function renderStagingCard(item, idx) {
+        if (item.action === 'create_category') {
+            const isUnselectedCat = !item.selected;
+            const opacityCat = item.selected ? '1' : '0.6';
+            const checkedCat = item.selected ? 'checked' : '';
+            const catReasonHtml = item.reason
+                ? `<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${escapeHtml(item.reason)}</span>`
+                : '';
+            return `
+            <div class="staging-card ${isUnselectedCat ? 'is-unselected' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; opacity: ${opacityCat}; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <input type="checkbox" ${checkedCat} onchange="updateStagingItem(${idx}, 'selected', this.checked)">
+                <span style="background: rgba(16, 185, 129, 0.15); color: #059669; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">NEW CATEGORY</span>
+                <input type="text" value="${escapeHtml(item.category || item.title)}" onchange="updateStagingItem(${idx}, 'category', this.value); updateStagingItem(${idx}, 'title', this.value);" style="flex: 1; min-width: 160px; padding: 4px 8px; font-size: 13px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border-color); box-sizing: border-box; background: var(--bg-color); color: var(--text-main);" placeholder="Category name...">
+                ${catReasonHtml}
+                <button type="button" onclick="deleteStagingItem(${idx})" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 16px; margin-left: auto;" title="Remove row">&times;</button>
+            </div>
+            `;
+        }
+
         let actionBadge = '';
         if (item.action === 'complete') actionBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">COMPLETE</span>';
         else if (item.action === 'delete') actionBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 11px;">DELETE</span>';
@@ -576,8 +1007,11 @@ export function renderBrainDumpStaging() {
             ? '<span style="font-size: 11px; color: var(--text-muted); background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">' + escapeHtml(item.reason) + '</span>'
             : '';
 
+        const keepOptionHtml = (item.action === 'update' && Array.isArray(item.existingAssigneeUids) && item.existingAssigneeUids.length > 0)
+            ? `<option value="__KEEP__">Keep Current (${escapeHtml(item.existingAssigneesLabel || 'Assigned')})</option>`
+            : '';
         const targetVal = 'value="' + escapeHtml(item.assignee) + '"';
-        const assigneeOptionsHtml = userOptionsHtml.replace(targetVal, targetVal + ' selected');
+        const assigneeOptionsHtml = (keepOptionHtml + userOptionsHtml).replace(targetVal, targetVal + ' selected');
 
         let scheduleHtml = '';
         if (item.type === 'routine') {
@@ -710,6 +1144,9 @@ export function renderBrainDumpStaging() {
     }
 
     if (newItems.length > 0) {
+        const newCardsHtml = state.brainDumpStaging
+            .map((item, idx) => (item.action === 'create' || item.action === 'create_category') ? renderStagingCard(item, idx) : '')
+            .join('');
         html += `
         <div style="margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -720,12 +1157,15 @@ export function renderBrainDumpStaging() {
                     <input type="checkbox" checked onchange="toggleSectionStagingRows('create', this.checked)"> Select All New
                 </label>
             </div>
-            ${state.brainDumpStaging.map((item, idx) => item.action === 'create' ? renderStagingCard(item, idx) : '').join('')}
+            ${newCardsHtml}
         </div>
         `;
     }
 
     if (existingItems.length > 0) {
+        const existingCardsHtml = state.brainDumpStaging
+            .map((item, idx) => (item.action !== 'create' && item.action !== 'create_category') ? renderStagingCard(item, idx) : '')
+            .join('');
         html += `
         <div style="margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -736,7 +1176,7 @@ export function renderBrainDumpStaging() {
                     <input type="checkbox" checked onchange="toggleSectionStagingRows('existing', this.checked)"> Select All Updates
                 </label>
             </div>
-            ${state.brainDumpStaging.map((item, idx) => item.action !== 'create' ? renderStagingCard(item, idx) : '').join('')}
+            ${existingCardsHtml}
         </div>
         `;
     }
@@ -749,7 +1189,8 @@ export function updateStagingItem(index, field, value) {
     if (!item) return;
 
     if (field === 'category') {
-        value = registerCustomCategory(value) || 'Home';
+        value = registerCustomCategory(value, false) || 'Home';
+        item.isExplicitCategoryCreate = true;
     } else if (field === 'points') {
         const hasSubs = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
         value = hasSubs ? 0 : api.clampStep5Points(value, 5);
@@ -795,8 +1236,8 @@ export function toggleAllStagingRows(checked) {
 
 export function toggleSectionStagingRows(section, checked) {
     state.brainDumpStaging.forEach(item => {
-        if (section === 'create' && item.action === 'create') item.selected = checked;
-        else if (section === 'existing' && item.action !== 'create') item.selected = checked;
+        if (section === 'create' && (item.action === 'create' || item.action === 'create_category')) item.selected = checked;
+        else if (section === 'existing' && item.action !== 'create' && item.action !== 'create_category') item.selected = checked;
     });
     renderBrainDumpStaging();
 }
@@ -851,15 +1292,25 @@ export async function applyUnifiedStagingToFirestore() {
     let updatedCount = 0;
     let completedCount = 0;
     let deletedCount = 0;
+    let hasBatchOps = false;
 
     for (const item of selected) {
+        if (item.action === 'create_category') {
+            const newCatName = registerCustomCategory(item.category || item.title || '', true);
+            if (newCatName) createdCount++;
+            continue;
+        }
+
         const id = item.id;
         const isRoutineDoc = id && state.routines?.some(r => r.uid === id);
-        const catVal = registerCustomCategory(item.category || 'Home') || 'Home';
+        const rawCatName = (item.category || 'Home').trim() || 'Home';
+        const isAlreadyKnownVisible = getEligibleTaskCategories().some(c => c.toLowerCase() === rawCatName.toLowerCase());
+        const shouldExplicitCreateCat = Boolean(item.isExplicitCategoryCreate || !isAlreadyKnownVisible);
+        const catVal = registerCustomCategory(rawCatName, shouldExplicitCreateCat) || 'Home';
 
         if (item.action === 'create') {
             const assigneeUids = [];
-            if (item.assignee && item.assignee !== 'Anyone') {
+            if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
                 const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
                 if (userObj) assigneeUids.push(userObj.uid);
             }
@@ -892,6 +1343,7 @@ export async function applyUnifiedStagingToFirestore() {
                     lastCompletedBy: {},
                     completionsByDate: {}
                 });
+                hasBatchOps = true;
             } else {
                 const todoRef = window.getNiptoCollection('custom_tasks').doc();
                 const subTasks = (item.subtasks || []).map((s, i) => ({
@@ -928,16 +1380,32 @@ export async function applyUnifiedStagingToFirestore() {
                     updatedAt: nowIso,
                     lastReviewedAt: nowIso
                 });
+                hasBatchOps = true;
             }
             createdCount++;
         } else if (item.action === 'delete') {
             if (isRoutineDoc) {
                 batch.delete(window.getNiptoCollection('routines').doc(id));
+                hasBatchOps = true;
             } else if (id) {
                 batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
+                hasBatchOps = true;
             }
             deletedCount++;
         } else if (item.action === 'complete') {
+            let compUid = doerUid;
+            let compName = doerName;
+            if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
+                const matchedCompUser = ALL_USERS.find(u =>
+                    (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
+                    u.uid === item.assignee
+                );
+                if (matchedCompUser) {
+                    compUid = matchedCompUser.uid;
+                    compName = matchedCompUser.name;
+                }
+            }
+
             if (isRoutineDoc) {
                 const routine = state.routines.find(r => r.uid === id);
                 if (routine) {
@@ -946,7 +1414,7 @@ export async function applyUnifiedStagingToFirestore() {
                         routine.points = stagedPts;
                         await api.updateFirestoreDocument('routines', id, { points: stagedPts });
                     }
-                    await completeRoutineForDate(id, todayKey, true);
+                    await completeRoutineForDate(id, todayKey, true, compUid);
                 }
             } else if (id) {
                 const existingTodo = state.todoTasksData?.find(t => t.id === id);
@@ -959,7 +1427,7 @@ export async function applyUnifiedStagingToFirestore() {
                         activityUids = await api.logCustomPointsToNipto(
                             pts,
                             item.title || existingTodo?.name || 'To-Do',
-                            [doerUid],
+                            [compUid],
                             nowIso,
                             existingTodo?.linkedNiptoTask || null
                         );
@@ -970,14 +1438,15 @@ export async function applyUnifiedStagingToFirestore() {
                 batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
                     completed: true,
                     completedAt: nowIso,
-                    completedBy: [doerUid],
+                    completedBy: [compUid],
                     completedActivityUids: activityUids,
                     completedActivityUid: activityUids[0] || null,
                     lastReviewedAt: nowIso,
                     updatedAt: nowIso
                 });
+                hasBatchOps = true;
                 if (pts > 0 && activityUids.length === 0) {
-                    api.awardAllowancePoints(doerUid, pts);
+                    api.awardAllowancePoints(compUid, pts);
                 }
                 if (!isContainerTodo && pts > 0) {
                     await api.recordDailyCompletion({
@@ -985,8 +1454,8 @@ export async function applyUnifiedStagingToFirestore() {
                         itemId: id,
                         sourceType: 'todo',
                         title: item.title || existingTodo?.name || 'To-Do',
-                        user: doerName,
-                        userUid: doerUid,
+                        user: compName,
+                        userUid: compUid,
                         points: pts,
                         completedAt: nowIso,
                         dateKey: todayKey,
@@ -997,6 +1466,21 @@ export async function applyUnifiedStagingToFirestore() {
             completedCount++;
         } else {
             // action === 'update'
+            let nextAssignees = null;
+            if (item.assignee && item.assignee !== '__KEEP__') {
+                if (item.assignee === 'Anyone') {
+                    nextAssignees = [];
+                } else {
+                    const matchedAssUser = ALL_USERS.find(u =>
+                        (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
+                        u.uid === item.assignee
+                    );
+                    if (matchedAssUser) nextAssignees = [matchedAssUser.uid];
+                }
+            } else if (Array.isArray(item.existingAssigneeUids)) {
+                nextAssignees = [...item.existingAssigneeUids];
+            }
+
             if (isRoutineDoc) {
                 const scheduleData = buildCleanRoutineSchedule(item);
                 batch.update(window.getNiptoCollection('routines').doc(id), {
@@ -1005,20 +1489,18 @@ export async function applyUnifiedStagingToFirestore() {
                     points: api.clampStep5Points(item.points, 5),
                     priority: item.priority || 'medium',
                     frictionTag: item.frictionTag || '',
+                    ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
                     schedule: scheduleData,
                     timeOfDay: scheduleData.timeOfDay,
                     updatedAt: nowIso,
                     lastReviewedAt: nowIso
                 });
+                hasBatchOps = true;
             } else if (id) {
                 if (item.type === 'routine') {
                     const newRoutineRef = window.getNiptoCollection('routines').doc();
                     const scheduleData = buildCleanRoutineSchedule(item);
-                    const convertedAssignees = [];
-                    if (item.assignee && item.assignee !== 'Anyone') {
-                        const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
-                        if (userObj) convertedAssignees.push(userObj.uid);
-                    }
+                    const convertedAssignees = nextAssignees !== null ? nextAssignees : [];
                     batch.set(newRoutineRef, {
                         name: item.title,
                         type: 'routine',
@@ -1036,6 +1518,7 @@ export async function applyUnifiedStagingToFirestore() {
                         completionsByDate: {}
                     });
                     batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
+                    hasBatchOps = true;
                 } else {
                     const existingTaskDoc = state.todoTasksData?.find(t => t.id === id) || item.current;
                     const existingSubList = Array.isArray(existingTaskDoc?.subTasks) ? existingTaskDoc.subTasks : [];
@@ -1063,7 +1546,7 @@ export async function applyUnifiedStagingToFirestore() {
                                 createdAt: prevSt?.createdAt || nowIso
                             };
                         }).filter(Boolean);
-                    } else if (existingSubList.length > 0) {
+                    } else if (Array.isArray(item.subtasks) && item.subtasks.length === 0 && existingSubList.length > 0) {
                         nextSubTasks = [];
                     }
 
@@ -1076,6 +1559,7 @@ export async function applyUnifiedStagingToFirestore() {
                         type: item.type,
                         bucket: item.type === 'project' ? 'project_idea' : 'actionable',
                         category: catVal,
+                        ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
                         points: hasUpdatedSubtasks ? 0 : api.clampStep5Points(item.points, 5),
                         ...(hasUpdatedSubtasks ? { linkedNiptoTask: null } : {}),
                         priority: item.priority || (item.type === 'project' ? 'low' : 'medium'),
@@ -1089,6 +1573,7 @@ export async function applyUnifiedStagingToFirestore() {
                         updates.subTasks = nextSubTasks;
                     }
                     batch.update(window.getNiptoCollection('custom_tasks').doc(id), updates);
+                    hasBatchOps = true;
                 }
             }
             updatedCount++;
@@ -1096,7 +1581,9 @@ export async function applyUnifiedStagingToFirestore() {
     }
 
     try {
-        await batch.commit();
+        if (hasBatchOps) {
+            await batch.commit();
+        }
         showToast("unified_ok", `Applied ${selected.length} changes (${createdCount} added, ${updatedCount} updated, ${completedCount} completed, ${deletedCount} deleted)!`, 0, "");
         clearBrainDumpStaging();
         const inputEl = document.getElementById('brainDumpInput');
@@ -1234,26 +1721,45 @@ export function toggleBulkSectionCollapse(sectionKey) {
     renderBulkTriageList();
 }
 
-export function renderBulkTriageList() {
-    const container = document.getElementById('bulkTriageContainer');
-    if (!container) return;
+export function toggleBulkShowArchivedDone() {
+    state.showArchivedDoneInBulk = !state.showArchivedDoneInBulk;
+    if (!state.showArchivedDoneInBulk) {
+        (state.todoTasksData || []).forEach(t => {
+            if (isCompletedTodoExpired(t)) {
+                state.selectedTodoIds.delete(t.id);
+            }
+        });
+    }
+    renderBulkTriageList();
+}
 
+function getFilteredBulkData() {
     const query = state.manageSearchQuery || '';
     if (!state.bulkTypeFilter) state.bulkTypeFilter = 'all';
     const typeFilter = state.bulkTypeFilter;
+    if (state.bulkCategoryFilter && state.bulkCategoryFilter !== 'all' && !isCategoryVisibleForTasks(state.bulkCategoryFilter)) {
+        state.bulkCategoryFilter = 'all';
+    }
     const categoryFilter = state.bulkCategoryFilter || 'all';
     const priorityFilter = state.bulkPriorityFilter || 'all';
     const ownershipFilter = state.bulkOwnershipFilter || 'all';
     const sortBy = state.bulkSortBy || 'default';
-    const collapsedSections = state.userPrefs.bulkCollapsedSections || {};
+    const showArchivedDone = Boolean(state.showArchivedDoneInBulk);
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+    const allRawTodos = (state.todoTasksData || []).map(normalizeTask);
+    const archivedDoneCount = allRawTodos.filter(t => isCompletedTodoExpired(t)).length;
 
-    const allTodos = (state.todoTasksData || []).map(normalizeTask);
+    if (!showArchivedDone) {
+        allRawTodos.forEach(t => {
+            if (isCompletedTodoExpired(t)) state.selectedTodoIds.delete(t.id);
+        });
+    }
+
+    const allTodos = showArchivedDone
+        ? allRawTodos
+        : allRawTodos.filter(t => !isCompletedTodoExpired(t));
     const allRoutines = state.routines || [];
-
-    const totalSelected = state.selectedTodoIds.size + state.selectedRoutineIds.size;
-    updateBulkActionBarVisibility(totalSelected);
 
     function getPriorityWeight(p) {
         if (!p) return 2;
@@ -1276,10 +1782,11 @@ export function renderBulkTriageList() {
 
     function matchesOwn(assignees = []) {
         if (ownershipFilter === 'all') return true;
-        if (ownershipFilter === 'me') return assignees.includes(activeUid);
-        if (ownershipFilter === 'individual') return assignees.length === 1;
-        if (ownershipFilter === 'shared') return assignees.length === 0 || assignees.length > 1;
-        if (ownershipFilter === 'unassigned') return assignees.length === 0;
+        const own = classifyTaskOwnership({ assignees }, activeUid, ALL_USERS);
+        if (ownershipFilter === 'me') return own.assignees.includes(activeUid);
+        if (ownershipFilter === 'individual') return !own.isAnyone && own.assignees.length === 1;
+        if (ownershipFilter === 'shared') return own.isAnyone || own.assignees.length > 1;
+        if (ownershipFilter === 'unassigned') return own.isAnyone;
         return true;
     }
 
@@ -1322,7 +1829,7 @@ export function renderBulkTriageList() {
                 const pA = getPriorityWeight(a.priority);
                 const pB = getPriorityWeight(b.priority);
                 if (pA !== pB) return pB - pA;
-                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+                return (toMillisSafe(b.createdAt) || 0) - (toMillisSafe(a.createdAt) || 0);
             }
         });
     }
@@ -1352,6 +1859,64 @@ export function renderBulkTriageList() {
     const todosList = sortTasks(filteredTasks.filter(t => t.type === 'todo'));
     const projectsList = sortTasks(filteredTasks.filter(t => t.type === 'project'));
     const routinesList = sortRoutines(filteredRoutines);
+
+    return {
+        typeFilter,
+        categoryFilter,
+        priorityFilter,
+        ownershipFilter,
+        sortBy,
+        showArchivedDone,
+        archivedDoneCount,
+        allTodos,
+        allRoutines,
+        todosList,
+        projectsList,
+        routinesList
+    };
+}
+
+export function renderBulkTriageList() {
+    const container = document.getElementById('bulkTriageContainer');
+    if (!container) return;
+
+    const {
+        typeFilter,
+        categoryFilter,
+        priorityFilter,
+        ownershipFilter,
+        sortBy,
+        showArchivedDone,
+        archivedDoneCount,
+        allTodos,
+        allRoutines,
+        todosList,
+        projectsList,
+        routinesList
+    } = getFilteredBulkData();
+
+    const collapsedSections = state.userPrefs.bulkCollapsedSections || {};
+    const totalSelected = state.selectedTodoIds.size + state.selectedRoutineIds.size;
+    updateBulkActionBarVisibility(totalSelected);
+
+    const visibleCategoryOptions = Array.from(new Set([
+        ...getEligibleTaskCategories(),
+        ...allTodos.map(t => (t.category || 'Home').trim()).filter(isCategoryVisibleForTasks),
+        ...allRoutines.map(r => (r.category || 'Home').trim()).filter(isCategoryVisibleForTasks)
+    ])).sort((a, b) => a.localeCompare(b));
+
+    const bulkCatOptionsHtml = visibleCategoryOptions.map(cat =>
+        `<option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>`
+    ).join('');
+
+    const visibleTodosForSelect = typeFilter === 'todo'
+        ? todosList
+        : (typeFilter === 'project' ? projectsList : (typeFilter === 'all' ? [...todosList, ...projectsList] : []));
+    const visibleRoutinesForSelect = (typeFilter === 'routine' || typeFilter === 'all') ? routinesList : [];
+    const totalVisibleCount = visibleTodosForSelect.length + visibleRoutinesForSelect.length;
+    const allVisibleChecked = totalVisibleCount > 0 &&
+        visibleTodosForSelect.every(t => state.selectedTodoIds.has(t.id)) &&
+        visibleRoutinesForSelect.every(r => state.selectedRoutineIds.has(r.uid));
 
     function renderBulkTaskRow(t) {
         const isChecked = state.selectedTodoIds.has(t.id);
@@ -1500,20 +2065,24 @@ export function renderBulkTriageList() {
         `;
     }
 
+    const archivedBadgeCount = archivedDoneCount > 0 ? ` (${archivedDoneCount})` : '';
+    const archivedToggleLabel = showArchivedDone
+        ? `Showing Archived Done${archivedBadgeCount}`
+        : `Show Archived Done (>3d)${archivedBadgeCount}`;
+
     let html = `
     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 14px; background: var(--bg-color); border: 1px solid var(--border-color); border-bottom: none; border-radius: 8px 8px 0 0;">
-        <div style="display: flex; gap: 6px;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
             <button class="filter-pill ${typeFilter === 'all' ? 'active' : ''}" onclick="setBulkTypeFilter('all')">All</button>
             <button class="filter-pill ${typeFilter === 'todo' ? 'active' : ''}" onclick="setBulkTypeFilter('todo')">&#x26A1; To-Dos</button>
             <button class="filter-pill ${typeFilter === 'project' ? 'active' : ''}" onclick="setBulkTypeFilter('project')">&#x1F4A1; Projects</button>
             <button class="filter-pill ${typeFilter === 'routine' ? 'active' : ''}" onclick="setBulkTypeFilter('routine')">&#x21BB; Routines</button>
+            <button type="button" class="filter-pill ${showArchivedDone ? 'active' : ''}" onclick="toggleBulkShowArchivedDone()" title="Show or hide completed to-dos finished more than 3 days ago">${archivedToggleLabel}</button>
         </div>
 
         <select class="todo-compact-select" onchange="setBulkCategoryFilter(this.value)" title="Filter by Category">
             <option value="all" ${categoryFilter === 'all' ? 'selected' : ''}>Category: All</option>
-            ${Array.from(new Set([...allTodos.map(t => t.category || 'Home'), ...allRoutines.map(r => r.category || 'Home')])).sort().map(cat => `
-                <option value="${escapeHtml(cat)}" ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>${escapeHtml(cat)}</option>
-            `).join('')}
+            ${bulkCatOptionsHtml}
         </select>
 
         <select class="todo-compact-select" onchange="setBulkPriorityFilter(this.value)" title="Filter by Priority">
@@ -1531,7 +2100,12 @@ export function renderBulkTriageList() {
             <option value="unassigned" ${ownershipFilter === 'unassigned' ? 'selected' : ''}>Unassigned</option>
         </select>
 
-        <select class="todo-compact-select" onchange="setBulkSortBy(this.value)" title="Sort list" style="margin-left: auto;">
+        <label class="bulk-select-cb-wrap" title="Select or deselect all currently visible items" style="margin-left: auto;">
+            <input type="checkbox" class="bulk-select-cb" ${allVisibleChecked ? 'checked' : ''} onchange="toggleBulkSelectAll(this.checked)">
+            <span class="bulk-select-label">Select Visible (${totalVisibleCount})</span>
+        </label>
+
+        <select class="todo-compact-select" onchange="setBulkSortBy(this.value)" title="Sort list">
             <option value="default" ${sortBy === 'default' ? 'selected' : ''}>Sort: Active First</option>
             <option value="priority" ${sortBy === 'priority' ? 'selected' : ''}>Sort: Priority (High&rarr;Low)</option>
             <option value="points" ${sortBy === 'points' ? 'selected' : ''}>Sort: Points</option>
@@ -1547,6 +2121,15 @@ export function renderBulkTriageList() {
         const isTodosCollapsed = !!collapsedSections['todos'];
         const isProjectsCollapsed = !!collapsedSections['projects'];
         const isRoutinesCollapsed = !!collapsedSections['routines'];
+        const todosRowsHtml = todosList.length > 0
+            ? todosList.map(renderBulkTaskRow).join('')
+            : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No to-dos match filters.</div>';
+        const projectsRowsHtml = projectsList.length > 0
+            ? projectsList.map(renderBulkTaskRow).join('')
+            : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No projects match filters.</div>';
+        const routinesRowsHtml = routinesList.length > 0
+            ? routinesList.map(renderBulkRoutineRow).join('')
+            : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No routines match filters.</div>';
 
         html += `
         <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -1559,7 +2142,7 @@ export function renderBulkTriageList() {
                     <span style="font-size: 12px; color: var(--text-muted);">${isTodosCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isTodosCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
-                    ${todosList.length > 0 ? todosList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No to-dos match filters.</div>'}
+                    ${todosRowsHtml}
                 </div>
             </div>
 
@@ -1572,7 +2155,7 @@ export function renderBulkTriageList() {
                     <span style="font-size: 12px; color: var(--text-muted);">${isProjectsCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isProjectsCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
-                    ${projectsList.length > 0 ? projectsList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No projects match filters.</div>'}
+                    ${projectsRowsHtml}
                 </div>
             </div>
 
@@ -1585,17 +2168,20 @@ export function renderBulkTriageList() {
                     <span style="font-size: 12px; color: var(--text-muted);">${isRoutinesCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
                 </div>
                 <div style="display: ${isRoutinesCollapsed ? 'none' : 'block'}; max-height: 480px; overflow-y: auto; padding: 8px;">
-                    ${routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No routines match filters.</div>'}
+                    ${routinesRowsHtml}
                 </div>
             </div>
         </div>
         `;
     } else if (typeFilter === 'todo') {
-        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${todosList.length > 0 ? todosList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No to-dos match the selected filters.</div>'}</div>`;
+        const rowsHtml = todosList.length > 0 ? todosList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No to-dos match the selected filters.</div>';
+        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${rowsHtml}</div>`;
     } else if (typeFilter === 'project') {
-        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${projectsList.length > 0 ? projectsList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No projects match the selected filters.</div>'}</div>`;
+        const rowsHtml = projectsList.length > 0 ? projectsList.map(renderBulkTaskRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No projects match the selected filters.</div>';
+        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${rowsHtml}</div>`;
     } else if (typeFilter === 'routine') {
-        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No routines match the selected filters.</div>'}</div>`;
+        const rowsHtml = routinesList.length > 0 ? routinesList.map(renderBulkRoutineRow).join('') : '<div style="text-align: center; color: var(--text-muted); padding: 25px;">No routines match the selected filters.</div>';
+        html += `<div style="max-height: 540px; overflow-y: auto; padding: 8px;">${rowsHtml}</div>`;
     }
 
     html += `</div>`;
@@ -1643,15 +2229,22 @@ export function toggleBulkItem(type, id, isChecked) {
 }
 
 export function toggleBulkSelectAll(checked) {
-    const subtab = state.manageSubtab || 'todos';
-    if (subtab === 'todos') {
-        const allTodos = state.todoTasksData || [];
-        if (checked) allTodos.forEach(t => state.selectedTodoIds.add(t.id));
-        else state.selectedTodoIds.clear();
+    const { typeFilter, todosList, projectsList, routinesList, showArchivedDone } = getFilteredBulkData();
+    const targetTodos = typeFilter === 'todo'
+        ? todosList
+        : (typeFilter === 'project' ? projectsList : (typeFilter === 'all' ? [...todosList, ...projectsList] : []));
+    const targetRoutines = (typeFilter === 'routine' || typeFilter === 'all') ? routinesList : [];
+
+    if (checked) {
+        targetTodos.forEach(t => {
+            if (showArchivedDone || !isCompletedTodoExpired(t)) {
+                state.selectedTodoIds.add(t.id);
+            }
+        });
+        targetRoutines.forEach(r => state.selectedRoutineIds.add(r.uid));
     } else {
-        const allRoutines = state.routines || [];
-        if (checked) allRoutines.forEach(r => state.selectedRoutineIds.add(r.uid));
-        else state.selectedRoutineIds.clear();
+        targetTodos.forEach(t => state.selectedTodoIds.delete(t.id));
+        targetRoutines.forEach(r => state.selectedRoutineIds.delete(r.uid));
     }
     renderBulkTriageList();
 }
@@ -1707,7 +2300,7 @@ export async function confirmBulkCategoryModal() {
         alert("Please select or type a category.");
         return;
     }
-    const cleanCat = registerCustomCategory(rawVal);
+    const cleanCat = registerCustomCategory(rawVal, true);
     const modal = document.getElementById('bulkCategoryComboboxModal');
     if (modal) modal.style.display = 'none';
 
@@ -1920,6 +2513,8 @@ export async function executeBulkAction(actionType) {
 }
 
 if (typeof window !== 'undefined') {
+    window.refreshBrainDumpUser = refreshBrainDumpUser;
+    window.insertBrainDumpHint = insertBrainDumpHint;
     window.parseWithGemini = parseWithGemini;
     window.rawLineByLineAdd = rawLineByLineAdd;
     window.renderBrainDumpStaging = renderBrainDumpStaging;
@@ -1962,4 +2557,5 @@ if (typeof window !== 'undefined') {
     window.setBulkPriorityFilter = setBulkPriorityFilter;
     window.setBulkOwnershipFilter = setBulkOwnershipFilter;
     window.setBulkSortBy = setBulkSortBy;
+    window.toggleBulkShowArchivedDone = toggleBulkShowArchivedDone;
 }
