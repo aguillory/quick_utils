@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { saveCloudPreference } from './preferences.js';
 
-const THEME_CSS_VERSION = '20261121a';
+const THEME_CSS_VERSION = '20261121b';
 
 const THEMES = {
     'boring': null,

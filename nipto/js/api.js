@@ -353,28 +353,135 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null, c
 }
 
 export async function deleteActivityFromNipto(activityUid) {
-    await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
+    if (!activityUid) return;
 
-    if (state.allWeekActivities) {
-        const removed = state.allWeekActivities.find(a => a.uid === activityUid);
-        if (removed && removed.user?.uid && removed.awardedPts) {
-            state.currentWeekScores[removed.user.uid] = Math.max(0, (state.currentWeekScores[removed.user.uid] || 0) - removed.awardedPts);
-            await revokeAllowancePoints(removed.user.uid, removed.awardedPts);
+    // Step A: Pre-resolve activity metadata before deleting
+    let found = (state.allWeekActivities || []).find(a => a && a.uid === activityUid)
+        || (state.weeklyActivitiesForDone || []).find(a => a && a.uid === activityUid)
+        || null;
+    if (!found && state.historicalActivitiesCache) {
+        for (const arr of Object.values(state.historicalActivitiesCache)) {
+            if (Array.isArray(arr)) {
+                const hit = arr.find(a => a && a.uid === activityUid);
+                if (hit) { found = hit; break; }
+            }
         }
-        state.allWeekActivities = state.allWeekActivities.filter(a => a.uid !== activityUid);
     }
-    if (state.weeklyActivitiesForDone) {
-        state.weeklyActivitiesForDone = state.weeklyActivitiesForDone.filter(a => a.uid !== activityUid);
+    if (!found && state.weeklyCompletionsCache) {
+        for (const entry of Object.values(state.weeklyCompletionsCache)) {
+            if (entry && Array.isArray(entry.weekActivities)) {
+                const hit = entry.weekActivities.find(a => a && a.uid === activityUid);
+                if (hit) { found = hit; break; }
+            }
+        }
+    }
+
+    let userUid = found ? (found.user?.uid || found.userUid || '') : '';
+    let awardedPts = found
+        ? (found.awardedPts !== undefined ? Number(found.awardedPts) : (Number(found.task?.value) || Number(found.taskValue) || 0))
+        : 0;
+    let actDate = found ? (found.parsedDate || (found.date ? new Date(found.date) : null)) : null;
+
+    if (!found || !userUid || !actDate || isNaN(actDate.getTime())) {
+        try {
+            const snap = await window.getNiptoCollection('activities_history').doc(activityUid).get();
+            if (snap && snap.exists) {
+                const d = snap.data() || {};
+                if (!userUid) userUid = d.userUid || d.user?.uid || '';
+                if (!found || d.deletedLocally === true) {
+                    awardedPts = d.deletedLocally === true
+                        ? 0
+                        : (d.awardedPts !== undefined ? Number(d.awardedPts) : (Number(d.taskValue) || 0));
+                }
+                if (!actDate || isNaN(actDate.getTime())) {
+                    actDate = d.date ? new Date(d.date) : (d.dateKey ? new Date(d.dateKey + 'T12:00:00') : null);
+                }
+            }
+        } catch (e) { /* ignore fallback lookup error */ }
+    }
+
+    const validActDate = (actDate && !isNaN(actDate.getTime())) ? actDate : null;
+    const currentWeekBounds = getLocalWeekBounds(new Date(), 0);
+    const isInCurrentWeek = validActDate
+        ? isDateInLocalWeek(validActDate, currentWeekBounds)
+        : Boolean((state.allWeekActivities || []).some(a => a && a.uid === activityUid));
+
+    // Step B: Upstream Nipto GraphQL deleteActivity with prior-week & not-found handling
+    let keepLocalTombstone = false;
+    try {
+        await fetchNipto(`mutation DeleteActivity($uid: String!) { deleteActivity(uid: $uid) { uid } }`, { uid: activityUid });
+    } catch (err) {
+        const msg = String(err?.message || '');
+        if (/token\s*expired|unauthorized/i.test(msg) || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+            throw err;
+        }
+        if (/not\s*found|does\s*not\s*exist|unknown\s*activity|no\s*activity/i.test(msg)) {
+            console.warn(`Nipto activity ${activityUid} already absent upstream:`, msg);
+        } else if (!isInCurrentWeek) {
+            keepLocalTombstone = true;
+            console.warn(`Prior-week Nipto activity ${activityUid} locked upstream; tombstoning locally:`, msg);
+        } else {
+            throw err;
+        }
+    }
+
+    // Step C: Score & Boys' Allowance reversal
+    if (userUid && awardedPts > 0) {
+        if (isInCurrentWeek && state.currentWeekScores) {
+            state.currentWeekScores[userUid] = Math.max(0, (state.currentWeekScores[userUid] || 0) - awardedPts);
+        }
+        await revokeAllowancePoints(userUid, awardedPts);
+    }
+
+    // Step D: Purge all in-memory caches
+    if (Array.isArray(state.allWeekActivities)) {
+        state.allWeekActivities = state.allWeekActivities.filter(a => a && a.uid !== activityUid);
+    }
+    if (Array.isArray(state.weeklyActivitiesForDone)) {
+        state.weeklyActivitiesForDone = state.weeklyActivitiesForDone.filter(a => a && a.uid !== activityUid);
     }
     if (state.historicalActivitiesCache) {
         Object.keys(state.historicalActivitiesCache).forEach(wUid => {
-            state.historicalActivitiesCache[wUid] = state.historicalActivitiesCache[wUid].filter(a => a.uid !== activityUid);
+            if (Array.isArray(state.historicalActivitiesCache[wUid])) {
+                state.historicalActivitiesCache[wUid] = state.historicalActivitiesCache[wUid].filter(a => a && a.uid !== activityUid);
+            }
+        });
+    }
+    if (state.weeklyCompletionsCache) {
+        Object.keys(state.weeklyCompletionsCache).forEach(wKey => {
+            const entry = state.weeklyCompletionsCache[wKey];
+            if (!entry) return;
+            if (Array.isArray(entry.weekActivities)) {
+                entry.weekActivities = entry.weekActivities.filter(a => a && a.uid !== activityUid);
+            }
+            if (Array.isArray(entry.persistedItems)) {
+                entry.persistedItems = entry.persistedItems.filter(it => it && it.id !== ('nipto_' + activityUid) && it.activityUid !== activityUid);
+            }
         });
     }
 
+    // Step E: Firestore activities_history & activity_labels cleanup
     try {
-        await window.getNiptoCollection('activities_history').doc(activityUid).delete();
+        const ref = window.getNiptoCollection('activities_history').doc(activityUid);
+        if (keepLocalTombstone) {
+            await ref.set({
+                deletedLocally: true,
+                awardedPts: 0,
+                taskValue: 0,
+                deletedAt: new Date().toISOString()
+            }, { merge: true });
+        } else {
+            await ref.delete();
+        }
     } catch (e) { /* ignore */ }
+
+    try {
+        await window.getNiptoCollection('activity_labels').doc(activityUid).delete();
+    } catch (e) { /* ignore */ }
+
+    if (state.activityLabels && Object.prototype.hasOwnProperty.call(state.activityLabels, activityUid)) {
+        delete state.activityLabels[activityUid];
+    }
 
     pingActivitySignal();
 }
@@ -1522,6 +1629,7 @@ function parseAndSumWeekActivities(snapshot, weekBounds) {
     const activities = [];
     snapshot.forEach(doc => {
         const data = doc.data() || {};
+        if (data.deletedLocally === true) return;
         const parsedDate = new Date(data.date);
         if (!isDateInLocalWeek(parsedDate, weekBounds)) return;
 
@@ -1615,8 +1723,16 @@ export async function removeDailyCompletion(id, dateKey = null) {
         console.warn("Could not delete item from daily_completions doc:", e);
     }
 
-    if (state.persistedDailyCompletions) {
-        state.persistedDailyCompletions = state.persistedDailyCompletions.filter(it => it.id !== id && it.itemId !== id);
+    if (Array.isArray(state.persistedDailyCompletions)) {
+        state.persistedDailyCompletions = state.persistedDailyCompletions.filter(it => it && it.id !== id);
+    }
+    if (state.weeklyCompletionsCache) {
+        Object.keys(state.weeklyCompletionsCache).forEach(wKey => {
+            const entry = state.weeklyCompletionsCache[wKey];
+            if (entry && Array.isArray(entry.persistedItems)) {
+                entry.persistedItems = entry.persistedItems.filter(it => it && it.id !== id);
+            }
+        });
     }
     if (window.rebuildCompletedThisWeek) window.rebuildCompletedThisWeek();
     if (window.renderDoneThisWeekFeed) window.renderDoneThisWeekFeed();

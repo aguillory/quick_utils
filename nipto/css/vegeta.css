@@ -375,3 +375,16 @@ span[style*="#f3f4f6"] {
     background: rgba(255, 251, 235, 0.94) !important;
     border: 2px solid #ba8c0f !important;
 }
+
+.btn-remove-done-item {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    border: 1.5px solid var(--primary) !important;
+}
+
+.btn-remove-done-item:hover:not(:disabled),
+.btn-remove-done-item:focus-visible:not(:disabled) {
+    background: var(--danger) !important;
+    border-color: var(--danger) !important;
+    color: #FFFFFF !important;
+}

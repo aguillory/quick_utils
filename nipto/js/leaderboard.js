@@ -429,6 +429,7 @@ export function rebuildCompletedThisWeek() {
                             compMap.set(compId, {
                                 id: compId,
                                 itemId: st.id,
+                                parentTaskId: t.id,
                                 sourceType: 'subtask',
                                 title: `${t.name}: ${st.name || st.text || 'Subtask'}`,
                                 user: userObj ? userObj.name : doerName,
@@ -579,14 +580,20 @@ export function renderDoneThisWeekFeed() {
     let html = '';
 
     if (!hasStaticNavBar) {
+        const weekSubLabel = weekOffset === 0
+            ? 'Resets Sun 11:59 PM'
+            : Math.abs(weekOffset) + ' wk' + (Math.abs(weekOffset) > 1 ? 's' : '') + ' ago';
+        const resetWeekBtnHtml = weekOffset < 0
+            ? '<button type="button" class="week-archive-reset-btn" onclick="resetDoneWeekToCurrent()" title="Jump to This Week">Today</button>'
+            : '';
         html += `
         <div class="done-week-nav-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; margin-bottom: 8px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px;">
             <button type="button" class="week-nav-btn" onclick="changeDoneWeekOffset(-1)" title="Previous Week (Mon-Sun)">&#x25C0;</button>
             <div style="text-align: center; flex: 1; min-width: 0;">
                 <div style="font-size: 11px; font-weight: 800; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(weekBounds.label)}</div>
-                <div style="font-size: 10px; color: var(--text-muted);">${weekOffset === 0 ? 'Resets Sun 11:59 PM' : `${Math.abs(weekOffset)} wk${Math.abs(weekOffset) > 1 ? 's' : ''} ago`}</div>
+                <div style="font-size: 10px; color: var(--text-muted);">${weekSubLabel}</div>
             </div>
-            ${weekOffset < 0 ? `<button type="button" class="week-archive-reset-btn" onclick="resetDoneWeekToCurrent()" title="Jump to This Week">Today</button>` : ''}
+            ${resetWeekBtnHtml}
             <button type="button" class="week-nav-btn" onclick="changeDoneWeekOffset(1)" ${weekOffset >= 0 ? 'disabled' : ''} title="Next Week">&#x25B6;</button>
         </div>`;
     }
@@ -644,18 +651,26 @@ export function renderDoneThisWeekFeed() {
             else if (it.sourceType === 'todo') typeIcon = '&#x1F4CB;';
             else if (it.sourceType === 'subtask') typeIcon = '&#x25AA;';
 
+            const rowDateKey = it.dateKey || dKey;
+            const timeSuffixHtml = timeStr ? ' &bull; ' + escapeHtml(timeStr) : '';
+            const ptsVal = Number(it.points) || 0;
+            const ptsBadgeHtml = ptsVal > 0
+                ? '<span class="pts-badge" style="font-size: 10px; flex-shrink: 0;">+' + ptsVal + ' pts</span>'
+                : '';
+            const removeBtnHtml = '<button type="button" class="btn-remove-done-item" data-comp-id="' + escapeHtml(it.id) + '" data-date-key="' + escapeHtml(rowDateKey) + '" onclick="removeDoneWeekItem(this.dataset.compId, this.dataset.dateKey, this)" title="Remove completion and revoke points" aria-label="Remove completed task">&times;</button>';
+
             html += `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--bg-color); border: 1px solid var(--border-color); font-size: 12px;">
-                <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: var(--bg-color); border: 1px solid var(--border-color); font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
                     <span style="color: var(--success); font-weight: bold;">${typeIcon}</span>
-                    <div style="min-width: 0;">
+                    <div style="flex: 1; min-width: 0;">
                         <div style="font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(it.title)}</div>
                         <div style="font-size: 10px; color: var(--text-muted);">
-                            <strong style="color: ${color};">${escapeHtml(userName)}</strong>${timeStr ? ` &bull; ${timeStr}` : ''}
+                            <strong style="color: ${color};">${escapeHtml(userName)}</strong>${timeSuffixHtml}
                         </div>
                     </div>
                 </div>
-                ${it.points > 0 ? `<span class="pts-badge" style="font-size: 10px; flex-shrink: 0;">+${it.points} pts</span>` : ''}
+                <div class="done-item-right-actions" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">${ptsBadgeHtml}${removeBtnHtml}</div>
             </div>
             `;
         });

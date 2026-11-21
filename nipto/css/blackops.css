@@ -543,3 +543,17 @@ input[list]:focus {
     color: #A5B4FC !important;
     border-color: rgba(165, 180, 252, 0.4) !important;
 }
+
+.btn-remove-done-item {
+    background: #111111 !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 0px !important;
+}
+
+.btn-remove-done-item:hover:not(:disabled),
+.btn-remove-done-item:focus-visible:not(:disabled) {
+    background: rgba(255, 0, 0, 0.2) !important;
+    border-color: var(--danger) !important;
+    color: var(--danger) !important;
+}

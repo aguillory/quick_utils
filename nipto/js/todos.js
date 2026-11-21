@@ -1673,6 +1673,7 @@ export async function toggleSubTask(taskId, subTaskId, isChecked) {
             await api.recordDailyCompletion({
                 id: `subtask_${taskId}_${subTaskId}`,
                 itemId: subTaskId,
+                parentTaskId: taskId,
                 sourceType: 'subtask',
                 title: `${todo.name}: ${subName}`,
                 user: activeName,

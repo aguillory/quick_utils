@@ -1198,14 +1198,10 @@ export async function undoRoutineForDate(routineId, dateKey, skipChoreCascade = 
         const todayKeyNow = getLocalTodayKey();
         if (uidsToDelete.length > 0) {
             for (const actUid of uidsToDelete) {
-                try {
-                    await api.deleteActivityFromNipto(actUid);
-                    await api.removeDailyCompletion('nipto_' + actUid, dateKey);
-                    if (todayKeyNow !== dateKey) {
-                        await api.removeDailyCompletion('nipto_' + actUid, todayKeyNow);
-                    }
-                } catch (delErr) {
-                    console.warn(`Could not delete Nipto activity ${actUid} (e.g. prior-week restriction):`, delErr);
+                await api.deleteActivityFromNipto(actUid);
+                await api.removeDailyCompletion('nipto_' + actUid, dateKey);
+                if (todayKeyNow !== dateKey) {
+                    await api.removeDailyCompletion('nipto_' + actUid, todayKeyNow);
                 }
             }
         } else if (existing.withoutPoints === false && existing.completedByUid) {
@@ -1297,6 +1293,41 @@ export async function undoRoutineForDate(routineId, dateKey, skipChoreCascade = 
     } finally {
         inFlightRoutineOps.delete(opKey);
     }
+}
+
+// Clears a cascaded Rule A (completedByChore) routine completion without re-cascading back to the chore
+export async function clearCascadedRoutineCompletion(routineId, dateKey) {
+    const routine = state.routines?.find(r => r.uid === routineId);
+    if (!routine?.completionsByDate?.[dateKey]) return false;
+
+    const completions = { ...routine.completionsByDate };
+    delete completions[dateKey];
+
+    const routineUpdates = {
+        completionsByDate: completions,
+        updatedAt: new Date().toISOString()
+    };
+    const rebuiltLc = rebuildLastCompletedExcludingDate(routine, dateKey, completions);
+    if (rebuiltLc) {
+        routineUpdates.lastCompleted = rebuiltLc.lastCompleted;
+        routineUpdates.lastCompletedBy = rebuiltLc.lastCompletedBy;
+        routine.lastCompleted = rebuiltLc.lastCompleted;
+        routine.lastCompletedBy = rebuiltLc.lastCompletedBy;
+    }
+
+    await api.updateFirestoreDocument('routines', routineId, routineUpdates);
+    routine.completionsByDate = completions;
+
+    await api.removeDailyCompletion('routine_' + routineId + '_' + dateKey, dateKey);
+
+    const routineCatKey = `todo_cat_routine_${String(routine.category || 'Home').trim().toLowerCase()}`;
+    if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(routineCatKey);
+    if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(routineCatKey);
+    if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+    state.userPrefs.collapsed[routineCatKey] = false;
+    saveCloudCollapsed(routineCatKey, false);
+
+    return true;
 }
 
 export function populateRoutineLinkedNiptoTaskSelect(selectedUid = '') {
@@ -1588,6 +1619,7 @@ if (typeof window !== 'undefined') {
     window.clearAllMissedRoutines = clearAllMissedRoutines;
     window.completeRoutineForDate = completeRoutineForDate;
     window.undoRoutineForDate = undoRoutineForDate;
+    window.clearCascadedRoutineCompletion = clearCascadedRoutineCompletion;
     window.openRoutineModal = openRoutineModal;
     window.closeRoutineModal = closeRoutineModal;
     window.editRoutine = editRoutine;

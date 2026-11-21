@@ -399,3 +399,17 @@ input[list] {
     background: #E4C094 !important;
     border: 3px solid var(--border-color) !important;
 }
+
+.btn-remove-done-item {
+    background: #9E9E9E !important;
+    color: #1A1A1A !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 0px !important;
+}
+
+.btn-remove-done-item:hover:not(:disabled),
+.btn-remove-done-item:focus-visible:not(:disabled) {
+    background: var(--danger) !important;
+    border-color: var(--border-color) !important;
+    color: #FFFFFF !important;
+}

@@ -31,7 +31,7 @@ import {
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
     setTodoPriorityFilter, setTodoTypeFilter, setTodoCategoryFilter, setTodoSort,
-    setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, expandCategoryOnReactivation, moveTodoCategory, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
+    setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, normalizeTask, expandCategoryOnReactivation, moveTodoCategory, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
     openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi
@@ -39,7 +39,7 @@ import {
 import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
     saveRoutine, deleteRoutine, deleteRoutineFromModal, renderRoutines, renderRollingSchedule,
-    completeRoutineForDate, undoRoutineForDate, setScheduleFilter,
+    completeRoutineForDate, undoRoutineForDate, clearCascadedRoutineCompletion, getRoutineCompletionForDate, setScheduleFilter,
     toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
     normalizeChoreTitle, findMatchingRoutineForChore, populateRoutineLinkedNiptoTaskSelect
 } from './routines.js';
@@ -148,9 +148,409 @@ async function handleUrlQuickActions() {
     }
 }
 
+const inFlightDoneRemovals = new Set();
+
+function collectRealActivityUids(targetSet, obj) {
+    if (!obj || typeof obj !== 'object') return;
+    const addUid = (val) => {
+        const s = String(val || '').trim();
+        if (s && !s.includes('_')) targetSet.add(s);
+    };
+    addUid(obj.activityUid);
+    addUid(obj.niptoActivityUid);
+    addUid(obj.completedActivityUid);
+    if (Array.isArray(obj.activityUids)) obj.activityUids.forEach(addUid);
+    if (Array.isArray(obj.niptoActivityUids)) obj.niptoActivityUids.forEach(addUid);
+    if (Array.isArray(obj.completedActivityUids)) obj.completedActivityUids.forEach(addUid);
+}
+
+function isQuickAddCustomTask(doc) {
+    return Boolean(doc && (doc.category === '\u26A1 Quick Add' || doc.category === '&#x26A1; Quick Add' || doc.notes === 'Quick added points'));
+}
+
+export async function removeDoneWeekItem(compId, dateKey, btnEl = null) {
+    if (!compId || inFlightDoneRemovals.has(compId)) return;
+
+    const item = (state.completedThisWeek || []).find(it => it && it.id === compId);
+    if (!item) return;
+
+    const todayKey = getLocalTodayKey();
+    const targetDateKey = dateKey || item.dateKey || todayKey;
+    const ptsNum = Number(item.points) || 0;
+
+    const uidSet = new Set();
+    collectRealActivityUids(uidSet, item);
+
+    let todoDoc = null;
+    let parentTodo = null;
+    let subTask = null;
+    let routineDoc = null;
+
+    const taskIdGuess = item.itemId || (compId.startsWith('todo_') ? compId.slice(5) : '');
+
+    if (item.sourceType === 'todo') {
+        todoDoc = (state.todoTasksData || []).find(t => t && t.id === taskIdGuess) || null;
+        if (todoDoc) collectRealActivityUids(uidSet, todoDoc);
+    } else if (item.sourceType === 'subtask') {
+        if (item.parentTaskId) {
+            parentTodo = (state.todoTasksData || []).find(t => t && t.id === item.parentTaskId) || null;
+        }
+        if (parentTodo && Array.isArray(parentTodo.subTasks)) {
+            subTask = parentTodo.subTasks.find(st => st && (st.id === item.itemId || ('subtask_' + parentTodo.id + '_' + st.id) === compId)) || null;
+        } else {
+            for (const t of (state.todoTasksData || [])) {
+                if (!t || !Array.isArray(t.subTasks)) continue;
+                const match = t.subTasks.find(st => st && (st.id === item.itemId || ('subtask_' + t.id + '_' + st.id) === compId));
+                if (match) {
+                    parentTodo = t;
+                    subTask = match;
+                    break;
+                }
+            }
+        }
+        if (subTask) collectRealActivityUids(uidSet, subTask);
+    } else if (item.sourceType === 'routine') {
+        routineDoc = (state.routines || []).find(r => r && r.uid === item.itemId) || null;
+        if (routineDoc?.completionsByDate?.[targetDateKey]) {
+            collectRealActivityUids(uidSet, routineDoc.completionsByDate[targetDateKey]);
+        }
+    } else if (item.sourceType === 'nipto') {
+        if (compId.startsWith('nipto_')) {
+            const suffix = compId.slice(6);
+            if (suffix && !suffix.includes('_')) uidSet.add(suffix);
+        }
+    }
+
+    const linkedActivityUids = Array.from(uidSet);
+    if ((linkedActivityUids.length > 0 || item.sourceType === 'nipto') && !state.apiToken) {
+        const pinModal = document.getElementById('pinModal');
+        if (pinModal) pinModal.style.display = 'flex';
+        return;
+    }
+
+    const revokeText = ptsNum > 0 ? (' and revoke ' + ptsNum + ' pts') : '';
+    const confirmMsg = 'Remove "' + item.title + '" (' + (item.user || 'Someone') + ', ' + targetDateKey + ')' + revokeText + '?';
+    if (!window.confirm(confirmMsg)) return;
+
+    inFlightDoneRemovals.add(compId);
+    const origHtml = btnEl ? btnEl.innerHTML : '&times;';
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.innerHTML = '&#x23F3;';
+    }
+
+    const removeCompletionAcrossDates = async (key, extraDateKey = '') => {
+        if (!key) return;
+        await api.removeDailyCompletion(key, targetDateKey);
+        if (todayKey && todayKey !== targetDateKey) {
+            await api.removeDailyCompletion(key, todayKey);
+        }
+        if (extraDateKey && extraDateKey !== targetDateKey && extraDateKey !== todayKey) {
+            await api.removeDailyCompletion(key, extraDateKey);
+        }
+    };
+
+    try {
+        if (item.sourceType === 'routine') {
+            const rStatus = routineDoc ? getRoutineCompletionForDate(routineDoc, targetDateKey) : null;
+            if (rStatus && rStatus.isDone) {
+                const undone = await undoRoutineForDate(item.itemId, targetDateKey);
+                if (!undone) {
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerHTML = origHtml;
+                    }
+                    return;
+                }
+                await removeCompletionAcrossDates(compId);
+            } else {
+                if (linkedActivityUids.length > 0) {
+                    for (const actUid of linkedActivityUids) {
+                        await api.deleteActivityFromNipto(actUid);
+                        await removeCompletionAcrossDates('nipto_' + actUid);
+                    }
+                } else if (ptsNum > 0 && item.userUid) {
+                    await api.revokeAllowancePoints(item.userUid, ptsNum);
+                }
+                await removeCompletionAcrossDates(compId);
+                expandCategoryOnReactivation('routine', routineDoc?.category || 'Home');
+            }
+        } else if (item.sourceType === 'todo') {
+            const taskId = taskIdGuess;
+            let targetTodo = todoDoc;
+            if (!targetTodo && taskId) {
+                try {
+                    const snap = await window.getNiptoCollection('custom_tasks').doc(taskId).get();
+                    if (snap && snap.exists) {
+                        targetTodo = { id: snap.id, ...snap.data() };
+                        collectRealActivityUids(uidSet, targetTodo);
+                    }
+                } catch (e) { /* ignore fallback lookup failure */ }
+            }
+
+            const todoActivityUids = Array.from(uidSet);
+            if (todoActivityUids.length > 0 && !state.apiToken) {
+                const pinModal = document.getElementById('pinModal');
+                if (pinModal) pinModal.style.display = 'flex';
+                if (btnEl) {
+                    btnEl.disabled = false;
+                    btnEl.innerHTML = origHtml;
+                }
+                return;
+            }
+
+            const docDateKey = targetTodo?.completedAt ? getLocalTodayKey(new Date(targetTodo.completedAt)) : '';
+            if (todoActivityUids.length > 0) {
+                for (const actUid of todoActivityUids) {
+                    await api.deleteActivityFromNipto(actUid);
+                    await removeCompletionAcrossDates('nipto_' + actUid, docDateKey);
+                }
+            } else if (ptsNum > 0) {
+                const rawDoers = (Array.isArray(targetTodo?.completedBy) && targetTodo.completedBy.length > 0)
+                    ? targetTodo.completedBy
+                    : (item.userUid ? [item.userUid] : []);
+                const doerUids = rawDoers.filter(Boolean);
+                if (doerUids.length > 0) {
+                    const splitPts = Math.ceil(ptsNum / doerUids.length);
+                    for (const uid of doerUids) {
+                        await api.revokeAllowancePoints(uid, splitPts);
+                    }
+                }
+            }
+
+            if (taskId && targetTodo) {
+                if (isQuickAddCustomTask(targetTodo)) {
+                    await api.deleteFirestoreDocument('custom_tasks', taskId);
+                    if (Array.isArray(state.todoTasksData)) {
+                        state.todoTasksData = state.todoTasksData.filter(t => t && t.id !== taskId);
+                    }
+                } else {
+                    const nowIso = new Date().toISOString();
+                    const updates = {
+                        completed: false,
+                        completedAt: null,
+                        completedBy: [],
+                        completedActivityUids: [],
+                        completedActivityUid: null,
+                        updatedAt: nowIso,
+                        lastReviewedAt: nowIso
+                    };
+                    await api.updateFirestoreDocument('custom_tasks', taskId, updates);
+                    if (todoDoc) Object.assign(todoDoc, updates);
+                    const norm = normalizeTask(targetTodo);
+                    expandCategoryOnReactivation(norm.type, norm.category || 'General');
+                }
+            }
+
+            await removeCompletionAcrossDates(compId, docDateKey);
+            if (taskId && compId !== ('todo_' + taskId)) {
+                await removeCompletionAcrossDates('todo_' + taskId, docDateKey);
+            }
+
+            const linkedRoutine = targetTodo ? findMatchingRoutineForChore(targetTodo, 'todo') : null;
+            const routineComp = linkedRoutine?.completionsByDate?.[targetDateKey];
+            if (routineComp && routineComp.completedByChore === true && routineComp.sourceChoreId === taskId) {
+                await clearCascadedRoutineCompletion(linkedRoutine.uid, targetDateKey);
+            }
+        } else if (item.sourceType === 'subtask') {
+            if (!parentTodo && item.parentTaskId) {
+                try {
+                    const snap = await window.getNiptoCollection('custom_tasks').doc(item.parentTaskId).get();
+                    if (snap && snap.exists) {
+                        parentTodo = { id: snap.id, ...snap.data() };
+                        if (Array.isArray(parentTodo.subTasks)) {
+                            subTask = parentTodo.subTasks.find(st => st && (st.id === item.itemId || ('subtask_' + parentTodo.id + '_' + st.id) === compId)) || null;
+                        }
+                        if (subTask) collectRealActivityUids(uidSet, subTask);
+                    }
+                } catch (e) { /* ignore fallback lookup failure */ }
+            }
+
+            const subActivityUids = Array.from(uidSet);
+            if (subActivityUids.length > 0 && !state.apiToken) {
+                const pinModal = document.getElementById('pinModal');
+                if (pinModal) pinModal.style.display = 'flex';
+                if (btnEl) {
+                    btnEl.disabled = false;
+                    btnEl.innerHTML = origHtml;
+                }
+                return;
+            }
+
+            const subDateKey = subTask?.completedAt ? getLocalTodayKey(new Date(subTask.completedAt)) : '';
+            if (subActivityUids.length > 0) {
+                for (const actUid of subActivityUids) {
+                    await api.deleteActivityFromNipto(actUid);
+                    await removeCompletionAcrossDates('nipto_' + actUid, subDateKey);
+                }
+            } else if (ptsNum > 0) {
+                const rawDoers = (Array.isArray(subTask?.completedByUids) && subTask.completedByUids.length > 0)
+                    ? subTask.completedByUids
+                    : (item.userUid ? [item.userUid] : []);
+                const doerUids = rawDoers.filter(Boolean);
+                if (doerUids.length > 0) {
+                    const splitPts = Math.ceil(ptsNum / doerUids.length);
+                    for (const uid of doerUids) {
+                        await api.revokeAllowancePoints(uid, splitPts);
+                    }
+                }
+            }
+
+            if (parentTodo && Array.isArray(parentTodo.subTasks)) {
+                const nowIso = new Date().toISOString();
+                const updatedSubTasks = parentTodo.subTasks.map(st => {
+                    if (st && (st.id === item.itemId || ('subtask_' + parentTodo.id + '_' + st.id) === compId)) {
+                        return {
+                            ...st,
+                            completed: false,
+                            completedAt: null,
+                            completedBy: null,
+                            completedByUids: [],
+                            completedActivityUids: [],
+                            completedActivityUid: null
+                        };
+                    }
+                    return st;
+                });
+                parentTodo.subTasks = updatedSubTasks;
+                parentTodo.updatedAt = nowIso;
+                parentTodo.lastReviewedAt = nowIso;
+                await api.updateFirestoreDocument('custom_tasks', parentTodo.id, {
+                    subTasks: updatedSubTasks,
+                    updatedAt: nowIso,
+                    lastReviewedAt: nowIso
+                });
+                const normParent = normalizeTask(parentTodo);
+                expandCategoryOnReactivation(normParent.type, parentTodo.category || 'General');
+            }
+
+            await removeCompletionAcrossDates(compId, subDateKey);
+        } else {
+            if (linkedActivityUids.length > 0) {
+                for (const actUid of linkedActivityUids) {
+                    await api.deleteActivityFromNipto(actUid);
+                    await removeCompletionAcrossDates('nipto_' + actUid);
+                }
+            } else if (ptsNum > 0 && item.userUid) {
+                await api.revokeAllowancePoints(item.userUid, ptsNum);
+            }
+            await removeCompletionAcrossDates(compId);
+
+            for (const actUid of linkedActivityUids) {
+                const matchedMap = new Map();
+                (state.todoTasksData || []).forEach(t => {
+                    if (t && (t.completedActivityUid === actUid || (Array.isArray(t.completedActivityUids) && t.completedActivityUids.includes(actUid)))) {
+                        matchedMap.set(t.id, t);
+                    }
+                });
+                if (matchedMap.size === 0) {
+                    try {
+                        let snap = await window.getNiptoCollection('custom_tasks')
+                            .where('completedActivityUids', 'array-contains', actUid).get();
+                        if (snap.empty) {
+                            snap = await window.getNiptoCollection('custom_tasks')
+                                .where('completedActivityUid', '==', actUid).get();
+                        }
+                        snap.forEach(doc => {
+                            matchedMap.set(doc.id, { id: doc.id, ...doc.data() });
+                        });
+                    } catch (e) { /* ignore fallback query error */ }
+                }
+
+                for (const tDoc of matchedMap.values()) {
+                    const existingSet = new Set();
+                    if (Array.isArray(tDoc.completedActivityUids)) {
+                        tDoc.completedActivityUids.forEach(u => { if (u) existingSet.add(u); });
+                    }
+                    if (tDoc.completedActivityUid) existingSet.add(tDoc.completedActivityUid);
+                    const remainingUids = Array.from(existingSet).filter(u => u && u !== actUid);
+
+                    if (remainingUids.length === 0) {
+                        if (isQuickAddCustomTask(tDoc)) {
+                            await api.deleteFirestoreDocument('custom_tasks', tDoc.id);
+                            if (Array.isArray(state.todoTasksData)) {
+                                state.todoTasksData = state.todoTasksData.filter(t => t && t.id !== tDoc.id);
+                            }
+                        } else {
+                            const nowIso = new Date().toISOString();
+                            const updates = {
+                                completed: false,
+                                completedAt: null,
+                                completedBy: [],
+                                completedActivityUids: [],
+                                completedActivityUid: null,
+                                updatedAt: nowIso,
+                                lastReviewedAt: nowIso
+                            };
+                            await api.updateFirestoreDocument('custom_tasks', tDoc.id, updates);
+                            const memDoc = (state.todoTasksData || []).find(t => t && t.id === tDoc.id);
+                            if (memDoc) Object.assign(memDoc, updates);
+                            const norm = normalizeTask(tDoc);
+                            expandCategoryOnReactivation(norm.type, norm.category || 'General');
+                            await removeCompletionAcrossDates('todo_' + tDoc.id);
+                        }
+                    } else {
+                        const nowIso = new Date().toISOString();
+                        const partialUpdates = {
+                            completedActivityUids: remainingUids,
+                            completedActivityUid: remainingUids[0] || null,
+                            updatedAt: nowIso
+                        };
+                        await api.updateFirestoreDocument('custom_tasks', tDoc.id, partialUpdates);
+                        const memDoc = (state.todoTasksData || []).find(t => t && t.id === tDoc.id);
+                        if (memDoc) Object.assign(memDoc, partialUpdates);
+                    }
+                }
+
+                for (const r of (state.routines || [])) {
+                    if (!r?.completionsByDate || typeof r.completionsByDate !== 'object') continue;
+                    for (const [dKey, entry] of Object.entries(r.completionsByDate)) {
+                        if (
+                            entry &&
+                            entry.completedByChore === true &&
+                            (entry.niptoActivityUid === actUid ||
+                                entry.activityUid === actUid ||
+                                (Array.isArray(entry.niptoActivityUids) && entry.niptoActivityUids.includes(actUid)) ||
+                                (Array.isArray(entry.activityUids) && entry.activityUids.includes(actUid)))
+                        ) {
+                            await clearCascadedRoutineCompletion(r.uid, dKey);
+                        }
+                    }
+                }
+            }
+        }
+
+        await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
+        if ((state.doneWeekOffset || 0) !== 0) {
+            await api.loadWeeklyPointsFromFirestore();
+        }
+        drawLeaderboard(state.currentWeekScores, false);
+        rebuildCompletedThisWeek();
+        renderDoneThisWeekFeed();
+        renderRollingSchedule();
+        renderTodoTasks();
+        renderBulkTriageList();
+        showToast("done_removed", 'Removed "' + item.title + '"', 0, "");
+    } catch (err) {
+        console.error("Failed to remove completed item:", err);
+        if (/token\s*expired|unauthorized/i.test(String(err?.message || ''))) {
+            const pinModal = document.getElementById('pinModal');
+            if (pinModal) pinModal.style.display = 'flex';
+        }
+        alert('Could not remove completed task: ' + (err?.message || err));
+        if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = origHtml;
+        }
+    } finally {
+        inFlightDoneRemovals.delete(compId);
+    }
+}
+
 // Window bindings for inline HTML onclick/onchange/onfocus handlers
 Object.assign(window, {
     switchNavTab,
+    removeDoneWeekItem,
     setActiveUser, toggleTogetherMode, toggleUserDropdown, selectUserFromDropdown, renderActiveUserPill, renderUserDropdownMenu,
     deleteTaskActivity, populateTaskPointsSelect,
     openQuickAddModal, closeQuickAddModal, submitQuickAdd,
