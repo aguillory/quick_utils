@@ -1,6 +1,6 @@
 // api.js
 import { state, ALL_USERS, NIPTO_PUBLIC_URL } from './state.js';
-import { getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek } from './utils.js';
+import { getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek, toMillisSafe } from './utils.js';
 export { getLocalTodayKey, getLocalWeekBounds, isDateInLocalWeek };
 
 const NIPTO_URL = "https://nipto.app/graphql";
@@ -289,7 +289,7 @@ export async function archiveActivitiesToFirestore(activities) {
     }
 }
 
-export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
+export async function logActivityToNipto(taskUid, targetDateStr, doers = null, customLabel = '') {
     const activeDoers = (doers && doers.length > 0) ? doers : state.activeUsers;
     const data = await fetchNipto(
         `mutation CreateActivity($done: String!, $doers: [String!], $date: Date) { createActivity(done: $done, doers: $doers, date: $date) { uid } }`,
@@ -309,11 +309,18 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
             const ptsPerUser = Math.ceil(taskVal / Math.max(1, activeDoers.length));
             const targetDate = new Date(targetDateStr || Date.now());
             const weekUid = getWeekUidForDate(targetDate);
+            const cleanLabel = String(customLabel || '').trim();
+            if (cleanLabel) {
+                state.activityLabels = state.activityLabels || {};
+            }
 
             const activitiesToArchive = activityUids.map((uid, index) => {
                 const doerUid = activeDoers[index] || activeDoers[0] || "";
                 const userObj = ALL_USERS.find(u => u.uid === doerUid);
                 awardAllowancePoints(doerUid, ptsPerUser);
+                if (cleanLabel) {
+                    state.activityLabels[uid] = cleanLabel;
+                }
                 const actRecord = {
                     uid: uid,
                     taskUid: taskUid,
@@ -323,6 +330,7 @@ export async function logActivityToNipto(taskUid, targetDateStr, doers = null) {
                     user: { uid: doerUid, name: userObj ? userObj.name : "Unknown" },
                     task: { uid: taskUid, name: tObj ? tObj.name : "Task", value: ptsPerUser },
                     awardedPts: ptsPerUser,
+                    ...(cleanLabel ? { label: cleanLabel } : {}),
                     weekUid: weekUid
                 };
                 if (isDateInLocalWeek(targetDate, getLocalWeekBounds(new Date(), 0))) {
@@ -458,7 +466,7 @@ export async function logCustomPointsToNipto(points, taskTitle, doerUids = null,
     // 1. Only use explicit linkedNiptoTaskUid when it exists in state.tasks, matches pts, and is NOT a generic bucket
     const linkedTask = linkedNiptoTaskUid ? tasksPool.find(t => t.uid === linkedNiptoTaskUid) : null;
     if (linkedTask && Number(linkedTask.value) === pts && !isGenericAssignedTask(linkedTask)) {
-        const uids = await logActivityToNipto(linkedTask.uid, targetIso, activeDoers);
+        const uids = await logActivityToNipto(linkedTask.uid, targetIso, activeDoers, taskTitle || '');
         if (uids.length > 0 && taskTitle) {
             await saveActivityLabels(uids, taskTitle);
         }
@@ -469,7 +477,7 @@ export async function logCustomPointsToNipto(points, taskTitle, doerUids = null,
     const chosenTask = findGenericAssignedTaskByPoints(pts);
     if (!chosenTask) return [];
 
-    const createdUids = await logActivityToNipto(chosenTask.uid, targetIso, activeDoers);
+    const createdUids = await logActivityToNipto(chosenTask.uid, targetIso, activeDoers, taskTitle || '');
     if (createdUids && createdUids.length > 0 && taskTitle) {
         await saveActivityLabels(createdUids, taskTitle);
     }
@@ -543,7 +551,7 @@ export async function repairMissingNiptoPoints() {
 
             for (const [dateKey, comp] of Object.entries(completions)) {
                 // Focus on completions from this week or current month that have a linked Nipto task but no activity logged
-                if (comp && comp.withoutPoints === false && rData.linkedNiptoTask && dateKey >= '2026-11-01') {
+                if (comp && comp.withoutPoints === false && !comp.completedByChore && rData.linkedNiptoTask && dateKey >= '2026-11-01') {
                     // Check if an activity exists in activities_history for this routine + dateKey + user
                     const doerUid = comp.completedByUid || (Array.isArray(rData.assignees) ? rData.assignees[0] : ALL_USERS[0].uid);
                     const alreadyArchived = (state.allWeekActivities || []).some(a => {
@@ -591,6 +599,232 @@ export async function repairMissingNiptoPoints() {
     }
 
     return { repairedCount, totalPoints };
+}
+
+// Non-destructive chore & routine deduplication diagnostic/cleanup utility
+export async function findAndDeduplicateChores(dryRun = true) {
+    const norm = (s) => String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/\s+/g, ' ');
+
+    const pickPrimaryDoc = (docs) => {
+        return docs.slice().sort((a, b) => {
+            const compA = Object.keys(a.data.completionsByDate || {}).length;
+            const compB = Object.keys(b.data.completionsByDate || {}).length;
+            if (compA !== compB) return compB - compA;
+
+            const subA = Array.isArray(a.data.subTasks) ? a.data.subTasks.length : 0;
+            const subB = Array.isArray(b.data.subTasks) ? b.data.subTasks.length : 0;
+            if (subA !== subB) return subB - subA;
+
+            const msA = toMillisSafe(a.data.createdAt);
+            const msB = toMillisSafe(b.data.createdAt);
+            const validA = Number.isFinite(msA);
+            const validB = Number.isFinite(msB);
+            if (validA !== validB) return validA ? -1 : 1;
+            if (validA && validB && msA !== msB) return msA - msB;
+            return a.id.localeCompare(b.id);
+        })[0];
+    };
+
+    const [todoSnap, routineSnap] = await Promise.all([
+        window.getNiptoCollection('custom_tasks').get(),
+        window.getNiptoCollection('routines').get()
+    ]);
+
+    const todoDocs = [];
+    const todoGroupsMap = new Map();
+    todoSnap.forEach(doc => {
+        const d = doc.data() || {};
+        todoDocs.push({ id: doc.id, ref: doc.ref, data: d });
+        if (d.completed) return;
+        const key = `${norm(d.name)}|${d.type || 'todo'}|${norm(d.category || 'Home')}`;
+        if (!todoGroupsMap.has(key)) todoGroupsMap.set(key, []);
+        todoGroupsMap.get(key).push({ id: doc.id, ref: doc.ref, data: d });
+    });
+
+    const routineDocs = [];
+    const routineGroupsMap = new Map();
+    routineSnap.forEach(doc => {
+        const d = doc.data() || {};
+        routineDocs.push({ id: doc.id, ref: doc.ref, data: d });
+        const key = `${norm(d.name)}|routine|${norm(d.category || 'Home')}`;
+        if (!routineGroupsMap.has(key)) routineGroupsMap.set(key, []);
+        routineGroupsMap.get(key).push({ id: doc.id, ref: doc.ref, data: d });
+    });
+
+    const duplicateTodoGroups = [];
+    todoGroupsMap.forEach((docs, key) => {
+        if (docs.length > 1) {
+            const primary = pickPrimaryDoc(docs);
+            duplicateTodoGroups.push({
+                key,
+                survivorId: primary.id,
+                duplicateIds: docs.filter(d => d.id !== primary.id).map(d => d.id),
+                docs: docs.map(d => ({ id: d.id, name: d.data.name, type: d.data.type || 'todo', category: d.data.category || 'Home' }))
+            });
+        }
+    });
+
+    const duplicateRoutineGroups = [];
+    routineGroupsMap.forEach((docs, key) => {
+        if (docs.length > 1) {
+            const primary = pickPrimaryDoc(docs);
+            duplicateRoutineGroups.push({
+                key,
+                survivorId: primary.id,
+                duplicateIds: docs.filter(d => d.id !== primary.id).map(d => d.id),
+                docs: docs.map(d => ({ id: d.id, name: d.data.name, category: d.data.category || 'Home' }))
+            });
+        }
+    });
+
+    if (dryRun === true) {
+        console.log('[Deduplicate Dry Run]', { duplicateTodoGroups, duplicateRoutineGroups });
+        return {
+            dryRun: true,
+            duplicateTodoGroups,
+            duplicateRoutineGroups
+        };
+    }
+
+    const todoRedirectMap = new Map();
+    const routineRedirectMap = new Map();
+    const deletedTodoIds = new Set();
+    const deletedRoutineIds = new Set();
+    const nowIso = new Date().toISOString();
+
+    let batch = window.db.batch();
+    let opCount = 0;
+    const commitIfFull = async () => {
+        if (opCount >= 450) {
+            await batch.commit();
+            batch = window.db.batch();
+            opCount = 0;
+        }
+    };
+
+    let mergedTodosCount = 0;
+    let mergedRoutinesCount = 0;
+    let deletedDocsCount = 0;
+    let updatedReferencesCount = 0;
+
+    for (const grp of duplicateTodoGroups) {
+        const groupDocs = todoGroupsMap.get(grp.key) || [];
+        const primary = pickPrimaryDoc(groupDocs);
+        const dups = groupDocs.filter(d => d.id !== primary.id);
+        let mergedRoutineLink = primary.data.linkedRoutineId || null;
+
+        for (const dup of dups) {
+            todoRedirectMap.set(dup.id, primary.id);
+            if (!mergedRoutineLink && dup.data.linkedRoutineId) {
+                mergedRoutineLink = dup.data.linkedRoutineId;
+            }
+            batch.delete(dup.ref);
+            deletedTodoIds.add(dup.id);
+            deletedDocsCount++;
+            opCount++;
+            await commitIfFull();
+        }
+
+        if (mergedRoutineLink && mergedRoutineLink !== primary.data.linkedRoutineId) {
+            batch.update(primary.ref, { linkedRoutineId: mergedRoutineLink, updatedAt: nowIso });
+            opCount++;
+            await commitIfFull();
+        }
+        mergedTodosCount++;
+    }
+
+    for (const grp of duplicateRoutineGroups) {
+        const groupDocs = routineGroupsMap.get(grp.key) || [];
+        const primary = pickPrimaryDoc(groupDocs);
+        const dups = groupDocs.filter(d => d.id !== primary.id);
+        const mergedCompletions = { ...(primary.data.completionsByDate || {}) };
+        let completionsChanged = false;
+        let mergedTodoLink = primary.data.linkedTodoId || null;
+        let mergedNiptoLink = primary.data.linkedNiptoTask || null;
+
+        for (const dup of dups) {
+            routineRedirectMap.set(dup.id, primary.id);
+            const dupComps = dup.data.completionsByDate || {};
+            for (const [dKey, entry] of Object.entries(dupComps)) {
+                if (entry && (!mergedCompletions[dKey] || (mergedCompletions[dKey].withoutPoints === true && entry.withoutPoints === false))) {
+                    mergedCompletions[dKey] = entry;
+                    completionsChanged = true;
+                }
+            }
+            if (!mergedTodoLink && dup.data.linkedTodoId) {
+                mergedTodoLink = dup.data.linkedTodoId;
+            }
+            if (!mergedNiptoLink && dup.data.linkedNiptoTask) {
+                mergedNiptoLink = dup.data.linkedNiptoTask;
+            }
+            batch.delete(dup.ref);
+            deletedRoutineIds.add(dup.id);
+            deletedDocsCount++;
+            opCount++;
+            await commitIfFull();
+        }
+
+        const primaryPatch = {};
+        if (completionsChanged) primaryPatch.completionsByDate = mergedCompletions;
+        if (mergedTodoLink && mergedTodoLink !== primary.data.linkedTodoId) {
+            primaryPatch.linkedTodoId = todoRedirectMap.get(mergedTodoLink) || mergedTodoLink;
+        }
+        if (mergedNiptoLink && mergedNiptoLink !== primary.data.linkedNiptoTask) {
+            primaryPatch.linkedNiptoTask = mergedNiptoLink;
+        }
+        if (Object.keys(primaryPatch).length > 0) {
+            primaryPatch.updatedAt = nowIso;
+            batch.update(primary.ref, primaryPatch);
+            opCount++;
+            await commitIfFull();
+        }
+        mergedRoutinesCount++;
+    }
+
+    for (const docItem of todoDocs) {
+        if (deletedTodoIds.has(docItem.id)) continue;
+        const oldRef = docItem.data.linkedRoutineId;
+        if (oldRef && routineRedirectMap.has(oldRef)) {
+            batch.update(docItem.ref, { linkedRoutineId: routineRedirectMap.get(oldRef), updatedAt: nowIso });
+            updatedReferencesCount++;
+            opCount++;
+            await commitIfFull();
+        }
+    }
+
+    for (const docItem of routineDocs) {
+        if (deletedRoutineIds.has(docItem.id)) continue;
+        const oldRef = docItem.data.linkedTodoId;
+        if (oldRef && todoRedirectMap.has(oldRef)) {
+            batch.update(docItem.ref, { linkedTodoId: todoRedirectMap.get(oldRef), updatedAt: nowIso });
+            updatedReferencesCount++;
+            opCount++;
+            await commitIfFull();
+        }
+    }
+
+    if (opCount > 0) {
+        await batch.commit();
+    }
+
+    await Promise.all([
+        loadTodosFromFirestore(),
+        loadRoutinesFromFirestore()
+    ]);
+
+    return {
+        dryRun: false,
+        duplicateTodoGroups: duplicateTodoGroups.length,
+        duplicateRoutineGroups: duplicateRoutineGroups.length,
+        mergedTodosCount,
+        mergedRoutinesCount,
+        deletedDocsCount,
+        updatedReferencesCount
+    };
 }
 
 let isReconcilingNipto = false;

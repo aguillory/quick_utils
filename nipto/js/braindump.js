@@ -5,8 +5,8 @@
 import { state, ALL_USERS } from './state.js';
 import * as api from './api.js';
 import { showToast } from './toast.js';
-import { renderTodoTasks, normalizeTask, classifyTaskOwnership } from './todos.js';
-import { renderRollingSchedule, isDailyRoutine, completeRoutineForDate, isRoutineCompletedOnDate } from './routines.js';
+import { renderTodoTasks, normalizeTask, classifyTaskOwnership, expandCategoryOnReactivation } from './todos.js';
+import { renderRollingSchedule, isDailyRoutine, completeRoutineForDate, isRoutineCompletedOnDate, normalizeChoreTitle, findMatchingRoutineForChore, getRoutineCompletionForDate } from './routines.js';
 import { rebuildCompletedToday, renderDoneTodayFeed, updateLeaderboardUI } from './leaderboard.js';
 import { saveCloudPreference } from './preferences.js';
 import {
@@ -31,6 +31,7 @@ function escapeHtml(str) {
 export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
 const GEMINI_LOG_MAX_CHARS = 40000;
 const pendingGeminiLogWrites = new Map();
+let isApplyingStaging = false;
 
 function truncateLogStr(val, maxLen = GEMINI_LOG_MAX_CHARS) {
     if (val === null || val === undefined) return '';
@@ -597,14 +598,31 @@ USER BRAIN DUMP / RAMBLE:
         );
 
         state.brainDumpStaging = cleanedOperations.map((item, idx) => {
-            const current = item.id ? tasksContext.find(t => t.id === item.id) : null;
+            let current = item.id ? tasksContext.find(t => t.id === item.id) : null;
+            let matchedByTitle = false;
+            if (!current && item.action !== 'create_category' && item.title) {
+                const normTitle = normalizeChoreTitle(item.title);
+                const itemIsRoutine = item.type === 'routine';
+                const matched = normTitle
+                    ? tasksContext.find(t => normalizeChoreTitle(t.title) === normTitle && (t.type === 'routine') === itemIsRoutine)
+                    : null;
+                if (matched) {
+                    current = matched;
+                    item.id = matched.id;
+                    matchedByTitle = true;
+                }
+            }
+
             const rawTodo = item.id ? (state.todoTasksData || []).find(t => t.id === item.id) : null;
             const rawRoutine = item.id ? (state.routines || []).find(r => r.uid === item.id) : null;
             const rawDoc = rawTodo || rawRoutine;
 
-            const action = ['create', 'update', 'complete', 'delete', 'create_category'].includes(item.action)
+            let action = ['create', 'update', 'complete', 'delete', 'create_category'].includes(item.action)
                 ? item.action
                 : (current ? 'update' : 'create');
+            if (matchedByTitle && action !== 'complete' && action !== 'delete') {
+                action = 'update';
+            }
 
             if (action === 'create_category') {
                 const newCatName = (item.category || item.title || '').trim();
@@ -755,7 +773,9 @@ USER BRAIN DUMP / RAMBLE:
                 priorityTouched: Boolean(current),
                 frictionTag: item.frictionTag || '',
                 schedule: normalizedSched,
-                reason: item.reason || (action === 'create' ? 'New item' : (action === 'complete' ? 'Marked complete' : 'Updated')),
+                reason: matchedByTitle
+                    ? 'Matched existing item by title'
+                    : (item.reason || (action === 'create' ? 'New item' : (action === 'complete' ? 'Marked complete' : 'Updated'))),
                 current: current || null
             };
         });
@@ -841,23 +861,57 @@ export function rawLineByLineAdd() {
             cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
         }
 
+        const normCleanTitle = normalizeChoreTitle(cleanTitle);
+        const matched = normCleanTitle
+            ? (state.todoTasksData || []).find(t => !t.completed && normalizeChoreTitle(t.name) === normCleanTitle)
+            : null;
+        const matchedNorm = matched ? normalizeTask(matched) : null;
+        const existingAssigneeUids = matched && Array.isArray(matched.assignees)
+            ? matched.assignees.map(a => String(a || '').trim()).filter(Boolean)
+            : [];
+        const existingAssigneesLabel = existingAssigneeUids.length > 0
+            ? existingAssigneeUids.map(uid => ALL_USERS.find(u => u.uid === uid)?.name || uid).join(' & ')
+            : 'Anyone';
+
+        let finalAssignee = assignee;
+        if (matched && assignee === 'Anyone' && existingAssigneeUids.length > 0) {
+            finalAssignee = '__KEEP__';
+        }
+
+        const matchedSubtasks = (matched && Array.isArray(matched.subTasks))
+            ? matched.subTasks.map(st => ({
+                id: st.id || null,
+                name: st.name || st.text || '',
+                points: api.clampStep5Points(st.points, 5)
+            }))
+            : [];
+
         return {
             stagingId: 'stage_' + Date.now() + '_' + idx,
             selected: true,
-            action: 'create',
-            id: null,
-            type: 'todo',
+            action: matched ? 'update' : 'create',
+            id: matched ? matched.id : null,
+            type: matchedNorm ? matchedNorm.type : 'todo',
             title: cleanTitle,
-            description: '',
-            subtasks: [],
-            assignee,
-            category: 'Home',
-            points: 5,
-            priority: 'medium',
-            frictionTag: '',
+            description: matchedNorm ? (matchedNorm.description || '') : '',
+            subtasks: matchedSubtasks,
+            assignee: finalAssignee,
+            existingAssigneeUids,
+            existingAssigneesLabel,
+            category: matched ? (matched.category || 'Home') : 'Home',
+            points: matched ? (matched.points || 5) : 5,
+            priority: matchedNorm ? (matchedNorm.priority || 'medium') : 'medium',
+            frictionTag: matched ? (matched.frictionTag || '') : '',
             schedule: null,
-            reason: assignee !== 'Anyone' ? `Raw line item (${assignee})` : 'Raw line item',
-            current: null
+            reason: matched ? 'Matched existing item by title' : (assignee !== 'Anyone' ? `Raw line item (${assignee})` : 'Raw line item'),
+            current: matched ? {
+                id: matched.id,
+                title: matched.name,
+                type: matchedNorm.type,
+                category: matched.category || 'Home',
+                points: matched.points || 5,
+                priority: matchedNorm.priority || 'medium'
+            } : null
         };
     });
 
@@ -1276,311 +1330,342 @@ function buildCleanRoutineSchedule(item) {
 }
 
 export async function applyUnifiedStagingToFirestore() {
+    if (isApplyingStaging) return;
+
     const selected = state.brainDumpStaging.filter(item => item.selected);
     if (selected.length === 0) {
         alert("Please select at least one staged item to apply.");
         return;
     }
 
-    const batch = window.db.batch();
-    const nowIso = new Date().toISOString();
-    const todayKey = getLocalTodayKey();
-    const doerUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-    const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
-
-    let createdCount = 0;
-    let updatedCount = 0;
-    let completedCount = 0;
-    let deletedCount = 0;
-    let hasBatchOps = false;
-
-    for (const item of selected) {
-        if (item.action === 'create_category') {
-            const newCatName = registerCustomCategory(item.category || item.title || '', true);
-            if (newCatName) createdCount++;
-            continue;
-        }
-
-        const id = item.id;
-        const isRoutineDoc = id && state.routines?.some(r => r.uid === id);
-        const rawCatName = (item.category || 'Home').trim() || 'Home';
-        const isAlreadyKnownVisible = getEligibleTaskCategories().some(c => c.toLowerCase() === rawCatName.toLowerCase());
-        const shouldExplicitCreateCat = Boolean(item.isExplicitCategoryCreate || !isAlreadyKnownVisible);
-        const catVal = registerCustomCategory(rawCatName, shouldExplicitCreateCat) || 'Home';
-
-        if (item.action === 'create') {
-            const assigneeUids = [];
-            if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
-                const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
-                if (userObj) assigneeUids.push(userObj.uid);
-            }
-
-            const hasTodoSubtasks = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
-            const pts = item.type === 'routine'
-                ? api.clampStep5Points(item.points, 5)
-                : (hasTodoSubtasks ? 0 : api.clampStep5Points(item.points, 5));
-
-            if (item.type === 'routine') {
-                const routineRef = window.getNiptoCollection('routines').doc();
-                const scheduleData = buildCleanRoutineSchedule(item);
-                batch.set(routineRef, {
-                    name: item.title,
-                    type: 'routine',
-                    completionType: 'shared',
-                    assignees: assigneeUids,
-                    schedule: scheduleData,
-                    timeOfDay: scheduleData.timeOfDay,
-                    linkedNiptoTask: null,
-                    points: pts,
-                    overdueAfterHours: 14,
-                    frictionTag: item.frictionTag || '',
-                    category: catVal,
-                    createdBy: doerName,
-                    createdAt: nowIso,
-                    updatedAt: nowIso,
-                    lastReviewedAt: nowIso,
-                    lastCompleted: {},
-                    lastCompletedBy: {},
-                    completionsByDate: {}
-                });
-                hasBatchOps = true;
-            } else {
-                const todoRef = window.getNiptoCollection('custom_tasks').doc();
-                const subTasks = (item.subtasks || []).map((s, i) => ({
-                    id: (typeof s === 'object' && s.id) || ('st_' + Date.now() + '_' + i),
-                    name: typeof s === 'string' ? s : (s.name || s.text || ''),
-                    points: api.clampStep5Points(typeof s === 'object' ? s.points : 5, 5),
-                    completed: false,
-                    createdBy: doerName,
-                    createdAt: nowIso
-                })).filter(st => st.name);
-
-                const effectiveHasSubtasks = subTasks.length > 0;
-                const finalPriority = ['high', 'medium', 'low'].includes(item.priority)
-                    ? item.priority
-                    : (item.type === 'project' ? 'low' : 'medium');
-
-                batch.set(todoRef, {
-                    name: item.title,
-                    type: item.type || 'todo',
-                    bucket: item.type === 'project' ? 'project_idea' : 'actionable',
-                    category: catVal,
-                    location: 'N/A',
-                    assignees: assigneeUids,
-                    frictionTag: item.frictionTag || '',
-                    priority: finalPriority,
-                    points: effectiveHasSubtasks ? 0 : pts,
-                    ...(effectiveHasSubtasks ? { linkedNiptoTask: null } : {}),
-                    description: item.description || '',
-                    notes: item.description || '',
-                    createdBy: doerName,
-                    subTasks: subTasks,
-                    completed: false,
-                    createdAt: nowIso,
-                    updatedAt: nowIso,
-                    lastReviewedAt: nowIso
-                });
-                hasBatchOps = true;
-            }
-            createdCount++;
-        } else if (item.action === 'delete') {
-            if (isRoutineDoc) {
-                batch.delete(window.getNiptoCollection('routines').doc(id));
-                hasBatchOps = true;
-            } else if (id) {
-                batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
-                hasBatchOps = true;
-            }
-            deletedCount++;
-        } else if (item.action === 'complete') {
-            let compUid = doerUid;
-            let compName = doerName;
-            if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
-                const matchedCompUser = ALL_USERS.find(u =>
-                    (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
-                    u.uid === item.assignee
-                );
-                if (matchedCompUser) {
-                    compUid = matchedCompUser.uid;
-                    compName = matchedCompUser.name;
-                }
-            }
-
-            if (isRoutineDoc) {
-                const routine = state.routines.find(r => r.uid === id);
-                if (routine) {
-                    const stagedPts = item.points !== undefined ? api.clampStep5Points(item.points, 5) : null;
-                    if (stagedPts && stagedPts !== api.getRoutinePoints(routine)) {
-                        routine.points = stagedPts;
-                        await api.updateFirestoreDocument('routines', id, { points: stagedPts });
-                    }
-                    await completeRoutineForDate(id, todayKey, true, compUid);
-                }
-            } else if (id) {
-                const existingTodo = state.todoTasksData?.find(t => t.id === id);
-                const isContainerTodo = (Array.isArray(existingTodo?.subTasks) && existingTodo.subTasks.length > 0)
-                    || (Array.isArray(item.subtasks) && item.subtasks.length > 0);
-                const pts = isContainerTodo ? 0 : api.clampStep5Points(item.points ?? existingTodo?.points, 5);
-                let activityUids = [];
-                if (!isContainerTodo && pts > 0) {
-                    try {
-                        activityUids = await api.logCustomPointsToNipto(
-                            pts,
-                            item.title || existingTodo?.name || 'To-Do',
-                            [compUid],
-                            nowIso,
-                            existingTodo?.linkedNiptoTask || null
-                        );
-                    } catch (niptoErr) {
-                        console.warn("Could not log Brain Dump To-Do points to Nipto API:", niptoErr);
-                    }
-                }
-                batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
-                    completed: true,
-                    completedAt: nowIso,
-                    completedBy: [compUid],
-                    completedActivityUids: activityUids,
-                    completedActivityUid: activityUids[0] || null,
-                    lastReviewedAt: nowIso,
-                    updatedAt: nowIso
-                });
-                hasBatchOps = true;
-                if (pts > 0 && activityUids.length === 0) {
-                    api.awardAllowancePoints(compUid, pts);
-                }
-                if (!isContainerTodo && pts > 0) {
-                    await api.recordDailyCompletion({
-                        id: `todo_${id}`,
-                        itemId: id,
-                        sourceType: 'todo',
-                        title: item.title || existingTodo?.name || 'To-Do',
-                        user: compName,
-                        userUid: compUid,
-                        points: pts,
-                        completedAt: nowIso,
-                        dateKey: todayKey,
-                        ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
-                    });
-                }
-            }
-            completedCount++;
-        } else {
-            // action === 'update'
-            let nextAssignees = null;
-            if (item.assignee && item.assignee !== '__KEEP__') {
-                if (item.assignee === 'Anyone') {
-                    nextAssignees = [];
-                } else {
-                    const matchedAssUser = ALL_USERS.find(u =>
-                        (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
-                        u.uid === item.assignee
-                    );
-                    if (matchedAssUser) nextAssignees = [matchedAssUser.uid];
-                }
-            } else if (Array.isArray(item.existingAssigneeUids)) {
-                nextAssignees = [...item.existingAssigneeUids];
-            }
-
-            if (isRoutineDoc) {
-                const scheduleData = buildCleanRoutineSchedule(item);
-                batch.update(window.getNiptoCollection('routines').doc(id), {
-                    name: item.title,
-                    category: catVal,
-                    points: api.clampStep5Points(item.points, 5),
-                    priority: item.priority || 'medium',
-                    frictionTag: item.frictionTag || '',
-                    ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
-                    schedule: scheduleData,
-                    timeOfDay: scheduleData.timeOfDay,
-                    updatedAt: nowIso,
-                    lastReviewedAt: nowIso
-                });
-                hasBatchOps = true;
-            } else if (id) {
-                if (item.type === 'routine') {
-                    const newRoutineRef = window.getNiptoCollection('routines').doc();
-                    const scheduleData = buildCleanRoutineSchedule(item);
-                    const convertedAssignees = nextAssignees !== null ? nextAssignees : [];
-                    batch.set(newRoutineRef, {
-                        name: item.title,
-                        type: 'routine',
-                        completionType: 'shared',
-                        assignees: convertedAssignees,
-                        schedule: scheduleData,
-                        timeOfDay: scheduleData.timeOfDay,
-                        points: api.clampStep5Points(item.points, 5),
-                        category: catVal,
-                        priority: item.priority || 'medium',
-                        frictionTag: item.frictionTag || '',
-                        createdAt: nowIso,
-                        updatedAt: nowIso,
-                        lastReviewedAt: nowIso,
-                        completionsByDate: {}
-                    });
-                    batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
-                    hasBatchOps = true;
-                } else {
-                    const existingTaskDoc = state.todoTasksData?.find(t => t.id === id) || item.current;
-                    const existingSubList = Array.isArray(existingTaskDoc?.subTasks) ? existingTaskDoc.subTasks : [];
-                    let nextSubTasks = null;
-                    if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
-                        nextSubTasks = item.subtasks.map((s, i) => {
-                            const subName = (typeof s === 'string' ? s : (s?.name || s?.text || '')).trim();
-                            if (!subName) return null;
-                            const prevSt = existingSubList.find(es =>
-                                (typeof s === 'object' && s.id && es.id === s.id) ||
-                                ((es.name || es.text || '').trim().toLowerCase() === subName.toLowerCase())
-                            );
-                            return {
-                                id: (typeof s === 'object' && s.id) || prevSt?.id || ('st_' + Date.now() + '_' + i),
-                                name: subName,
-                                points: api.clampStep5Points(typeof s === 'object' ? s.points : prevSt?.points, 5),
-                                completed: prevSt ? Boolean(prevSt.completed) : false,
-                                completedAt: prevSt?.completedAt ?? null,
-                                completedBy: prevSt?.completedBy ?? null,
-                                completedByUids: Array.isArray(prevSt?.completedByUids) ? prevSt.completedByUids : [],
-                                completedActivityUids: Array.isArray(prevSt?.completedActivityUids) ? prevSt.completedActivityUids : [],
-                                completedActivityUid: prevSt?.completedActivityUid ?? null,
-                                linkedNiptoTask: prevSt?.linkedNiptoTask ?? null,
-                                createdBy: prevSt?.createdBy || doerName,
-                                createdAt: prevSt?.createdAt || nowIso
-                            };
-                        }).filter(Boolean);
-                    } else if (Array.isArray(item.subtasks) && item.subtasks.length === 0 && existingSubList.length > 0) {
-                        nextSubTasks = [];
-                    }
-
-                    const hasUpdatedSubtasks = Array.isArray(nextSubTasks)
-                        ? nextSubTasks.length > 0
-                        : existingSubList.length > 0;
-
-                    const updates = {
-                        name: item.title,
-                        type: item.type,
-                        bucket: item.type === 'project' ? 'project_idea' : 'actionable',
-                        category: catVal,
-                        ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
-                        points: hasUpdatedSubtasks ? 0 : api.clampStep5Points(item.points, 5),
-                        ...(hasUpdatedSubtasks ? { linkedNiptoTask: null } : {}),
-                        priority: item.priority || (item.type === 'project' ? 'low' : 'medium'),
-                        frictionTag: item.frictionTag || '',
-                        description: item.description !== undefined ? item.description : '',
-                        notes: item.description !== undefined ? item.description : '',
-                        updatedAt: nowIso,
-                        lastReviewedAt: nowIso
-                    };
-                    if (nextSubTasks !== null) {
-                        updates.subTasks = nextSubTasks;
-                    }
-                    batch.update(window.getNiptoCollection('custom_tasks').doc(id), updates);
-                    hasBatchOps = true;
-                }
-            }
-            updatedCount++;
-        }
+    const applyBtn = document.querySelector('#brainDumpStaging .save-mode');
+    const prevApplyHtml = applyBtn ? applyBtn.innerHTML : '';
+    isApplyingStaging = true;
+    if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
     }
 
     try {
+        const batch = window.db.batch();
+        const nowIso = new Date().toISOString();
+        const todayKey = getLocalTodayKey();
+        const doerUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
+        const doerName = ALL_USERS.find(u => u.uid === doerUid)?.name || 'User';
+
+        let createdCount = 0;
+        let updatedCount = 0;
+        let completedCount = 0;
+        let deletedCount = 0;
+        let hasBatchOps = false;
+
+        for (const item of selected) {
+            if (item.action === 'create_category') {
+                const newCatName = registerCustomCategory(item.category || item.title || '', true);
+                if (newCatName) createdCount++;
+                continue;
+            }
+
+            const id = item.id;
+            const isRoutineDoc = id && state.routines?.some(r => r.uid === id);
+            const rawCatName = (item.category || 'Home').trim() || 'Home';
+            const isAlreadyKnownVisible = getEligibleTaskCategories().some(c => c.toLowerCase() === rawCatName.toLowerCase());
+            const shouldExplicitCreateCat = Boolean(item.isExplicitCategoryCreate || !isAlreadyKnownVisible);
+            const catVal = registerCustomCategory(rawCatName, shouldExplicitCreateCat) || 'Home';
+
+            if (item.action === 'create') {
+                const assigneeUids = [];
+                if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
+                    const userObj = ALL_USERS.find(u => u.name.toLowerCase() === item.assignee.toLowerCase());
+                    if (userObj) assigneeUids.push(userObj.uid);
+                }
+
+                const hasTodoSubtasks = item.type !== 'routine' && Array.isArray(item.subtasks) && item.subtasks.length > 0;
+                const pts = item.type === 'routine'
+                    ? api.clampStep5Points(item.points, 5)
+                    : (hasTodoSubtasks ? 0 : api.clampStep5Points(item.points, 5));
+
+                if (item.type === 'routine') {
+                    const routineRef = window.getNiptoCollection('routines').doc();
+                    const scheduleData = buildCleanRoutineSchedule(item);
+                    batch.set(routineRef, {
+                        name: item.title,
+                        type: 'routine',
+                        completionType: 'shared',
+                        assignees: assigneeUids,
+                        schedule: scheduleData,
+                        timeOfDay: scheduleData.timeOfDay,
+                        linkedNiptoTask: null,
+                        points: pts,
+                        overdueAfterHours: 14,
+                        frictionTag: item.frictionTag || '',
+                        category: catVal,
+                        createdBy: doerName,
+                        createdAt: nowIso,
+                        updatedAt: nowIso,
+                        lastReviewedAt: nowIso,
+                        lastCompleted: {},
+                        lastCompletedBy: {},
+                        completionsByDate: {}
+                    });
+                    hasBatchOps = true;
+                } else {
+                    const todoRef = window.getNiptoCollection('custom_tasks').doc();
+                    const subTasks = (item.subtasks || []).map((s, i) => ({
+                        id: (typeof s === 'object' && s.id) || ('st_' + Date.now() + '_' + i),
+                        name: typeof s === 'string' ? s : (s.name || s.text || ''),
+                        points: api.clampStep5Points(typeof s === 'object' ? s.points : 5, 5),
+                        completed: false,
+                        createdBy: doerName,
+                        createdAt: nowIso
+                    })).filter(st => st.name);
+
+                    const effectiveHasSubtasks = subTasks.length > 0;
+                    const finalPriority = ['high', 'medium', 'low'].includes(item.priority)
+                        ? item.priority
+                        : (item.type === 'project' ? 'low' : 'medium');
+
+                    batch.set(todoRef, {
+                        name: item.title,
+                        type: item.type || 'todo',
+                        bucket: item.type === 'project' ? 'project_idea' : 'actionable',
+                        category: catVal,
+                        location: 'N/A',
+                        assignees: assigneeUids,
+                        frictionTag: item.frictionTag || '',
+                        priority: finalPriority,
+                        points: effectiveHasSubtasks ? 0 : pts,
+                        ...(effectiveHasSubtasks ? { linkedNiptoTask: null } : {}),
+                        description: item.description || '',
+                        notes: item.description || '',
+                        createdBy: doerName,
+                        subTasks: subTasks,
+                        completed: false,
+                        createdAt: nowIso,
+                        updatedAt: nowIso,
+                        lastReviewedAt: nowIso
+                    });
+                    hasBatchOps = true;
+                }
+                expandCategoryOnReactivation(item.type || 'todo', catVal);
+                createdCount++;
+            } else if (item.action === 'delete') {
+                if (isRoutineDoc) {
+                    batch.delete(window.getNiptoCollection('routines').doc(id));
+                    hasBatchOps = true;
+                } else if (id) {
+                    batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
+                    hasBatchOps = true;
+                }
+                deletedCount++;
+            } else if (item.action === 'complete') {
+                let compUid = doerUid;
+                let compName = doerName;
+                if (item.assignee && item.assignee !== 'Anyone' && item.assignee !== '__KEEP__') {
+                    const matchedCompUser = ALL_USERS.find(u =>
+                        (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
+                        u.uid === item.assignee
+                    );
+                    if (matchedCompUser) {
+                        compUid = matchedCompUser.uid;
+                        compName = matchedCompUser.name;
+                    }
+                }
+
+                if (isRoutineDoc) {
+                    const routine = state.routines.find(r => r.uid === id);
+                    if (routine) {
+                        const stagedPts = item.points !== undefined ? api.clampStep5Points(item.points, 5) : null;
+                        if (stagedPts && stagedPts !== api.getRoutinePoints(routine)) {
+                            routine.points = stagedPts;
+                            await api.updateFirestoreDocument('routines', id, { points: stagedPts });
+                        }
+                        await completeRoutineForDate(id, todayKey, true, compUid);
+                    }
+                } else if (id) {
+                    const existingTodo = state.todoTasksData?.find(t => t.id === id);
+                    const isContainerTodo = (Array.isArray(existingTodo?.subTasks) && existingTodo.subTasks.length > 0)
+                        || (Array.isArray(item.subtasks) && item.subtasks.length > 0);
+                    const pts = isContainerTodo ? 0 : api.clampStep5Points(item.points ?? existingTodo?.points, 5);
+                    let activityUids = [];
+                    if (!isContainerTodo && pts > 0) {
+                        try {
+                            activityUids = await api.logCustomPointsToNipto(
+                                pts,
+                                item.title || existingTodo?.name || 'To-Do',
+                                [compUid],
+                                nowIso,
+                                existingTodo?.linkedNiptoTask || null
+                            );
+                        } catch (niptoErr) {
+                            console.warn("Could not log Brain Dump To-Do points to Nipto API:", niptoErr);
+                        }
+                    }
+                    batch.update(window.getNiptoCollection('custom_tasks').doc(id), {
+                        completed: true,
+                        completedAt: nowIso,
+                        completedBy: [compUid],
+                        completedActivityUids: activityUids,
+                        completedActivityUid: activityUids[0] || null,
+                        lastReviewedAt: nowIso,
+                        updatedAt: nowIso
+                    });
+                    hasBatchOps = true;
+                    if (pts > 0 && activityUids.length === 0) {
+                        api.awardAllowancePoints(compUid, pts);
+                    }
+                    if (!isContainerTodo && pts > 0) {
+                        await api.recordDailyCompletion({
+                            id: `todo_${id}`,
+                            itemId: id,
+                            sourceType: 'todo',
+                            title: item.title || existingTodo?.name || 'To-Do',
+                            user: compName,
+                            userUid: compUid,
+                            points: pts,
+                            completedAt: nowIso,
+                            dateKey: todayKey,
+                            ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
+                        });
+                    }
+
+                    const linkedRoutine = findMatchingRoutineForChore(
+                        existingTodo || { id, name: item.title, type: item.type || 'todo' },
+                        'todo'
+                    );
+                    if (linkedRoutine) {
+                        const rStatus = getRoutineCompletionForDate(linkedRoutine, todayKey);
+                        if (!rStatus.isDone || rStatus.withoutPoints) {
+                            await completeRoutineForDate(linkedRoutine.uid, todayKey, true, compUid, {
+                                completedByChore: true,
+                                sourceChoreType: 'todo',
+                                sourceChoreId: id,
+                                activityUids,
+                                points: pts,
+                                creditedName: compName,
+                                completedAt: nowIso
+                            });
+                        }
+                    }
+                }
+                completedCount++;
+            } else {
+                // action === 'update'
+                let nextAssignees = null;
+                if (item.assignee && item.assignee !== '__KEEP__') {
+                    if (item.assignee === 'Anyone') {
+                        nextAssignees = [];
+                    } else {
+                        const matchedAssUser = ALL_USERS.find(u =>
+                            (u.name && u.name.toLowerCase() === String(item.assignee).toLowerCase()) ||
+                            u.uid === item.assignee
+                        );
+                        if (matchedAssUser) nextAssignees = [matchedAssUser.uid];
+                    }
+                } else if (Array.isArray(item.existingAssigneeUids)) {
+                    nextAssignees = [...item.existingAssigneeUids];
+                }
+
+                if (isRoutineDoc) {
+                    const scheduleData = buildCleanRoutineSchedule(item);
+                    batch.update(window.getNiptoCollection('routines').doc(id), {
+                        name: item.title,
+                        category: catVal,
+                        points: api.clampStep5Points(item.points, 5),
+                        priority: item.priority || 'medium',
+                        frictionTag: item.frictionTag || '',
+                        ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
+                        schedule: scheduleData,
+                        timeOfDay: scheduleData.timeOfDay,
+                        updatedAt: nowIso,
+                        lastReviewedAt: nowIso
+                    });
+                    hasBatchOps = true;
+                } else if (id) {
+                    if (item.type === 'routine') {
+                        const newRoutineRef = window.getNiptoCollection('routines').doc();
+                        const scheduleData = buildCleanRoutineSchedule(item);
+                        const convertedAssignees = nextAssignees !== null ? nextAssignees : [];
+                        batch.set(newRoutineRef, {
+                            name: item.title,
+                            type: 'routine',
+                            completionType: 'shared',
+                            assignees: convertedAssignees,
+                            schedule: scheduleData,
+                            timeOfDay: scheduleData.timeOfDay,
+                            points: api.clampStep5Points(item.points, 5),
+                            category: catVal,
+                            priority: item.priority || 'medium',
+                            frictionTag: item.frictionTag || '',
+                            createdAt: nowIso,
+                            updatedAt: nowIso,
+                            lastReviewedAt: nowIso,
+                            completionsByDate: {}
+                        });
+                        batch.delete(window.getNiptoCollection('custom_tasks').doc(id));
+                        hasBatchOps = true;
+                    } else {
+                        const existingTaskDoc = state.todoTasksData?.find(t => t.id === id) || item.current;
+                        const existingSubList = Array.isArray(existingTaskDoc?.subTasks) ? existingTaskDoc.subTasks : [];
+                        let nextSubTasks = null;
+                        if (Array.isArray(item.subtasks) && item.subtasks.length > 0) {
+                            nextSubTasks = item.subtasks.map((s, i) => {
+                                const subName = (typeof s === 'string' ? s : (s?.name || s?.text || '')).trim();
+                                if (!subName) return null;
+                                const prevSt = existingSubList.find(es =>
+                                    (typeof s === 'object' && s.id && es.id === s.id) ||
+                                    ((es.name || es.text || '').trim().toLowerCase() === subName.toLowerCase())
+                                );
+                                return {
+                                    id: (typeof s === 'object' && s.id) || prevSt?.id || ('st_' + Date.now() + '_' + i),
+                                    name: subName,
+                                    points: api.clampStep5Points(typeof s === 'object' ? s.points : prevSt?.points, 5),
+                                    completed: prevSt ? Boolean(prevSt.completed) : false,
+                                    completedAt: prevSt?.completedAt ?? null,
+                                    completedBy: prevSt?.completedBy ?? null,
+                                    completedByUids: Array.isArray(prevSt?.completedByUids) ? prevSt.completedByUids : [],
+                                    completedActivityUids: Array.isArray(prevSt?.completedActivityUids) ? prevSt.completedActivityUids : [],
+                                    completedActivityUid: prevSt?.completedActivityUid ?? null,
+                                    linkedNiptoTask: prevSt?.linkedNiptoTask ?? null,
+                                    createdBy: prevSt?.createdBy || doerName,
+                                    createdAt: prevSt?.createdAt || nowIso
+                                };
+                            }).filter(Boolean);
+                        } else if (Array.isArray(item.subtasks) && item.subtasks.length === 0 && existingSubList.length > 0) {
+                            nextSubTasks = [];
+                        }
+
+                        const hasUpdatedSubtasks = Array.isArray(nextSubTasks)
+                            ? nextSubTasks.length > 0
+                            : existingSubList.length > 0;
+
+                        const updates = {
+                            name: item.title,
+                            type: item.type,
+                            bucket: item.type === 'project' ? 'project_idea' : 'actionable',
+                            category: catVal,
+                            ...(nextAssignees !== null ? { assignees: nextAssignees } : {}),
+                            points: hasUpdatedSubtasks ? 0 : api.clampStep5Points(item.points, 5),
+                            ...(hasUpdatedSubtasks ? { linkedNiptoTask: null } : {}),
+                            priority: item.priority || (item.type === 'project' ? 'low' : 'medium'),
+                            frictionTag: item.frictionTag || '',
+                            description: item.description !== undefined ? item.description : '',
+                            notes: item.description !== undefined ? item.description : '',
+                            updatedAt: nowIso,
+                            lastReviewedAt: nowIso
+                        };
+                        if (nextSubTasks !== null) {
+                            updates.subTasks = nextSubTasks;
+                        }
+                        batch.update(window.getNiptoCollection('custom_tasks').doc(id), updates);
+                        hasBatchOps = true;
+                    }
+                }
+                expandCategoryOnReactivation(item.type || 'todo', catVal);
+                updatedCount++;
+            }
+        }
+
         if (hasBatchOps) {
             await batch.commit();
         }
@@ -1599,6 +1684,12 @@ export async function applyUnifiedStagingToFirestore() {
     } catch (err) {
         console.error("Batch update error:", err);
         alert("Failed to apply changes: " + err.message);
+    } finally {
+        isApplyingStaging = false;
+        if (applyBtn && applyBtn.isConnected) {
+            applyBtn.disabled = false;
+            applyBtn.innerHTML = prevApplyHtml;
+        }
     }
 }
 
@@ -1747,7 +1838,9 @@ function getFilteredBulkData() {
     const showArchivedDone = Boolean(state.showArchivedDoneInBulk);
 
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
-    const allRawTodos = (state.todoTasksData || []).map(normalizeTask);
+    const allRawTodos = (state.todoTasksData || [])
+        .filter(t => !isInternalLockedCategory(t.category || 'Home'))
+        .map(normalizeTask);
     const archivedDoneCount = allRawTodos.filter(t => isCompletedTodoExpired(t)).length;
 
     if (!showArchivedDone) {
@@ -1759,7 +1852,7 @@ function getFilteredBulkData() {
     const allTodos = showArchivedDone
         ? allRawTodos
         : allRawTodos.filter(t => !isCompletedTodoExpired(t));
-    const allRoutines = state.routines || [];
+    const allRoutines = (state.routines || []).filter(r => !isInternalLockedCategory(r.category || 'Home'));
 
     function getPriorityWeight(p) {
         if (!p) return 2;
@@ -2407,6 +2500,24 @@ export async function executeBulkAction(actionType) {
                     dateKey: todayKey,
                     ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
                 });
+            }
+
+            if (t) {
+                const linkedRoutine = findMatchingRoutineForChore(t, 'todo');
+                if (linkedRoutine) {
+                    const rStatus = getRoutineCompletionForDate(linkedRoutine, todayKey);
+                    if (!rStatus.isDone || rStatus.withoutPoints) {
+                        await completeRoutineForDate(linkedRoutine.uid, todayKey, true, doerUid, {
+                            completedByChore: true,
+                            sourceChoreType: 'todo',
+                            sourceChoreId: id,
+                            activityUids,
+                            points: pts,
+                            creditedName: doerName,
+                            completedAt: nowIso
+                        });
+                    }
+                }
             }
         }
         await batch.commit();

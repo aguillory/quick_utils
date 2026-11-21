@@ -31,7 +31,7 @@ import {
     closeTaskModal, deleteTask, toggleTaskStatus, addSubTaskField,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter,
     setTodoPriorityFilter, setTodoTypeFilter, setTodoCategoryFilter, setTodoSort,
-    setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
+    setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, expandCategoryOnReactivation, moveTodoCategory, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
     openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi
@@ -40,7 +40,8 @@ import {
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields,
     saveRoutine, deleteRoutine, deleteRoutineFromModal, renderRoutines, renderRollingSchedule,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter,
-    toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine
+    toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
+    normalizeChoreTitle, findMatchingRoutineForChore, populateRoutineLinkedNiptoTaskSelect
 } from './routines.js';
 import {
     refreshBrainDumpUser, insertBrainDumpHint,
@@ -157,12 +158,13 @@ Object.assign(window, {
     openTaskModal, closeTaskModal, editTask, saveTask, deleteTask, toggleTaskStatus, addSubTaskField,
     renderTodoTasks, renderSidebarTodos,
     setTodoView, setTodoPersonFilter, setTodoBucketFilter, setTodoFrictionFilter, setTodoPriorityFilter,
-    setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
+    setTodoTypeFilter, setTodoCategoryFilter, setTodoSort, setTodoGroupBy, resetTodoFilters, classifyTaskOwnership, expandCategoryOnReactivation, moveTodoCategory, toggleCategoryCollapse, toggleMainSectionCollapse, toggleTaskDescription,
     toggleSubtasksList, clearTaskFriction,
     openStaleRefresherModal, closeStaleRefresherModal, prevStaleCard, nextStaleCard,
     toggleStaleInlineEdit, saveStaleInlineEdit, handleStaleAction, simplifyTaskWithAi,
     openRoutineModal, closeRoutineModal, editRoutine, toggleRoutineFrequencyFields, saveRoutine, deleteRoutine, deleteRoutineFromModal,
     completeRoutineForDate, undoRoutineForDate, setScheduleFilter, toggleHideCompletedRoutines, clearAllMissedRoutines, isDailyRoutine,
+    normalizeChoreTitle, findMatchingRoutineForChore, populateRoutineLinkedNiptoTaskSelect,
     switchBrainDumpMode, refreshBrainDumpUser, insertBrainDumpHint, parseWithGemini, rawLineByLineAdd, clearBrainDumpStaging, commitBrainDumpToFirestore,
     applyUnifiedStagingToFirestore, toggleSectionStagingRows,
     updateStagingItem, updateStagingRoutineSchedule, deleteStagingItem, addSubtaskToStaging, updateStagingSubtask, removeStagingSubtask, toggleAllStagingRows,
@@ -185,7 +187,8 @@ Object.assign(window, {
     rebuildCompletedThisWeek, renderDoneThisWeekFeed,
     rebuildCompletedToday, renderDoneTodayFeed, updateLeaderboardUI,
     sendChatMessage, editChatMessage, deleteChatMessage,
-    reconcileNiptoActivitiesToFirestore: api.reconcileNiptoActivitiesToFirestore
+    reconcileNiptoActivitiesToFirestore: api.reconcileNiptoActivitiesToFirestore,
+    findAndDeduplicateChores: api.findAndDeduplicateChores
 });
 
 window.submitPin = async () => {

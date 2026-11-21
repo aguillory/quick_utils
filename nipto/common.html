@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unified Nipto Dashboard</title>
-    <link rel="stylesheet" href="css/nipto-shared.css?v=20261119a">
+    <link rel="stylesheet" href="css/nipto-shared.css?v=20261121a">
 </head>
 <body>
 
@@ -387,7 +387,7 @@
                 </datalist>
 
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-                    <button type="button" id="btnTestGeminiKey" class="action-btn" onclick="testGeminiConnection()" style="padding: 6px 14px; font-size: 12px; font-weight: 700; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                    <button type="button" id="btnTestGeminiKey" class="action-btn settings-test-btn" onclick="testGeminiConnection()">
                         &#x26A1; Test Key &amp; Model
                     </button>
                     <span id="geminiTestBadge" style="display: none; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px;"></span>
@@ -778,6 +778,11 @@
                 </div>
             </div>
 
+            <label style="font-size: 13px; font-weight: bold; color: var(--text-muted);">Linked Nipto Chore (Optional - syncs completion &amp; points)</label>
+            <select id="routineLinkedNiptoTask" style="padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px; width: 100%; box-sizing: border-box;">
+                <option value="">-- None (Standalone / Match by Title) --</option>
+            </select>
+
             <label style="font-size: 13px; font-weight: bold; color: var(--primary);">Points (Awarded on completion)</label>
             <input type="number" id="routinePoints" value="5" min="5" max="100" step="5" placeholder="5" style="padding: 10px; border-radius: 6px; border: 1px solid var(--primary); font-size: 14px; width: 100%; box-sizing: border-box;">
 
@@ -829,7 +834,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="js/firebase-config.js"></script>
-    <script type="module" src="js/dashboard.js?v=20261119a"></script>
+    <script type="module" src="js/dashboard.js?v=20261121a"></script>
 
 </body>
 </html>

@@ -7,9 +7,12 @@
     /* Black Ops II Tactical Palette */
     --primary: #FF7300;       /* Iconic BO2 Orange */
     --primary-hover: #FFA200; /* Intense Bright Orange */
+    --on-primary: #000000;
+    --primary-text: #FF8C00;
     --success: #39FF14;       /* Tactical Neon Green */
     --danger: #FF0000;        /* Alert Red */
     --bg-color: #080808;      /* Pitch Black / Gunmetal */
+    --surface-subtle: #121212;
     --card-bg: rgba(20, 20, 20, 0.85); /* Semi-transparent HUD Panel */
     --text-main: #E0E0E0;     /* High-vis Off-White */
     --text-muted: #666666;    /* Muted Tech Grey */
@@ -507,4 +510,36 @@ input[list]:focus {
 .todo-card.is-other-user-task:focus-within {
     opacity: 0.96;
     filter: saturate(1);
+}
+
+.filter-pill.active,
+.qa-point-pill.active,
+.routine-count-badge.highlight {
+    color: #000000 !important;
+    font-weight: 800;
+}
+
+.stale-review-btn,
+.settings-test-btn {
+    background-color: #111111 !important;
+    color: var(--primary) !important;
+    border: 1px solid var(--primary) !important;
+}
+
+.stale-review-btn:hover,
+.settings-test-btn:hover {
+    background-color: var(--primary) !important;
+    color: #000000 !important;
+}
+
+.todo-pill.category-pill {
+    background: rgba(15, 118, 110, 0.22) !important;
+    color: #2DD4BF !important;
+    border-color: rgba(45, 212, 191, 0.45) !important;
+}
+
+.todo-creator-tag.different-user {
+    background: rgba(79, 70, 229, 0.22) !important;
+    color: #A5B4FC !important;
+    border-color: rgba(165, 180, 252, 0.4) !important;
 }

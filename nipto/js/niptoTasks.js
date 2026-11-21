@@ -5,9 +5,11 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { saveCloudCollapsed, saveCloudPreference } from './preferences.js';
-import { renderRoutines } from './routines.js';
+import { renderRoutines, normalizeChoreTitle, isRoutineCompletedOnDate, getRoutineCompletionForDate, completeRoutineForDate } from './routines.js';
 import { enableDragSort } from './dragSort.js';
 import { getLocalTodayKey } from './utils.js';
+
+let isSubmittingQuickAdd = false;
 
 function isQuickAddCategory(cat) {
     return cat === '\u26A1 Quick Add' || cat === '&#x26A1; Quick Add';
@@ -49,49 +51,31 @@ export async function logTask(buttonElement, taskUid, taskName) {
         showToast(taskUid, taskName, points, namesString);
         statusDiv.innerText = "";
 
-        if (state.routines) {
-            const linkedRoutines = state.routines.filter(r => r.linkedNiptoTask === taskUid);
-            let requiresRoutineRender = false;
+        if (state.routines && taskObj && !api.isGenericAssignedTask(taskObj)) {
+            const targetNormTitle = normalizeChoreTitle(taskName);
+            const matchedRoutines = state.routines.filter(r =>
+                r.linkedNiptoTask === taskUid ||
+                (targetNormTitle && normalizeChoreTitle(r.name) === targetNormTitle)
+            );
 
-            for (const routine of linkedRoutines) {
-                const newLastCompleted = routine.lastCompleted ? { ...routine.lastCompleted } : {};
-                const newLastCompletedBy = routine.lastCompletedBy ? { ...routine.lastCompletedBy } : {};
-                const newCompletionsByDate = routine.completionsByDate ? { ...routine.completionsByDate } : {};
-
-                const primaryUid = state.activeUsers[0] || '';
-                newCompletionsByDate[targetDateKey] = {
-                    completedAt: targetDate.toISOString(),
-                    completedByUid: primaryUid,
-                    completedByName: namesString,
-                    withoutPoints: false,
-                    niptoActivityUids: activityUids || [],
-                    niptoActivityUid: (activityUids && activityUids[0]) || null
-                };
-
-                if (routine.completionType === 'shared') {
-                    newLastCompleted['shared'] = targetDate.toISOString();
-                    newLastCompletedBy['shared'] = namesString;
-                } else {
-                    state.activeUsers.forEach(uid => {
-                        newLastCompleted[uid] = targetDate.toISOString();
-                        const uObj = ALL_USERS.find(u => u.uid === uid);
-                        newLastCompletedBy[uid] = uObj ? uObj.name : "Unknown";
+            for (const routine of matchedRoutines) {
+                const rStatus = getRoutineCompletionForDate(routine, targetDateKey);
+                // Rule A: mark routine done without double-awarding; Rule C: leave done routine untouched
+                if (!rStatus.isDone || rStatus.withoutPoints) {
+                    await completeRoutineForDate(routine.uid, targetDateKey, true, state.activeUsers[0], {
+                        completedByChore: true,
+                        sourceChoreType: 'nipto',
+                        sourceChoreId: taskUid,
+                        activityUids: activityUids || [],
+                        points,
+                        creditedName: namesString,
+                        completedAt: targetDate.toISOString()
                     });
                 }
-
-                routine.lastCompleted = newLastCompleted;
-                routine.lastCompletedBy = newLastCompletedBy;
-                routine.completionsByDate = newCompletionsByDate;
-                requiresRoutineRender = true;
-
-                api.updateFirestoreDocument('routines', routine.uid, {
-                    lastCompleted: newLastCompleted,
-                    lastCompletedBy: newLastCompletedBy,
-                    completionsByDate: newCompletionsByDate
-                }).catch(e => console.error("Routine auto-update failed:", e));
             }
-
-            if (requiresRoutineRender) { renderRoutines(); }
+            if (matchedRoutines.length > 0 && typeof window !== 'undefined' && window.renderTodoTasks) {
+                window.renderTodoTasks();
+            }
         }
 
         // Record to daily_completions for the target date key using canonical nipto_{actUid} key
@@ -185,6 +169,42 @@ export async function deleteTaskActivity(activityUid, btnElement) {
             });
         } catch (e) {
             console.warn("Firestore custom_tasks cleanup query:", e);
+        }
+
+        // Undo A3: revert any routine completions cascaded from this Nipto activity
+        if (Array.isArray(state.routines) && state.routines.length > 0) {
+            let routineReverted = false;
+            for (const routine of state.routines) {
+                if (!routine.completionsByDate || typeof routine.completionsByDate !== 'object') continue;
+                let modifiedThisRoutine = false;
+                for (const [dKey, entry] of Object.entries(routine.completionsByDate)) {
+                    if (
+                        entry &&
+                        entry.completedByChore === true &&
+                        (entry.niptoActivityUid === activityUid ||
+                            (Array.isArray(entry.niptoActivityUids) && entry.niptoActivityUids.includes(activityUid)))
+                    ) {
+                        delete routine.completionsByDate[dKey];
+                        modifiedThisRoutine = true;
+                    }
+                }
+                if (modifiedThisRoutine) {
+                    routineReverted = true;
+                    await api.updateFirestoreDocument('routines', routine.uid, {
+                        completionsByDate: routine.completionsByDate,
+                        updatedAt: new Date().toISOString()
+                    });
+                    const routineCatKey = `todo_cat_routine_${String(routine.category || 'Home').trim().toLowerCase()}`;
+                    if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(routineCatKey);
+                    if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(routineCatKey);
+                    if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+                    state.userPrefs.collapsed[routineCatKey] = false;
+                    saveCloudCollapsed(routineCatKey, false);
+                }
+            }
+            if (routineReverted) {
+                renderRoutines();
+            }
         }
 
         const { renderTodoTasks } = await import('./todos.js');
@@ -719,9 +739,11 @@ export function populateQuickAddUsers() {
 }
 
 export async function submitQuickAdd() {
+    const submitBtn = document.getElementById('quickAddSubmitBtn');
+    if (isSubmittingQuickAdd || (submitBtn && submitBtn.disabled)) return;
+
     const descInput = document.getElementById('quickAddDesc');
     const pointsSelect = document.getElementById('quickAddPoints');
-    const submitBtn = document.getElementById('quickAddSubmitBtn');
 
     const description = descInput ? descInput.value.trim() : '';
     if (!description) {
@@ -749,6 +771,7 @@ export async function submitQuickAdd() {
         return;
     }
 
+    isSubmittingQuickAdd = true;
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.innerText = "Awarding...";
@@ -769,7 +792,7 @@ export async function submitQuickAdd() {
     }).join(', ');
 
     try {
-        const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString(), selectedUids);
+        const activityUids = await api.logActivityToNipto(linkedNiptoTask, targetDate.toISOString(), selectedUids, description);
         await api.saveActivityLabels(activityUids, description);
 
         await api.addFirestoreDocument('custom_tasks', {
@@ -812,9 +835,10 @@ export async function submitQuickAdd() {
         console.error("Error in submitQuickAdd:", error);
         alert("Error awarding points: " + error.message);
     } finally {
+        isSubmittingQuickAdd = false;
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerText = "&#x26A1; Award Points";
+            submitBtn.innerHTML = "&#x26A1; Award Points";
         }
     }
 }

@@ -10,12 +10,14 @@ import { showToast } from './toast.js';
 import { updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed, drawLeaderboard, rebuildCompletedThisWeek } from './leaderboard.js';
 import { getLocalTodayKey, registerCustomCategory, toMillisSafe, isCompletedTodoExpired, getEligibleTaskCategories, isCategoryVisibleForTasks } from './utils.js';
 import { saveCloudPreference, saveCloudPreferencesBatch, saveCloudCollapsed } from './preferences.js';
-import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate } from './routines.js';
+import { completeRoutineForDate, undoRoutineForDate, editRoutine, deleteRoutine, formatRoutineAssignees, isRoutineCompletedOnDate, getRoutineCompletionForDate, findMatchingRoutineForChore } from './routines.js';
 import { callGeminiWithFallback, DEFAULT_GEMINI_MODEL } from './braindump.js';
 
 export { NIPTO_PUBLIC_URL };
 
 const inFlightSubTaskOps = new Set();
+const inFlightTodoOps = new Set();
+let isSavingTask = false;
 let taskModalListenersInitialized = false;
 
 function snapStep5InputValue(inputEl, allowZeroWhenDisabled = false) {
@@ -348,12 +350,91 @@ export function resetTodoFilters() {
     renderTodoTasks();
 }
 
-export function toggleCategoryCollapse(catKey) {
+export function expandCategoryOnReactivation(sectionType, categoryName) {
+    const cleanCat = String(categoryName || '').trim().toLowerCase();
+    if (!cleanCat || !sectionType) return;
+    const scopedKey = 'todo_cat_' + sectionType + '_' + cleanCat;
+    const legacyKey = String(categoryName || '').trim();
+    if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(scopedKey);
+    if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(scopedKey);
+    if (state.userPrefs?.collapsed?.[scopedKey]) {
+        state.userPrefs.collapsed[scopedKey] = false;
+        saveCloudCollapsed(scopedKey, false);
+    }
+    if (state.userPrefs?.collapsed?.[legacyKey]) {
+        state.userPrefs.collapsed[legacyKey] = false;
+        saveCloudCollapsed(legacyKey, false);
+    }
+}
+
+export function moveTodoCategory(sectionType, catLabel, direction, event = null) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (!catLabel || (direction !== -1 && direction !== 1)) return;
+
+    const sectionContainer = document.getElementById('cat-accordions-' + sectionType);
+    if (!sectionContainer) return;
+
+    const visibleActiveLabels = Array.from(
+        sectionContainer.querySelectorAll('.category-accordion-item:not(.is-completed-category) > .category-accordion-header')
+    ).map(h => h.getAttribute('data-cat-label')).filter(Boolean);
+
+    const lowerTarget = String(catLabel).trim().toLowerCase();
+    const visibleIdx = visibleActiveLabels.findIndex(c => c.toLowerCase() === lowerTarget);
+    if (visibleIdx === -1) return;
+
+    const neighborIdx = visibleIdx + direction;
+    if (neighborIdx < 0 || neighborIdx >= visibleActiveLabels.length) return;
+
+    const movingLabel = visibleActiveLabels[visibleIdx];
+    const neighborLabel = visibleActiveLabels[neighborIdx];
+
+    const seen = new Set();
+    const masterList = [];
+    const addMaster = (raw) => {
+        const clean = String(raw || '').trim();
+        if (!clean) return;
+        const low = clean.toLowerCase();
+        if (!seen.has(low)) {
+            seen.add(low);
+            masterList.push(clean);
+        }
+    };
+
+    (state.userPrefs?.todoSortOrder || []).forEach(addMaster);
+    visibleActiveLabels.forEach(addMaster);
+    getEligibleTaskCategories().forEach(addMaster);
+
+    const withoutMoving = masterList.filter(c => c.toLowerCase() !== movingLabel.toLowerCase());
+    const neighborMasterIdx = withoutMoving.findIndex(c => c.toLowerCase() === neighborLabel.toLowerCase());
+    if (neighborMasterIdx === -1) return;
+
+    const insertIdx = direction === -1 ? neighborMasterIdx : neighborMasterIdx + 1;
+    withoutMoving.splice(insertIdx, 0, movingLabel);
+
+    saveCloudPreference('todoSortOrder', withoutMoving);
+    renderTodoTasks();
+}
+
+export function toggleCategoryCollapse(scopedKey, isAllComplete = false) {
+    if (!scopedKey) return;
+    if (isAllComplete) {
+        if (!state.expandedCompletedCategories) state.expandedCompletedCategories = new Set();
+        if (state.expandedCompletedCategories.has(scopedKey)) {
+            state.expandedCompletedCategories.delete(scopedKey);
+        } else {
+            state.expandedCompletedCategories.add(scopedKey);
+        }
+        renderTodoTasks();
+        return;
+    }
     if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
-    const currentlyCollapsed = !!state.userPrefs.collapsed[catKey];
+    const currentlyCollapsed = !!state.userPrefs.collapsed[scopedKey];
     const nextState = !currentlyCollapsed;
-    state.userPrefs.collapsed[catKey] = nextState;
-    saveCloudCollapsed(catKey, nextState);
+    state.userPrefs.collapsed[scopedKey] = nextState;
+    saveCloudCollapsed(scopedKey, nextState);
     renderTodoTasks();
 }
 
@@ -431,8 +512,11 @@ export function renderTodoTasks() {
     const container = document.getElementById('todoContainer');
     if (!container) return;
 
-    const tasks = (state.todoTasksData || []).filter(t => !isCompletedTodoExpired(t)).map(normalizeTask);
-    const routines = state.routines || [];
+    const tasks = (state.todoTasksData || [])
+        .filter(t => !isCompletedTodoExpired(t) && isCategoryVisibleForTasks(t.category || 'General'))
+        .map(normalizeTask);
+    const routines = (state.routines || [])
+        .filter(r => isCategoryVisibleForTasks(r.category || 'Home'));
     const activeUid = state.activeUsers[0] || (ALL_USERS[0]?.uid || '');
     const activeUserObj = ALL_USERS.find(u => u.uid === activeUid);
     const activeName = activeUserObj ? activeUserObj.name : 'Active';
@@ -596,15 +680,16 @@ export function renderTodoTasks() {
     const staleTasks = getStaleTasks();
     let staleBannerHtml = '';
     if (staleTasks.length > 0) {
+        const stalePlural = staleTasks.length > 1 ? 's have' : ' has';
         staleBannerHtml = `
         <div class="stale-refresher-banner" onclick="openStaleRefresherModal()" title="Click to gently review sitting tasks">
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px;">&#x2728;</span>
                 <span style="font-size: 13px; font-weight: 600; color: var(--text-main);">
-                    <strong>${staleTasks.length} To-Do${staleTasks.length > 1 ? 's have' : ' has'}</strong> been sitting a while &mdash; Review?
+                    <strong>${staleTasks.length} To-Do${stalePlural}</strong> been sitting a while &mdash; Review?
                 </span>
             </div>
-            <button type="button" class="action-btn" onclick="openStaleRefresherModal(); event.stopPropagation();" style="padding: 4px 10px; font-size: 12px; font-weight: 700; background: var(--card-bg); border: 1px solid var(--border-color);">
+            <button type="button" class="action-btn stale-review-btn" onclick="openStaleRefresherModal(); event.stopPropagation();">
                 Review List &#x2192;
             </button>
         </div>
@@ -855,19 +940,33 @@ export function renderTodoTasks() {
 
         const displayCat = (r.category || 'Home').trim() || 'Home';
         const routineCatBadge = `<span class="todo-pill category-pill" title="Category: ${escapeHtml(displayCat)}">&#x1F4C1; ${escapeHtml(displayCat)}</span>`;
+        const routineCheckClick = isCompletedToday
+            ? `undoRoutineForDate('${r.uid}', '${todayKey}')`
+            : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`;
+        const routineCheckTitle = isCompletedToday
+            ? 'Completed today - click to undo'
+            : 'Mark routine done today (awards points)';
+        const routineCheckAria = isCompletedToday ? 'Undo completion' : 'Mark complete';
+        const routineCheckIcon = isCompletedToday ? '&#x2714;' : '';
+        const routineDoneTag = isCompletedToday
+            ? `<span class="completed-by-tag">&#x2714; ${escapeHtml(doneByName)}</span>`
+            : '';
+        const routineHighLowDot = pri === 'high'
+            ? '<span class="priority-dot high">&#x25CF;</span> '
+            : (pri === 'low' ? '<span class="priority-dot low">&#x25CF;</span> ' : '');
 
         return `
         <div class="todo-card ${priorityClass} ${isCompletedToday ? 'completed' : ''} ${ownershipClass}">
             <div class="todo-card-top">
                 <div class="todo-card-main-line">
                     <button type="button" class="item-checkbox ${isCompletedToday ? 'checked' : ''}"
-                        onclick="${isCompletedToday ? `undoRoutineForDate('${r.uid}', '${todayKey}')` : `completeRoutineForDate('${r.uid}', '${todayKey}', true)`}"
-                        title="${isCompletedToday ? 'Completed today - click to undo' : 'Mark routine done today (awards points)'}"
-                        aria-label="${isCompletedToday ? 'Undo completion' : 'Mark complete'}">
-                        ${isCompletedToday ? '&#x2714;' : ''}
+                        onclick="${routineCheckClick}"
+                        title="${routineCheckTitle}"
+                        aria-label="${routineCheckAria}">
+                        ${routineCheckIcon}
                     </button>
                     <span class="todo-title ${isCompletedToday ? 'completed-text' : ''}">
-                        ${pri === 'high' ? '<span class="priority-dot high">&#x25CF;</span> ' : (pri === 'low' ? '<span class="priority-dot low">&#x25CF;</span> ' : '')}${escapeHtml(r.name)}
+                        ${routineHighLowDot}${escapeHtml(r.name)}
                     </span>
                     <div class="todo-card-actions">
                         <button class="chore-btn" onclick="editRoutine('${r.uid}')" title="Edit Routine" style="font-size: 13px; opacity: 0.6; padding: 2px 4px;">&#x270E;</button>
@@ -882,190 +981,166 @@ export function renderTodoTasks() {
                     <span class="pts-badge">+${pts} pts</span>
                     ${priorityPill}
                     ${creatorPill}
-                    ${isCompletedToday ? `<span class="completed-by-tag">&#x2714; ${escapeHtml(doneByName)}</span>` : ''}
+                    ${routineDoneTag}
                 </div>
             </div>
         </div>
         `;
     }
 
-    let bodyHtml = '';
+    const collapsedPrefs = state.userPrefs.collapsed || {};
+    const sortOrderLower = (state.userPrefs?.todoSortOrder || []).map(c => String(c || '').trim().toLowerCase());
+    if (!state.expandedCompletedCategories) state.expandedCompletedCategories = new Set();
+    if (!state.previouslyCompletedCategories) state.previouslyCompletedCategories = new Set();
 
-    if (currentGroupBy === 'category') {
-        const collapsedPrefs = state.userPrefs.collapsed || {};
+    const sections = [
+        { key: 'todos', type: 'todo', titleHtml: '&#x26A1; To-Dos', items: todosList, isRoutine: false, emptyMsg: 'No to-dos matching current filters.' },
+        { key: 'projects', type: 'project', titleHtml: '&#x1F4A1; Projects / Ideas', items: projectsList, isRoutine: false, emptyMsg: 'No projects matching current filters.' },
+        { key: 'routines', type: 'routine', titleHtml: '&#x21BB; Routines', items: routinesList, isRoutine: true, emptyMsg: 'No routines matching current filters.' }
+    ];
+    const visibleSections = (currentType === 'all')
+        ? sections
+        : sections.filter(s => s.type === currentType);
+
+    function buildSectionBodyHtml(sec) {
+        if (currentGroupBy !== 'category') {
+            if (sec.items.length === 0) {
+                return `<div class="empty-section-muted">${sec.emptyMsg}</div>`;
+            }
+            const flatCardsHtml = sec.items.map(it => sec.isRoutine ? renderRoutineCard(it) : renderCard(it)).join('');
+            return `<div class="todo-grid">${flatCardsHtml}</div>`;
+        }
+
         const groupsMap = new Map();
-
-        const addEntry = (item, isRoutine) => {
-            const rawCat = (item.category || (isRoutine ? 'Home' : 'General')).trim() || (isRoutine ? 'Home' : 'General');
-            const lowerKey = rawCat.toLowerCase();
-            if (!groupsMap.has(lowerKey)) {
-                groupsMap.set(lowerKey, { label: rawCat, entries: [] });
+        const defaultCat = sec.isRoutine ? 'Home' : 'General';
+        for (const item of sec.items) {
+            const rawCat = (item.category || defaultCat).trim() || defaultCat;
+            const lower = rawCat.toLowerCase();
+            if (!groupsMap.has(lower)) {
+                groupsMap.set(lower, { label: rawCat, lower, items: [] });
             }
-            groupsMap.get(lowerKey).entries.push({ item, isRoutine });
-        };
-
-        if (currentType === 'all' || currentType === 'todo') {
-            todosList.forEach(t => addEntry(t, false));
-        }
-        if (currentType === 'all' || currentType === 'project') {
-            projectsList.forEach(p => addEntry(p, false));
-        }
-        if (currentType === 'all' || currentType === 'routine') {
-            routinesList.forEach(r => addEntry(r, true));
+            groupsMap.get(lower).items.push(item);
         }
 
-        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+        if (groupsMap.size === 0) {
+            return `<div class="empty-section-muted">${sec.emptyMsg}</div>`;
+        }
 
-        if (sortedGroups.length === 0) {
-            bodyHtml = `<div class="todo-section-container"><div class="empty-section-muted">No items matching current filters.</div></div>`;
-        } else {
-            bodyHtml = `
-            <div class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">
-                ${sortedGroups.map(group => {
-                    const catKey = group.label;
-                    const sortedEntries = group.entries.slice().sort((a, b) =>
-                        compareItems(a.item, a.isRoutine, b.item, b.isRoutine)
-                    );
-                    const isCollapsed = !!collapsedPrefs[catKey];
-                    const activeCount = sortedEntries.filter(e =>
-                        e.isRoutine ? !isRoutineCompletedOnDate(e.item, todayKey) : !e.item.completed
-                    ).length;
-                    const totalCount = sortedEntries.length;
+        for (const grp of groupsMap.values()) {
+            const totalCount = grp.items.length;
+            const activeCount = grp.items.filter(it =>
+                sec.isRoutine ? !isRoutineCompletedOnDate(it, todayKey) : !it.completed
+            ).length;
+            grp.totalCount = totalCount;
+            grp.activeCount = activeCount;
+            grp.isAllComplete = totalCount > 0 && activeCount === 0;
+        }
 
-                    return `
-                    <div class="category-accordion-item ${isCollapsed ? 'collapsed' : ''}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
-                        <div class="category-accordion-header" data-cat-key="${escapeHtml(catKey)}" onclick="toggleCategoryCollapse(this.dataset.catKey)" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none; background: var(--bg-color);">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
-                                    ${isCollapsed ? '&#x25B6;' : '&#x25BC;'}
-                                </span>
-                                <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
-                                    &#x1F4C1; ${escapeHtml(catKey)}
-                                </span>
-                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
-                                    ${activeCount}${activeCount !== totalCount ? `/${totalCount}` : ''}
-                                </span>
-                            </div>
-                            <span style="font-size: 11px; color: var(--text-muted);">
-                                ${isCollapsed ? 'Click to show' : 'Click to hide'}
-                            </span>
-                        </div>
+        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => {
+            if (a.isAllComplete !== b.isAllComplete) return a.isAllComplete ? 1 : -1;
+            const idxA = sortOrderLower.indexOf(a.lower);
+            const idxB = sortOrderLower.indexOf(b.lower);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.label.localeCompare(b.label);
+        });
 
-                        <div class="category-accordion-body" style="padding: 12px; display: ${isCollapsed ? 'none' : 'block'};">
-                            <div class="todo-grid">
-                                ${sortedEntries.map(e => e.isRoutine ? renderRoutineCard(e.item) : renderCard(e.item)).join('')}
-                            </div>
-                        </div>
+        const activeGroupCount = sortedGroups.filter(g => !g.isAllComplete).length;
+        let activeIdx = 0;
+
+        const accordionItemsHtml = sortedGroups.map(grp => {
+            const scopedKey = 'todo_cat_' + sec.type + '_' + grp.lower;
+            let isCollapsed = false;
+
+            if (grp.isAllComplete) {
+                state.previouslyCompletedCategories.add(scopedKey);
+                isCollapsed = !state.expandedCompletedCategories.has(scopedKey);
+            } else {
+                if (state.previouslyCompletedCategories.has(scopedKey)) {
+                    expandCategoryOnReactivation(sec.type, grp.label);
+                }
+                isCollapsed = Boolean(collapsedPrefs[scopedKey] ?? collapsedPrefs[grp.label]);
+            }
+
+            const sortedItems = sec.isRoutine ? sortRoutineList(grp.items) : sortTaskList(grp.items);
+            const cardsHtml = sortedItems.map(it => sec.isRoutine ? renderRoutineCard(it) : renderCard(it)).join('');
+
+            let orderControlsHtml = '';
+            if (!grp.isAllComplete) {
+                const upDisabled = activeIdx === 0 ? 'disabled' : '';
+                const downDisabled = activeIdx >= activeGroupCount - 1 ? 'disabled' : '';
+                const safeSecType = escapeHtml(sec.type);
+                const safeLabel = escapeHtml(grp.label);
+                orderControlsHtml =
+                    '<span class="cat-order-controls" onclick="event.stopPropagation()">' +
+                    `<button type="button" class="cat-move-btn" data-section-type="${safeSecType}" data-cat-key="${safeLabel}" data-dir="-1" onclick="moveTodoCategory(this.dataset.sectionType, this.dataset.catKey, Number(this.dataset.dir), event)" title="Move category up" ${upDisabled}>&#x25B2;</button>` +
+                    `<button type="button" class="cat-move-btn" data-section-type="${safeSecType}" data-cat-key="${safeLabel}" data-dir="1" onclick="moveTodoCategory(this.dataset.sectionType, this.dataset.catKey, Number(this.dataset.dir), event)" title="Move category down" ${downDisabled}>&#x25BC;</button>` +
+                    '</span>';
+                activeIdx++;
+            }
+
+            const countBadgeText = grp.activeCount !== grp.totalCount
+                ? `${grp.activeCount}/${grp.totalCount}`
+                : `${grp.activeCount}`;
+            const completedClass = grp.isAllComplete ? 'is-completed-category' : '';
+            const collapsedClass = isCollapsed ? 'collapsed' : '';
+            const arrowEntity = isCollapsed ? '&#x25B6;' : '&#x25BC;';
+            const toggleHintText = isCollapsed ? 'Click to show' : 'Click to hide';
+            const bodyDisplay = isCollapsed ? 'none' : 'block';
+            const doneCheckMark = grp.isAllComplete ? '&#x2714; ' : '';
+
+            return `
+            <div class="category-accordion-item ${collapsedClass} ${completedClass}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
+                <div class="category-accordion-header" data-scoped-key="${escapeHtml(scopedKey)}" data-cat-label="${escapeHtml(grp.label)}" data-all-complete="${grp.isAllComplete ? '1' : '0'}" onclick="toggleCategoryCollapse(this.dataset.scopedKey, this.dataset.allComplete === '1')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; cursor: pointer; user-select: none;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="category-accordion-arrow" style="font-size: 11px; color: var(--text-muted); transition: transform 0.2s;">
+                            ${arrowEntity}
+                        </span>
+                        <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">
+                            ${doneCheckMark}&#x1F4C1; ${escapeHtml(grp.label)}
+                        </span>
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--card-bg); padding: 2px 7px; border-radius: 12px; border: 1px solid var(--border-color);">
+                            ${countBadgeText}
+                        </span>
+                        ${orderControlsHtml}
                     </div>
-                    `;
-                }).join('')}
-            </div>
-            `;
-        }
-    } else if (currentType === 'all') {
-        const isTodosCollapsed = !!collapsedSections['todos'];
-        const isProjectsCollapsed = !!collapsedSections['projects'];
-        const isRoutinesCollapsed = !!collapsedSections['routines'];
+                    <span style="font-size: 11px; color: var(--text-muted);">
+                        ${toggleHintText}
+                    </span>
+                </div>
+                <div class="category-accordion-body" style="padding: 12px; display: ${bodyDisplay};">
+                    <div class="todo-grid">
+                        ${cardsHtml}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
 
-        bodyHtml = `
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-            <div class="todo-section-container">
-                <div class="todo-section-header" onclick="toggleMainSectionCollapse('todos')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                        <span>&#x26A1; To-Dos</span>
-                        <span class="todo-section-count">${todosList.length}</span>
-                    </h4>
-                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isTodosCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
-                </div>
-                <div style="display: ${isTodosCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${todosList.length > 0
-                        ? `<div class="todo-grid">${todosList.map(renderCard).join('')}</div>`
-                        : `<div class="empty-section-muted">No to-dos matching current filters.</div>`
-                    }
-                </div>
-            </div>
-
-            <div class="todo-section-container">
-                <div class="todo-section-header" onclick="toggleMainSectionCollapse('projects')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                        <span>&#x1F4A1; Projects / Ideas</span>
-                        <span class="todo-section-count">${projectsList.length}</span>
-                    </h4>
-                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isProjectsCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
-                </div>
-                <div style="display: ${isProjectsCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${projectsList.length > 0
-                        ? `<div class="todo-grid">${projectsList.map(renderCard).join('')}</div>`
-                        : `<div class="empty-section-muted">No projects matching current filters.</div>`
-                    }
-                </div>
-            </div>
-
-            <div class="todo-section-container">
-                <div class="todo-section-header" onclick="toggleMainSectionCollapse('routines')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                    <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                        <span>&#x21BB; Routines</span>
-                        <span class="todo-section-count">${routinesList.length}</span>
-                    </h4>
-                    <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${isRoutinesCollapsed ? '&#x25B6;' : '&#x25BC;'}</span>
-                </div>
-                <div style="display: ${isRoutinesCollapsed ? 'none' : 'block'}; margin-top: 10px;">
-                    ${routinesList.length > 0
-                        ? `<div class="todo-grid">${routinesList.map(renderRoutineCard).join('')}</div>`
-                        : `<div class="empty-section-muted">No routines matching current filters.</div>`
-                    }
-                </div>
-            </div>
-        </div>
-        `;
-    } else if (currentType === 'project') {
-        bodyHtml = `
-        <div class="todo-section-container">
-            <div class="todo-section-header">
-                <h4 class="todo-section-title">
-                    <span>&#x1F4A1; Projects / Ideas</span>
-                    <span class="todo-section-count">${projectsList.length}</span>
-                </h4>
-            </div>
-            ${projectsList.length > 0
-                ? `<div class="todo-grid" style="margin-top: 10px;">${projectsList.map(renderCard).join('')}</div>`
-                : `<div class="empty-section-muted" style="margin-top: 10px;">No projects matching current filters.</div>`
-            }
-        </div>
-        `;
-    } else if (currentType === 'routine') {
-        bodyHtml = `
-        <div class="todo-section-container">
-            <div class="todo-section-header">
-                <h4 class="todo-section-title">
-                    <span>&#x21BB; Routines</span>
-                    <span class="todo-section-count">${routinesList.length}</span>
-                </h4>
-            </div>
-            ${routinesList.length > 0
-                ? `<div class="todo-grid" style="margin-top: 10px;">${routinesList.map(renderRoutineCard).join('')}</div>`
-                : `<div class="empty-section-muted" style="margin-top: 10px;">No routines matching current filters.</div>`
-            }
-        </div>
-        `;
-    } else {
-        // currentType === 'todo' (flat view with Tier 1 -> Tier 2 -> Tier 3)
-        bodyHtml = `
-        <div class="todo-section-container">
-            <div class="todo-section-header">
-                <h4 class="todo-section-title">
-                    <span>&#x26A1; To-Dos</span>
-                    <span class="todo-section-count">${todosList.length}</span>
-                </h4>
-            </div>
-            ${todosList.length > 0
-                ? `<div class="todo-grid" style="margin-top: 10px;">${todosList.map(renderCard).join('')}</div>`
-                : `<div class="empty-section-muted" style="margin-top: 10px;">No to-dos matching current filters.</div>`
-            }
-        </div>
-        `;
+        return `<div id="cat-accordions-${sec.type}" class="category-accordions-container" style="display: flex; flex-direction: column; gap: 12px;">${accordionItemsHtml}</div>`;
     }
 
+    const sectionHtmlList = visibleSections.map(sec => {
+        const isSecCollapsed = !!collapsedSections[sec.key];
+        const secArrow = isSecCollapsed ? '&#x25B6;' : '&#x25BC;';
+        const secBodyDisplay = isSecCollapsed ? 'none' : 'block';
+        const secInnerHtml = buildSectionBodyHtml(sec);
+        return `
+        <div class="todo-section-container">
+            <div class="todo-section-header" onclick="toggleMainSectionCollapse('${sec.key}')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                <h4 class="todo-section-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span>${sec.titleHtml}</span>
+                    <span class="todo-section-count">${sec.items.length}</span>
+                </h4>
+                <span class="section-collapse-arrow" style="font-size: 12px; color: var(--text-muted);">${secArrow}</span>
+            </div>
+            <div style="display: ${secBodyDisplay}; margin-top: 10px;">
+                ${secInnerHtml}
+            </div>
+        </div>`;
+    });
+
+    const bodyHtml = `<div style="display: flex; flex-direction: column; gap: 16px;">${sectionHtmlList.join('')}</div>`;
     container.innerHTML = toolbarHtml + bodyHtml;
 }
 
@@ -1334,10 +1409,15 @@ Output JSON: { "suggestedTitle": "...", "suggestedDescription": "..." }`;
 // 6. TOGGLE STATUS & SUBTASKS
 // ==========================================
 export async function toggleTaskStatus(taskId, currentCompleted) {
+    if (inFlightTodoOps.has(taskId)) return;
     const todo = state.todoTasksData?.find(t => t.id === taskId);
     if (!todo) return;
 
     const nextCompleted = !currentCompleted;
+    if (Boolean(todo.completed) === nextCompleted) return;
+
+    inFlightTodoOps.add(taskId);
+    const todayKey = getLocalTodayKey();
     const nowIso = new Date().toISOString();
     const doerUids = (state.activeUsers && state.activeUsers.length > 0)
         ? [...state.activeUsers]
@@ -1410,9 +1490,26 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                     userUid: doerUid,
                     points: pts,
                     completedAt: nowIso,
-                    dateKey: getLocalTodayKey(),
+                    dateKey: todayKey,
                     ...(activityUids.length > 0 ? { activityUids, activityUid: activityUids[0] } : {})
                 });
+            }
+
+            // Asymmetric Chore -> Routine Cascade (Rule A vs Rule C)
+            const linkedRoutine = findMatchingRoutineForChore(todo, 'todo');
+            if (linkedRoutine) {
+                const rStatus = getRoutineCompletionForDate(linkedRoutine, todayKey);
+                if (!rStatus.isDone || rStatus.withoutPoints) {
+                    await completeRoutineForDate(linkedRoutine.uid, todayKey, true, doerUid, {
+                        completedByChore: true,
+                        sourceChoreType: 'todo',
+                        sourceChoreId: taskId,
+                        activityUids,
+                        points: pts,
+                        creditedName: doerName,
+                        completedAt: nowIso
+                    });
+                }
             }
         } else {
             todo.completedActivityUids = [];
@@ -1433,8 +1530,8 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 for (const actUid of prevActivityUids) {
                     try {
                         await api.deleteActivityFromNipto(actUid);
-                        await api.removeDailyCompletion(`nipto_${actUid}`, getLocalTodayKey());
-                        if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+                        await api.removeDailyCompletion(`nipto_${actUid}`, todayKey);
+                        if (prevDateKey && prevDateKey !== todayKey) {
                             await api.removeDailyCompletion(`nipto_${actUid}`, prevDateKey);
                         }
                     } catch (delErr) {
@@ -1451,10 +1548,30 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
                 }
             }
 
-            await api.removeDailyCompletion(`todo_${taskId}`, getLocalTodayKey());
-            if (prevDateKey && prevDateKey !== getLocalTodayKey()) {
+            await api.removeDailyCompletion(`todo_${taskId}`, todayKey);
+            if (prevDateKey && prevDateKey !== todayKey) {
                 await api.removeDailyCompletion(`todo_${taskId}`, prevDateKey);
             }
+
+            expandCategoryOnReactivation(normalizeTask(todo).type, todo.category || 'General');
+
+            // Undo A1: Revert linked Routine if it was completed by this To-Do chore
+            const linkedRoutine = findMatchingRoutineForChore(todo, 'todo');
+            const targetKey = prevDateKey || todayKey;
+            const rComp = linkedRoutine?.completionsByDate?.[targetKey];
+            if (rComp && rComp.completedByChore === true && rComp.sourceChoreId === taskId) {
+                delete linkedRoutine.completionsByDate[targetKey];
+                await api.updateFirestoreDocument('routines', linkedRoutine.uid, {
+                    completionsByDate: linkedRoutine.completionsByDate,
+                    updatedAt: nowIso
+                });
+                await api.removeDailyCompletion('routine_' + linkedRoutine.uid + '_' + targetKey, targetKey);
+                expandCategoryOnReactivation('routine', linkedRoutine.category || 'Home');
+                if (typeof window !== 'undefined' && typeof window.renderRollingSchedule === 'function') {
+                    window.renderRollingSchedule();
+                }
+            }
+
             showToast("todo_undo", `Unchecked "${todo.name}"`, 0, "");
         }
 
@@ -1465,6 +1582,8 @@ export async function toggleTaskStatus(taskId, currentCompleted) {
     } catch (e) {
         console.error("Error toggling task status:", e);
         alert("Failed to update task: " + e.message);
+    } finally {
+        inFlightTodoOps.delete(taskId);
     }
 }
 
@@ -1816,6 +1935,8 @@ function populateSubTaskFields(subtasks = []) {
 }
 
 export async function saveTask() {
+    if (isSavingTask) return;
+
     const id = document.getElementById('taskId')?.value;
     const name = document.getElementById('taskName')?.value.trim();
     if (!name) { alert("Task name is required!"); return; }
@@ -1884,6 +2005,14 @@ export async function saveTask() {
         lastReviewedAt: nowIso
     };
 
+    const saveBtn = document.querySelector('#taskModal .save-mode');
+    const prevSaveLabel = saveBtn ? saveBtn.textContent : 'Save Task';
+    isSavingTask = true;
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
+
     try {
         let createdId = id;
         if (id) {
@@ -1898,11 +2027,21 @@ export async function saveTask() {
             dispatchDirectAssignmentAlerts(taskData, createdId);
         }
 
+        if (!existingTask?.completed) {
+            expandCategoryOnReactivation(type, category);
+        }
+
         closeTaskModal();
         renderTodoTasks();
     } catch (e) {
         console.error("Error saving task:", e);
         alert("Failed to save task: " + e.message);
+    } finally {
+        isSavingTask = false;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = prevSaveLabel;
+        }
     }
 }
 
@@ -1956,6 +2095,8 @@ if (typeof window !== 'undefined') {
     window.setTodoGroupBy = setTodoGroupBy;
     window.resetTodoFilters = resetTodoFilters;
     window.classifyTaskOwnership = classifyTaskOwnership;
+    window.expandCategoryOnReactivation = expandCategoryOnReactivation;
+    window.moveTodoCategory = moveTodoCategory;
     window.toggleCategoryCollapse = toggleCategoryCollapse;
     window.toggleMainSectionCollapse = toggleMainSectionCollapse;
     window.toggleTaskDescription = toggleTaskDescription;

@@ -7,9 +7,12 @@
     /* Minecraft Palette */
     --primary: #3CE6E6;       /* Diamond Blue */
     --primary-hover: #2BA8A8; /* Darker Diamond */
+    --on-primary: #1A1A1A;
+    --primary-text: #0B4F6C;
     --success: #55FF55;       /* Experience/Slime Green */
     --danger: #FF5555;        /* Lava/Redstone Red */
     --bg-color: #7D7D7D;      /* Stone Grey */
+    --surface-subtle: #D5AF82;
     --card-bg: #C68E58;       /* Oak Wood Planks */
     --text-main: #1A1A1A;     /* Obsidian/Charcoal */
     --text-muted: #3E2723;    /* Dark Dirt/Wood */
@@ -370,4 +373,29 @@ input[list] {
 .todo-card.is-other-user-task:focus-within {
     opacity: 0.96;
     filter: saturate(1);
+}
+
+.filter-pill.active,
+.qa-point-pill.active,
+.routine-count-badge.highlight {
+    color: #1A1A1A !important;
+    border-color: var(--border-color) !important;
+}
+
+.stale-review-btn,
+.settings-test-btn {
+    background-color: #9E9E9E !important;
+    color: #1A1A1A !important;
+    border: 2px solid var(--border-color) !important;
+}
+
+.stale-review-btn:hover,
+.settings-test-btn:hover {
+    background-color: var(--primary) !important;
+    color: #1A1A1A !important;
+}
+
+.stale-refresher-banner {
+    background: #E4C094 !important;
+    border: 3px solid var(--border-color) !important;
 }

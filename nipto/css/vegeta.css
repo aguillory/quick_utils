@@ -7,9 +7,12 @@
     /* Dragon Ball Palette */
     --primary: #ba8c0f;       /* Vegeta Gold */
     --primary-hover: #9b740a; /* Darker Gold */
+    --on-primary: #000000;
+    --primary-text: #7A5900;
     --success: #4CAF50;       /* Senzu Bean Green */
     --danger: #E53935;        /* Red Ribbon Red */
     --bg-color: #1a237e;      /* Vegeta Dark Blue */
+    --surface-subtle: rgba(255, 255, 255, 0.92);
     --card-bg: rgba(255, 255, 255, 0.85); /* 30% Transparent White */
     --text-main: #000000;     /* Black Text */
     --text-muted: #333333;    /* Dark Gray Text */
@@ -354,4 +357,21 @@ span[style*="#f3f4f6"] {
 .braindump-hint-chip:focus-visible {
     background: #ffffff;
     color: var(--primary);
+}
+
+.nav-tab.active,
+.filter-pill.active,
+.qa-point-pill.active,
+.routine-count-badge.highlight,
+.stale-review-btn,
+.settings-test-btn {
+    background-color: var(--primary) !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+    font-weight: 800;
+}
+
+.stale-refresher-banner {
+    background: rgba(255, 251, 235, 0.94) !important;
+    border: 2px solid #ba8c0f !important;
 }

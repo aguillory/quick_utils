@@ -7,12 +7,65 @@ import * as api from './api.js';
 import { showToast } from './toast.js';
 import { drawLeaderboard, updateLeaderboardUI, rebuildCompletedToday, renderDoneTodayFeed } from './leaderboard.js';
 import { getLocalTodayKey, getLocalWeekBounds, registerCustomCategory } from './utils.js';
+import { saveCloudCollapsed } from './preferences.js';
 
 export { NIPTO_PUBLIC_URL };
 export const getRoutinePoints = api.getRoutinePoints;
 
 // Double-tap & in-flight idempotency guard keyed by `${routineId}_${dateKey}`
 const inFlightRoutineOps = new Set();
+let isSavingRoutine = false;
+
+export function normalizeChoreTitle(str) {
+    return String(str || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/\s+/g, ' ');
+}
+
+export function findMatchingRoutineForChore(choreObj, sourceType = 'todo') {
+    if (!choreObj || !Array.isArray(state.routines) || state.routines.length === 0) return null;
+
+    if (sourceType === 'todo') {
+        const rawBucket = String(choreObj.bucket || '').toLowerCase();
+        const effectiveType = (choreObj.type && ['todo', 'project', 'routine'].includes(choreObj.type))
+            ? choreObj.type
+            : ((rawBucket === 'project' || rawBucket === 'projects' || rawBucket === 'project_idea') ? 'project' : 'todo');
+        if (effectiveType !== 'todo') return null;
+
+        const linkedTaskObj = choreObj.linkedNiptoTask
+            ? (state.tasks || []).find(t => t.uid === choreObj.linkedNiptoTask)
+            : null;
+        const hasValidLinkedNipto = Boolean(linkedTaskObj && !api.isGenericAssignedTask(linkedTaskObj));
+
+        const fkMatch = state.routines.find(r =>
+            (choreObj.linkedRoutineId && r.uid === choreObj.linkedRoutineId) ||
+            (choreObj.id && r.linkedTodoId === choreObj.id) ||
+            (hasValidLinkedNipto && r.linkedNiptoTask === choreObj.linkedNiptoTask)
+        );
+        if (fkMatch) return fkMatch;
+    } else if (sourceType === 'nipto') {
+        const niptoTaskObj = (state.tasks || []).find(t => t.uid === choreObj.uid) || choreObj;
+        if (api.isGenericAssignedTask(niptoTaskObj)) return null;
+        const fkMatch = state.routines.find(r => r.linkedNiptoTask === choreObj.uid);
+        if (fkMatch) return fkMatch;
+    }
+
+    const targetTitle = normalizeChoreTitle(choreObj.name || choreObj.title);
+    if (!targetTitle) return null;
+
+    const matched = state.routines.find(r => normalizeChoreTitle(r.name) === targetTitle) || null;
+    if (matched && sourceType === 'todo' && choreObj.id && choreObj.linkedRoutineId !== matched.uid) {
+        choreObj.linkedRoutineId = matched.uid;
+        matched.linkedTodoId = choreObj.id;
+        if (typeof window !== 'undefined' && typeof window.getNiptoCollection === 'function') {
+            api.updateFirestoreDocument('custom_tasks', choreObj.id, { linkedRoutineId: matched.uid }).catch(() => {});
+            api.updateFirestoreDocument('routines', matched.uid, { linkedTodoId: choreObj.id }).catch(() => {});
+        }
+    }
+    return matched;
+}
 
 const DAILY_CARE_ROUTINE_SLUGS = new Set([
     "feed orion",
@@ -882,18 +935,17 @@ function rebuildLastCompletedExcludingDate(routine, excludedDateKey, updatedComp
 }
 
 // Idempotent completion check-off & bidirectional Nipto point sync (or dismiss when awardPoints = false)
-export async function completeRoutineForDate(routineId, dateKey, awardPoints = true, overrideDoerUid = null) {
+export async function completeRoutineForDate(routineId, dateKey, awardPoints = true, overrideDoerUid = null, cascadeMeta = null) {
     const routine = state.routines?.find(r => r.uid === routineId);
     if (!routine || !dateKey) return false;
 
     const opKey = `${routineId}_${dateKey}`;
     if (inFlightRoutineOps.has(opKey)) return false;
 
-    const existingEntry = routine.completionsByDate?.[dateKey];
-    if (existingEntry) {
-        if (!awardPoints || existingEntry.withoutPoints !== true) {
-            return false;
-        }
+    // Rule B Anti-Double-Dip Guard
+    const currentStatus = getRoutineCompletionForDate(routine, dateKey);
+    if (currentStatus.isDone && (!awardPoints || !currentStatus.withoutPoints)) {
+        return false;
     }
 
     inFlightRoutineOps.add(opKey);
@@ -914,6 +966,58 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
 
         const nowIso = new Date().toISOString();
         const routinePts = api.getRoutinePoints(routine);
+        const isChoreCascade = Boolean(cascadeMeta && cascadeMeta.completedByChore);
+
+        if (isChoreCascade) {
+            const effectiveCreditedName = cascadeMeta.creditedName || creditedName;
+            const completions = routine.completionsByDate ? { ...routine.completionsByDate } : {};
+            completions[dateKey] = {
+                dateKey: dateKey,
+                completedAt: cascadeMeta.completedAt || nowIso,
+                completedByUid: creditedUid,
+                completedByName: effectiveCreditedName,
+                points: cascadeMeta.points !== undefined ? cascadeMeta.points : routinePts,
+                withoutPoints: false,
+                completedByChore: true,
+                sourceChoreType: cascadeMeta.sourceChoreType || 'todo',
+                sourceChoreId: cascadeMeta.sourceChoreId || null,
+                niptoActivityUids: Array.isArray(cascadeMeta.activityUids) ? cascadeMeta.activityUids : [],
+                niptoActivityUid: (Array.isArray(cascadeMeta.activityUids) && cascadeMeta.activityUids[0]) || null
+            };
+
+            const routineUpdates = {
+                completionsByDate: completions,
+                updatedAt: nowIso
+            };
+
+            const nextLastCompleted = { ...(routine.lastCompleted || {}) };
+            const nextLastCompletedBy = { ...(routine.lastCompletedBy || {}) };
+            const completionIso = parseRoutineDate(dateKey)?.toISOString() || nowIso;
+            const prevKeys = Object.values(nextLastCompleted)
+                .map(v => parseRoutineDate(v))
+                .filter(Boolean)
+                .map(d => toLocalDateKey(d));
+            const maxPrevKey = prevKeys.sort().pop() || '';
+            if (!maxPrevKey || dateKey >= maxPrevKey) {
+                if (routine.completionType === 'shared') {
+                    nextLastCompleted.shared = completionIso;
+                    nextLastCompletedBy.shared = effectiveCreditedName;
+                } else {
+                    nextLastCompleted[creditedUid] = completionIso;
+                    nextLastCompletedBy[creditedUid] = effectiveCreditedName;
+                }
+                routineUpdates.lastCompleted = nextLastCompleted;
+                routineUpdates.lastCompletedBy = nextLastCompletedBy;
+                routine.lastCompleted = nextLastCompleted;
+                routine.lastCompletedBy = nextLastCompletedBy;
+            }
+
+            await api.updateFirestoreDocument('routines', routineId, routineUpdates);
+            routine.completionsByDate = completions;
+            renderRollingSchedule();
+            return true;
+        }
+
         let loggedActivityUids = [];
 
         if (awardPoints) {
@@ -937,7 +1041,7 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
 
                 const runNiptoLog = async (isoToUse) => {
                     if (canUseLinkedDirectly) {
-                        const uids = await api.logActivityToNipto(routine.linkedNiptoTask, isoToUse, creditedUids);
+                        const uids = await api.logActivityToNipto(routine.linkedNiptoTask, isoToUse, creditedUids, routine.name || '');
                         if (uids && uids.length > 0 && routine.name) {
                             await api.saveActivityLabels(uids, routine.name);
                         }
@@ -981,6 +1085,9 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
             completedByName: creditedName,
             points: awardPoints ? routinePts : 0,
             withoutPoints: !awardPoints,
+            completedByChore: false,
+            sourceChoreType: null,
+            sourceChoreId: null,
             niptoActivityUids: loggedActivityUids,
             niptoActivityUid: loggedActivityUids[0] || null
         };
@@ -1061,16 +1168,19 @@ export async function completeRoutineForDate(routineId, dateKey, awardPoints = t
 }
 
 // Reverts a specific date's completion and deletes any linked Nipto activities
-export async function undoRoutineForDate(routineId, dateKey) {
+export async function undoRoutineForDate(routineId, dateKey, skipChoreCascade = false) {
     const routine = state.routines?.find(r => r.uid === routineId);
-    if (!routine || !routine.completionsByDate || !routine.completionsByDate[dateKey]) return false;
+    if (!routine || !dateKey) return false;
+
+    const currentStatus = getRoutineCompletionForDate(routine, dateKey);
+    if (!currentStatus.isDone) return false;
 
     const opKey = `${routineId}_${dateKey}`;
     if (inFlightRoutineOps.has(opKey)) return false;
 
     inFlightRoutineOps.add(opKey);
     try {
-        const existing = routine.completionsByDate[dateKey];
+        const existing = routine.completionsByDate?.[dateKey] || currentStatus.comp || {};
         const uidsToDelete = [];
         if (Array.isArray(existing.niptoActivityUids)) {
             existing.niptoActivityUids.forEach(u => { if (u && !uidsToDelete.includes(u)) uidsToDelete.push(u); });
@@ -1085,10 +1195,15 @@ export async function undoRoutineForDate(routineId, dateKey) {
             uidsToDelete.push(existing.activityUid);
         }
 
+        const todayKeyNow = getLocalTodayKey();
         if (uidsToDelete.length > 0) {
             for (const actUid of uidsToDelete) {
                 try {
                     await api.deleteActivityFromNipto(actUid);
+                    await api.removeDailyCompletion('nipto_' + actUid, dateKey);
+                    if (todayKeyNow !== dateKey) {
+                        await api.removeDailyCompletion('nipto_' + actUid, todayKeyNow);
+                    }
                 } catch (delErr) {
                     console.warn(`Could not delete Nipto activity ${actUid} (e.g. prior-week restriction):`, delErr);
                 }
@@ -1100,26 +1215,67 @@ export async function undoRoutineForDate(routineId, dateKey) {
             }
         }
 
-        const completions = { ...routine.completionsByDate };
-        delete completions[dateKey];
+        // Undo A2 Cascade (Routine was completed by a To-Do Chore)
+        if (existing.completedByChore === true && existing.sourceChoreType === 'todo' && existing.sourceChoreId && !skipChoreCascade) {
+            const linkedTodo = (state.todoTasksData || []).find(t => t.id === existing.sourceChoreId);
+            if (linkedTodo) {
+                linkedTodo.completed = false;
+                linkedTodo.completedAt = null;
+                linkedTodo.completedBy = [];
+                linkedTodo.completedActivityUids = [];
+                linkedTodo.completedActivityUid = null;
+            }
+            await api.updateFirestoreDocument('custom_tasks', existing.sourceChoreId, {
+                completed: false,
+                completedAt: null,
+                completedBy: [],
+                completedActivityUids: [],
+                completedActivityUid: null,
+                updatedAt: new Date().toISOString()
+            }).catch(err => console.warn('Could not reset linked To-Do on routine undo:', err));
 
-        const routineUpdates = {
-            completionsByDate: completions,
-            updatedAt: new Date().toISOString()
-        };
-        const rebuiltLc = rebuildLastCompletedExcludingDate(routine, dateKey, completions);
-        if (rebuiltLc) {
-            routineUpdates.lastCompleted = rebuiltLc.lastCompleted;
-            routineUpdates.lastCompletedBy = rebuiltLc.lastCompletedBy;
-            routine.lastCompleted = rebuiltLc.lastCompleted;
-            routine.lastCompletedBy = rebuiltLc.lastCompletedBy;
+            await api.removeDailyCompletion('todo_' + existing.sourceChoreId, dateKey);
+            if (todayKeyNow !== dateKey) {
+                await api.removeDailyCompletion('todo_' + existing.sourceChoreId, todayKeyNow);
+            }
+
+            const todoCatKey = 'todo_cat_todo_' + String(linkedTodo?.category || 'General').trim().toLowerCase();
+            if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(todoCatKey);
+            if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(todoCatKey);
+            if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+            state.userPrefs.collapsed[todoCatKey] = false;
+            saveCloudCollapsed(todoCatKey, false);
         }
 
-        await api.updateFirestoreDocument('routines', routineId, routineUpdates);
-        routine.completionsByDate = completions;
+        if (routine.completionsByDate?.[dateKey]) {
+            const completions = { ...routine.completionsByDate };
+            delete completions[dateKey];
+
+            const routineUpdates = {
+                completionsByDate: completions,
+                updatedAt: new Date().toISOString()
+            };
+            const rebuiltLc = rebuildLastCompletedExcludingDate(routine, dateKey, completions);
+            if (rebuiltLc) {
+                routineUpdates.lastCompleted = rebuiltLc.lastCompleted;
+                routineUpdates.lastCompletedBy = rebuiltLc.lastCompletedBy;
+                routine.lastCompleted = rebuiltLc.lastCompleted;
+                routine.lastCompletedBy = rebuiltLc.lastCompletedBy;
+            }
+
+            await api.updateFirestoreDocument('routines', routineId, routineUpdates);
+            routine.completionsByDate = completions;
+        }
 
         const compId = `routine_${routineId}_${dateKey}`;
         await api.removeDailyCompletion(compId, dateKey);
+
+        const routineCatKey = 'todo_cat_routine_' + String(routine.category || 'Home').trim().toLowerCase();
+        if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(routineCatKey);
+        if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(routineCatKey);
+        if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+        state.userPrefs.collapsed[routineCatKey] = false;
+        saveCloudCollapsed(routineCatKey, false);
 
         await api.loadWeeklyCompletionsFromFirestore(state.doneWeekOffset || 0);
         if ((state.doneWeekOffset || 0) !== 0) {
@@ -1141,6 +1297,41 @@ export async function undoRoutineForDate(routineId, dateKey) {
     } finally {
         inFlightRoutineOps.delete(opKey);
     }
+}
+
+export function populateRoutineLinkedNiptoTaskSelect(selectedUid = '') {
+    const selectEl = document.getElementById('routineLinkedNiptoTask');
+    if (!selectEl) return;
+
+    const eligible = (state.tasks || [])
+        .filter(t => t && t.uid && !api.isGenericAssignedTask(t))
+        .slice()
+        .sort((a, b) => {
+            const catCmp = String(a.category || 'General').localeCompare(String(b.category || 'General'));
+            return catCmp !== 0 ? catCmp : String(a.name || '').localeCompare(String(b.name || ''));
+        });
+
+    const opts = ['<option value="">-- None (Standalone / Match by Title) --</option>'];
+    for (const t of eligible) {
+        const cat = escapeHtml(t.category || 'General');
+        const name = escapeHtml(t.name || '');
+        const pts = Number(t.value) > 0 ? ` (+${Number(t.value)} pts)` : '';
+        opts.push(`<option value="${escapeHtml(t.uid)}">[${cat}] ${name}${pts}</option>`);
+    }
+
+    selectEl.innerHTML = opts.join('');
+    selectEl.value = selectedUid || '';
+    selectEl.onchange = () => {
+        const chosenUid = selectEl.value;
+        if (!chosenUid) return;
+        const t = (state.tasks || []).find(item => item.uid === chosenUid);
+        if (t && Number(t.value) > 0) {
+            const pointsEl = document.getElementById('routinePoints');
+            if (pointsEl) {
+                pointsEl.value = String(api.clampStep5Points(t.value, 5));
+            }
+        }
+    };
 }
 
 // Opens the modal for creating a new routine
@@ -1170,6 +1361,7 @@ export function openRoutineModal() {
     const btnDel = document.getElementById('btnDeleteRoutine');
     if (btnDel) btnDel.style.display = 'none';
 
+    populateRoutineLinkedNiptoTaskSelect('');
     populateRoutineAssignees([]);
     toggleRoutineFrequencyFields();
     document.getElementById('routineModal').style.display = 'flex';
@@ -1223,6 +1415,7 @@ export function editRoutine(routineId) {
     const btnDel = document.getElementById('btnDeleteRoutine');
     if (btnDel) btnDel.style.display = 'inline-block';
 
+    populateRoutineLinkedNiptoTaskSelect(routine.linkedNiptoTask || '');
     populateRoutineAssignees(routine.assignees || []);
     toggleRoutineFrequencyFields();
     document.getElementById('routineModal').style.display = 'flex';
@@ -1259,6 +1452,8 @@ function populateRoutineAssignees(selectedUids = []) {
 }
 
 export async function saveRoutine() {
+    if (isSavingRoutine) return;
+
     const name = document.getElementById('routineName').value.trim();
     if (!name) { alert("Routine Name is required!"); return; }
 
@@ -1305,7 +1500,7 @@ export async function saveRoutine() {
     }
 
     const id = document.getElementById('routineId').value;
-    const routine = id ? state.routines.find(r => r.uid === id) : null;
+    const linkedNiptoTaskVal = document.getElementById('routineLinkedNiptoTask')?.value || null;
 
     const routineData = {
         name: name,
@@ -1316,8 +1511,16 @@ export async function saveRoutine() {
         timeOfDay: timeOfDayVal,
         points: pointsVal,
         createdBy: createdByVal,
-        linkedNiptoTask: routine?.linkedNiptoTask || null
+        linkedNiptoTask: linkedNiptoTaskVal
     };
+
+    const saveBtn = document.querySelector('#routineModal .save-mode');
+    const prevSaveLabel = saveBtn ? saveBtn.textContent : 'Save Routine';
+    isSavingRoutine = true;
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
 
     try {
         if (id) {
@@ -1326,6 +1529,15 @@ export async function saveRoutine() {
             routineData.createdAt = new Date().toISOString();
             routineData.completionsByDate = {};
             await api.addFirestoreDocument('routines', routineData);
+
+            const scopedKey = `todo_cat_routine_${categoryVal.trim().toLowerCase()}`;
+            if (state.expandedCompletedCategories) state.expandedCompletedCategories.delete(scopedKey);
+            if (state.previouslyCompletedCategories) state.previouslyCompletedCategories.delete(scopedKey);
+            if (!state.userPrefs.collapsed) state.userPrefs.collapsed = {};
+            if (state.userPrefs.collapsed[scopedKey]) {
+                state.userPrefs.collapsed[scopedKey] = false;
+                saveCloudCollapsed(scopedKey, false);
+            }
         }
         closeRoutineModal();
         await api.loadRoutinesFromFirestore();
@@ -1334,6 +1546,12 @@ export async function saveRoutine() {
         if (window.renderBulkTriageList) window.renderBulkTriageList();
     } catch (error) {
         alert("Error saving routine: " + error.message);
+    } finally {
+        isSavingRoutine = false;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = prevSaveLabel;
+        }
     }
 }
 
@@ -1373,6 +1591,9 @@ if (typeof window !== 'undefined') {
     window.openRoutineModal = openRoutineModal;
     window.closeRoutineModal = closeRoutineModal;
     window.editRoutine = editRoutine;
+    window.populateRoutineLinkedNiptoTaskSelect = populateRoutineLinkedNiptoTaskSelect;
+    window.normalizeChoreTitle = normalizeChoreTitle;
+    window.findMatchingRoutineForChore = findMatchingRoutineForChore;
     window.saveRoutine = saveRoutine;
     window.deleteRoutineFromModal = deleteRoutineFromModal;
     window.deleteRoutine = deleteRoutine;

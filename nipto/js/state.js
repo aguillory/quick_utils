@@ -144,6 +144,8 @@ export const state = {
     // Bulk triage selection
     selectedTodoIds: new Set(),
     selectedRoutineIds: new Set(),
+    expandedCompletedCategories: new Set(),
+    previouslyCompletedCategories: new Set(),
 
     // Gemini Brain Dump staging
     brainDumpMode: 'create',

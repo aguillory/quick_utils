@@ -7,9 +7,12 @@
     /* Deep Homestead Palette */
     --primary: #8B3A3A;       /* Barn / Pomegranate Red */
     --primary-hover: #6B2C2C; /* Darker Red */
+    --on-primary: #F8F5F0;
+    --primary-text: #8B3A3A;
     --success: #4A5D23;       /* Fig Leaf / Sage */
     --danger: #A33A3A;        /* Faded Rust */
     --bg-color: #DCD3C6;      /* Aged Canvas / Burlap */
+    --surface-subtle: #EAE2D6;
     --card-bg: #F8F5F0;       /* Old Paper / Tallow Cream */
     --text-main: #2C231E;     /* Deep Espresso / Soot */
     --text-muted: #6B5C52;    /* Weathered Wood */
@@ -391,4 +394,28 @@ select:focus, input[type="datetime-local"]:focus, input[list]:focus {
 .todo-card.is-other-user-task:focus-within {
     opacity: 0.96;
     filter: saturate(1);
+}
+
+.stale-review-btn,
+.settings-test-btn {
+    background-color: var(--wood-dark) !important;
+    color: #F8F5F0 !important;
+    border: 2px solid #1A1411 !important;
+}
+
+.stale-review-btn:hover,
+.settings-test-btn:hover {
+    background-color: var(--wood-light) !important;
+    color: #FFFFFF !important;
+}
+
+.stale-refresher-banner {
+    background: #EFE7DA !important;
+    border: 2px dashed var(--border-color) !important;
+}
+
+.cat-move-btn {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border: 1.5px solid var(--border-color) !important;
 }

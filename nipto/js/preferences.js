@@ -34,6 +34,9 @@ function normalizeUserPrefs(raw = {}) {
     if (prefs.todoGroupBy !== 'category') {
         prefs.todoGroupBy = 'none';
     }
+    prefs.todoSortOrder = Array.isArray(raw?.todoSortOrder)
+        ? raw.todoSortOrder.map(c => String(c || '').trim()).filter(Boolean)
+        : [];
     return prefs;
 }
 
@@ -82,6 +85,9 @@ export async function loadCloudPreferences(uid) {
 // Applies stored preferences to the reactive state (resets all fields to prevent cross-user leakage)
 function applyPrefsToState(uid) {
     const p = state.userPrefs || getDefaultUserPrefs();
+    p.todoSortOrder = Array.isArray(p.todoSortOrder)
+        ? p.todoSortOrder.map(c => String(c || '').trim()).filter(Boolean)
+        : [];
     state.todoSort = p.todoSort || 'priority';
     state.todoGroupBy = (p.todoGroupBy === 'category') ? 'category' : 'none';
     state.todoTypeFilter = p.todoTypeFilter || 'all';

@@ -334,7 +334,6 @@ export function rebuildCompletedThisWeek() {
         dateKeys.forEach(dKey => {
             const comp = r.completionsByDate[dKey];
             if (comp && !comp.withoutPoints) {
-                const compId = `routine_${r.uid}_${dKey}`;
                 if (comp.activityUid) addClaimedUid(claimedActivityUids, comp.activityUid);
                 if (comp.niptoActivityUid) addClaimedUid(claimedActivityUids, comp.niptoActivityUid);
                 if (Array.isArray(comp.activityUids)) {
@@ -343,6 +342,8 @@ export function rebuildCompletedThisWeek() {
                 if (Array.isArray(comp.niptoActivityUids)) {
                     comp.niptoActivityUids.forEach(uid => addClaimedUid(claimedActivityUids, uid));
                 }
+                if (comp.completedByChore) return;
+                const compId = `routine_${r.uid}_${dKey}`;
                 if (!compMap.has(compId)) {
                     const routinePts = api.getRoutinePoints(r);
                     const doerUid = comp.completedByUid || (r.assignees && r.assignees.length === 1 ? r.assignees[0] : '');

@@ -7,9 +7,12 @@
     /* Dragon Ball Palette */
     --primary: #fdf045;       /* Super Gold */
     --primary-hover: #e0d431; /* Darker Gold */
+    --on-primary: #000000;
+    --primary-text: #181561;
     --success: #4CAF50;       /* Senzu Bean Green */
     --danger: #E53935;        /* Red Ribbon Red */
     --bg-color: #181561;      /* Super Blue Background */
+    --surface-subtle: rgba(255, 255, 255, 0.92);
     --card-bg: rgba(255, 255, 255, 0.85); /* 30% Transparent White */
     --text-main: #000000;     /* Black Text */
     --text-muted: #333333;    /* Dark Gray Text */
@@ -354,4 +357,21 @@ span[style*="#f3f4f6"] {
 .braindump-hint-chip:focus-visible {
     background: #ffffff;
     color: #9b740a;
+}
+
+.nav-tab.active,
+.filter-pill.active,
+.qa-point-pill.active,
+.routine-count-badge.highlight,
+.stale-review-btn,
+.settings-test-btn {
+    background-color: var(--primary) !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+    font-weight: 800;
+}
+
+.stale-refresher-banner {
+    background: rgba(255, 251, 235, 0.94) !important;
+    border: 2px solid #d97706 !important;
 }
