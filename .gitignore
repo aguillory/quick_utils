@@ -5,3 +5,11 @@ agentic_coding_resources/google_api_key.txt
 secrets.yaml
 .GEMINI.md
 AGENTS.md
+ha-mail-intel/mail_intel/mail_intel_core.py
+ha-mail-intel/mail_intel/sevtrack_cache.py
+ha-mail-intel/pyscript/mail_intel.py
+ha-mail-intel/www/mail-intel-card.js
+nipto/repomix-nipto.md
+ha-mail-intel/mail_intel/mail_intel_core.py
+ha-mail-intel/pyscript/mail_intel.py
+ha-mail-intel/www/mail-intel-card.js
